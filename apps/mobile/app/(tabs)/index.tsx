@@ -60,8 +60,7 @@ export default function TabOneScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>🔥 Sizzling Hub</Text>
-      <Text style={styles.subtitle}>Profiles from Supabase</Text>
+      <Text style={styles.title}>🔥 Sizzling Hub (MOBILE)</Text>
 
       <FlatList
         data={profiles}

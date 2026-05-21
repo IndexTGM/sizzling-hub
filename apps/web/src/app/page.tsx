@@ -23,7 +23,7 @@ export default async function Home() {
     <div className="flex flex-col flex-1 items-center bg-zinc-50 font-sans dark:bg-black px-4 py-12">
       <main className="w-full max-w-2xl">
         <h1 className="text-3xl font-bold text-black dark:text-white mb-2">
-          🔥 Sizzling Hub
+          🔥 Sizzling Hub (Web)
         </h1>
 
         {error && (
