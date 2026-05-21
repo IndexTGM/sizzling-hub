@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "03ec1e2a-9238-4749-ba5c-31b1562c9a3d"
+      }
+    },
+    "android": {
+      "package": "com.bendevs.sizzlinghub"
+    }
+  }
+}

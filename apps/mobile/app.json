@@ -11,13 +11,15 @@
       "supportsTablet": true
     },
     "android": {
+      "jsEngine": "jsc",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.bendevs.sizzlinghub"
     },
     "web": {
       "bundler": "metro",
@@ -26,6 +28,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-secure-store",
       [
         "expo-splash-screen",
         {
@@ -35,8 +38,16 @@
         }
       ]
     ],
+    "jsEngine": "jsc",
     "experiments": {
-      "typedRoutes": true
+      "typedRoutes": true,
+      "newArchEnabled": false
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "3e71befc-3aec-40de-8e4b-5ad406d38e71"
+      }
     }
   }
 }
