@@ -1,56 +1,72 @@
-import { useFonts } from 'expo-font';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
-import 'react-native-reanimated';
+import { Stack, useSegments, useRouter } from "expo-router";
+import { useEffect } from "react";
+import { ActivityIndicator, View } from "react-native";
+import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { CartProvider } from "@/lib/cart-context";
 
-import { useColorScheme } from '@/components/useColorScheme';
+const PRIMARY = "#dc2626";
 
-export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
-} from 'expo-router';
-
-export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
-  initialRouteName: '(tabs)',
-};
-
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
-
-export default function RootLayout() {
-  const [loaded, error] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-  });
-
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
-  useEffect(() => {
-    if (error) throw error;
-  }, [error]);
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+  const segments = useSegments();
+  const router = useRouter();
 
   useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
+    if (loading) return;
+
+    const current = segments[0] as string | undefined;
+    const inAuthScreen = current === "index" || !current;
+    const inForgotScreen = current === "forgot-password";
+    const isAuthenticated = user !== null;
+
+    if (!isAuthenticated && !inAuthScreen && !inForgotScreen) {
+      router.replace("/");
+    } else if (isAuthenticated && (inAuthScreen || inForgotScreen)) {
+      router.replace("/home");
     }
-  }, [loaded]);
+  }, [user, loading, segments]);
 
-  if (!loaded) {
-    return null;
+  if (loading) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "#fafafa",
+        }}
+      >
+        <ActivityIndicator size="large" color={PRIMARY} />
+      </View>
+    );
   }
 
-  return <RootLayoutNav />;
+  return <>{children}</>;
 }
 
-function RootLayoutNav() {
-  const colorScheme = useColorScheme();
-
+export default function RootLayout() {
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-      </Stack>
-    </ThemeProvider>
+    <AuthProvider>
+      <CartProvider>
+        <AuthGate>
+          <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: "#fafafa" },
+          }}
+        >
+          <Stack.Screen name="index" />
+          <Stack.Screen name="forgot-password" />
+          <Stack.Screen name="home" />
+          <Stack.Screen name="profile" />
+          <Stack.Screen name="menu" />
+          <Stack.Screen name="menu-item" />
+          <Stack.Screen name="cart" />
+          <Stack.Screen name="orders" />
+          <Stack.Screen name="admin" />
+          </Stack>
+        </AuthGate>
+      </CartProvider>
+    </AuthProvider>
   );
 }
