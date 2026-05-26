@@ -285,8 +285,7 @@ export default function HomeScreen() {
               [
                 { icon: "🍳", label: "Silog", route: "/menu" as const },
                 { icon: "🥤", label: "Drinks", route: "/menu" as const },
-                { icon: "🍚", label: "Add-ons", route: "/menu" as const },
-                { icon: "🔥", label: "Best Seller", route: "/menu" as const },
+                { icon: "🍚", label: "Add-ons", route: "/menu" as const }
               ] as const
             ).map((cat) => (
               <TouchableOpacity

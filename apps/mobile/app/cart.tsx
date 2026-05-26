@@ -334,7 +334,7 @@ export default function CartScreen() {
         animationType="slide"
         onRequestClose={handleCancelCheckout}
       >
-        <View style={styles.modalOverlay}>
+        <SafeAreaView style={styles.modalOverlay} edges={["top", "bottom"]}>
           <View style={styles.modalSheet}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
@@ -415,7 +415,7 @@ export default function CartScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );
