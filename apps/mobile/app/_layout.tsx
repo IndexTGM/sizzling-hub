@@ -63,6 +63,7 @@ export default function RootLayout() {
           <Stack.Screen name="menu-item" />
           <Stack.Screen name="cart" />
           <Stack.Screen name="orders" />
+          <Stack.Screen name="order-detail" />
           <Stack.Screen name="admin" />
           </Stack>
         </AuthGate>

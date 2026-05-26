@@ -211,7 +211,13 @@ function OrderCard({ order }: { order: Order }) {
   const statusCfg = STATUS_CONFIG[order.status];
 
   return (
-    <View style={styles.orderCard}>
+    <TouchableOpacity
+      style={styles.orderCard}
+      activeOpacity={0.85}
+      onPress={() =>
+        router.push({ pathname: "/order-detail", params: { id: order.id } })
+      }
+    >
       {/* Card Header */}
       <View style={styles.orderCardHeader}>
         <View style={styles.orderCardHeaderLeft}>
@@ -278,7 +284,7 @@ function OrderCard({ order }: { order: Order }) {
           <Text style={styles.orderTotal}>₱{order.total}</Text>
         </View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
