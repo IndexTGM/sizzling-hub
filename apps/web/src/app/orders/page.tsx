@@ -7,6 +7,7 @@ import { useCart } from "@/lib/cart-context";
 import AppHeader from "@/app/_components/AppHeader";
 import CartSidebar from "@/app/_components/CartSidebar";
 import ProfileModal from "@/app/_components/ProfileModal";
+import Footer from "@/app/_components/Footer";
 
 const PRIMARY = "#dc2626";
 const GREEN = "#10b981";
@@ -158,6 +159,7 @@ export default function OrdersPage() {
             </div>
           )}
         </div>
+        <Footer />
       </div>
       <CartSidebar open={cartOpen} onClose={() => setCartOpen(false)} imgErrors={imgErrors} onImgError={() => {}} />
       <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />

@@ -7,6 +7,7 @@ import { getImagePath } from "@/lib/menu-data";
 import AppHeader from "./AppHeader";
 import CartSidebar from "./CartSidebar";
 import ProfileModal from "./ProfileModal";
+import Footer from "./Footer";
 
 const PRIMARY = "#dc2626";
 const BANNER_COLORS = [
@@ -335,6 +336,8 @@ export default function HomePage() {
         {/* Our Story */}
         <OurStory />
       </div>
+
+      <Footer />
 
       {/* Cart Sidebar */}
       <CartSidebar

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Footer from "../_components/Footer";
 
 export default function PrivacyPage() {
   return (
@@ -108,6 +109,7 @@ export default function PrivacyPage() {
             </p>
           </section>
         </div>
+        <Footer />
       </div>
     </div>
   );

@@ -11,6 +11,7 @@ import AppHeader from "@/app/_components/AppHeader";
 import CartSidebar from "@/app/_components/CartSidebar";
 import ProfileModal from "@/app/_components/ProfileModal";
 import PlaceholderImage from "@/app/_components/PlaceholderImage";
+import Footer from "@/app/_components/Footer";
 
 const PRIMARY = "#dc2626";
 const AMBER = "#f59e0b";
@@ -161,6 +162,8 @@ export default function MenuContent() {
         </div>
       </div>
 
+      <div className="pb-16" />
+
       <CartSidebar open={cartOpen} onClose={() => setCartOpen(false)} imgErrors={imgErrors} onImgError={onImgError} />
       <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
 
@@ -179,6 +182,7 @@ export default function MenuContent() {
           </span>
         )}
       </button>
+      <Footer />
     </div>
   );
 }
