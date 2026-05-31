@@ -6,7 +6,6 @@ import { useAuth } from "@/lib/auth-context";
 import { createClient } from "@/lib/supabase/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getImagePath, type MenuItem } from "@/lib/menu-data";
-import Footer from "@/app/_components/Footer";
 
 interface Profile { id: string; full_name: string; email: string; role: string; phone: string | null; created_at: string; }
 interface Order { id: string; customer_name: string; status: string; total: number; placed_at: string; items_count: number; }
@@ -58,7 +57,6 @@ export default function AdminPage() {
         {tab === "orders" && <OrdersPanel />}
         {tab === "images" && <ImagesPanel />}
       </div>
-      <Footer />
     </div>
   );
 }
