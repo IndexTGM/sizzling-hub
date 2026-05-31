@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
+import { useBanners } from "@/lib/banner-context";
 import { getImagePath } from "@/lib/menu-data";
 import AppHeader from "./AppHeader";
 import CartSidebar from "./CartSidebar";
@@ -24,37 +25,6 @@ const BANNER_COLORS = [
 /* ───────────────────────────────────────────────
    Banner Data
    ─────────────────────────────────────────────── */
-interface Banner {
-  id: string;
-  title: string;
-  subtitle: string;
-  image: string;
-  tag?: string;
-}
-
-const BANNERS: Banner[] = [
-  {
-    id: "1",
-    title: "Chicken Fritters Silog",
-    subtitle: "Crispy on the outside, juicy on the inside. A new twist on a classic favorite!",
-    image: "chickenfritterssilog",
-    tag: "BEST SELLER",
-  },
-  {
-    id: "2",
-    title: "Buffalo Wings with More Sauce Flavors",
-    subtitle: "Spice up your meal with our new variety of sauce flavors. Perfect for sharing (or not!).",
-    image: "buffalowings",
-    tag: "FLAVOR BOOST",
-  },
-  {
-    id: "3",
-    title: "Iced Tea - Happy Hour",
-    subtitle: "Cool down with our refreshing iced tea. Happy Hour special: Buy 1 Get 1 Free from 1-3 PM!",
-    image: "icedtea",
-    tag: "HAPPY HOUR",
-  },
-];
 
 /* ───────────────────────────────────────────────
    Banner Carousel
@@ -63,7 +33,7 @@ function BannerCarousel({
   banners,
   onOrderNow,
 }: {
-  banners: Banner[];
+  banners: { id: string; title: string; subtitle: string; image: string; tag: string | null }[];
   onOrderNow: () => void;
 }) {
   const [active, setActive] = useState(0);
@@ -314,6 +284,7 @@ function TopOrdered() {
    ─────────────────────────────────────────────── */
 export default function HomePage() {
   const { cart } = useCart();
+  const { banners } = useBanners();
   const [cartOpen, setCartOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
@@ -328,7 +299,9 @@ export default function HomePage() {
       {/* ─── Scrollable Content ─── */}
       <div className="flex-1 overflow-y-auto w-full max-w-7xl mx-auto pb-20 sm:pb-0">
         {/* Banner Carousel */}
-        <BannerCarousel banners={BANNERS} onOrderNow={() => window.location.href = "/menu"} />
+        {banners.length > 0 && (
+          <BannerCarousel banners={banners} onOrderNow={() => window.location.href = "/menu"} />
+        )}
 
         {/* Top #1 Ordered - featured prominently */}
         <TopOrdered />

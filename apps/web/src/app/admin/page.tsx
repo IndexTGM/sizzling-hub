@@ -9,7 +9,7 @@ import { getImagePath, type MenuItem } from "@/lib/menu-data";
 
 interface Profile { id: string; full_name: string; email: string; role: string; phone: string | null; created_at: string; }
 interface Order { id: string; customer_name: string; status: string; total: number; placed_at: string; items_count: number; }
-type AdminTab = "profiles" | "menu" | "orders" | "images";
+type AdminTab = "profiles" | "menu" | "orders" | "images" | "banners";
 
 export default function AdminPage() {
   const { user, loading: authLoading } = useAuth();
@@ -42,10 +42,10 @@ export default function AdminPage() {
 
       <div className="bg-white border-b border-[#e5e7eb]">
         <div className="max-w-6xl mx-auto px-4 flex gap-1">
-          {(["profiles", "menu", "orders"] as AdminTab[]).map((t) => (
+          {(["profiles", "menu", "orders", "banners"] as AdminTab[]).map((t) => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${tab === t ? "border-[#dc2626] text-[#dc2626]" : "border-transparent text-[#6b7280] hover:text-[#0a0a0a]"}`}>
-              {t === "profiles" ? "Profiles" : t === "menu" ? "Menu Items" : t === "orders" ? "Orders" : "Images"}
+              {t === "profiles" ? "Profiles" : t === "menu" ? "Menu Items" : t === "orders" ? "Orders" : t === "images" ? "Images" : "Banners"}
             </button>
           ))}
         </div>
@@ -56,6 +56,7 @@ export default function AdminPage() {
         {tab === "menu" && <MenuPanel />}
         {tab === "orders" && <OrdersPanel />}
         {tab === "images" && <ImagesPanel />}
+        {tab === "banners" && <BannersPanel />}
       </div>
     </div>
   );
@@ -371,6 +372,106 @@ function ImagesPanel() {
               <div className="p-2"><p className="text-xs font-medium text-[#374151] truncate" title={img.name}>{img.name}</p></div>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BannersPanel() {
+  const [banners, setBanners] = useState<{ id: string; title: string; subtitle: string; image: string; tag: string | null; sort_order: number; is_active: boolean }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [form, setForm] = useState({ title: "", subtitle: "", image: "", tag: "", sort_order: 0, is_active: true });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const fetchBanners = useCallback(async () => {
+    const sb = createClient();
+    const { data } = await sb.from("banners").select("id, title, subtitle, image, tag, sort_order, is_active").order("sort_order");
+    if (data) setBanners(data);
+    setLoading(false);
+  }, []);
+  useEffect(() => { fetchBanners(); }, [fetchBanners]);
+
+  function startEdit(b: typeof banners[0]) {
+    setEditing(b.id); setCreating(false); setForm({ title: b.title, subtitle: b.subtitle, image: b.image, tag: b.tag || "", sort_order: b.sort_order, is_active: b.is_active }); setError("");
+  }
+  function startCreate() { setCreating(true); setEditing(null); setForm({ title: "", subtitle: "", image: "", tag: "", sort_order: banners.length + 1, is_active: true }); setError(""); }
+  function cancelEdit() { setEditing(null); setCreating(false); setError(""); }
+
+  async function handleSave() {
+    if (!form.title.trim()) { setError("Title is required."); return; }
+    if (!form.image.trim()) { setError("Image filename is required (e.g. tapsilog)."); return; }
+    setSaving(true); setError("");
+    const sb = createClient();
+    if (editing) {
+      const { error: updateErr } = await sb.from("banners").update({ title: form.title.trim(), subtitle: form.subtitle.trim(), image: form.image.trim(), tag: form.tag.trim() || null, sort_order: form.sort_order, is_active: form.is_active }).eq("id", editing);
+      if (updateErr) { setError(updateErr.message); setSaving(false); return; }
+    } else if (creating) {
+      const { error: insertErr } = await sb.from("banners").insert({ title: form.title.trim(), subtitle: form.subtitle.trim(), image: form.image.trim(), tag: form.tag.trim() || null, sort_order: form.sort_order, is_active: form.is_active });
+      if (insertErr) { setError(insertErr.message); setSaving(false); return; }
+    }
+    setSaving(false); cancelEdit(); await fetchBanners();
+  }
+
+  async function handleDelete(id: string) { if (!confirm("Delete this banner?")) return; const sb = createClient(); await sb.from("banners").delete().eq("id", id); await fetchBanners(); }
+
+  if (loading) return <LoadingSkeleton />;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold text-[#0a0a0a]">Banner Manager</h2>
+        {!creating && !editing && <button onClick={startCreate} className="px-4 py-2 rounded-lg text-white text-sm font-bold transition-all duration-200 hover:scale-105" style={{ backgroundColor: "#dc2626" }}>+ Add Banner</button>}
+      </div>
+      {(creating || editing) && (
+        <div className="bg-white rounded-xl border border-[#e5e7eb] p-4 space-y-3">
+          <h3 className="font-bold text-sm text-[#0a0a0a]">{editing ? "Edit Banner" : "Add New Banner"}</h3>
+          <input type="text" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Title" className="w-full px-3 py-2 rounded-lg border border-[#e5e7eb] text-sm" />
+          <input type="text" value={form.subtitle} onChange={(e) => setForm({ ...form, subtitle: e.target.value })} placeholder="Subtitle" className="w-full px-3 py-2 rounded-lg border border-[#e5e7eb] text-sm" />
+          <input type="text" value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="Image filename (e.g. sisilog)" className="w-full px-3 py-2 rounded-lg border border-[#e5e7eb] text-sm" />
+          <input type="text" value={form.tag} onChange={(e) => setForm({ ...form, tag: e.target.value })} placeholder="Tag (e.g. BEST SELLER)" className="w-full px-3 py-2 rounded-lg border border-[#e5e7eb] text-sm" />
+          <div className="flex gap-4">
+            <label className="flex items-center gap-2 text-sm text-[#6b7280]">
+              <span>Sort Order:</span>
+              <input type="number" value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: parseInt(e.target.value) || 0 })} className="w-20 px-2 py-1.5 rounded-lg border border-[#e5e7eb] text-sm" />
+            </label>
+            <label className="flex items-center gap-2 text-sm text-[#6b7280]">
+              <input type="checkbox" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} className="rounded border-[#d1d5db] text-[#dc2626] focus:ring-[#dc2626]/30" />
+              Active
+            </label>
+          </div>
+          {error && <p className="text-xs text-[#dc2626]">{error}</p>}
+          <div className="flex gap-2">
+            <button onClick={handleSave} disabled={saving} className="px-4 py-2 rounded-lg text-white text-sm font-bold" style={{ backgroundColor: saving ? "#fca5a5" : "#dc2626" }}>{saving ? "Saving…" : "Save"}</button>
+            <button onClick={cancelEdit} className="px-4 py-2 rounded-lg border border-[#e5e7eb] text-sm font-medium text-[#6b7280]">Cancel</button>
+          </div>
+        </div>
+      )}
+      {banners.length === 0 ? <EmptyState message="No banners yet." /> : (
+        <div className="bg-white rounded-xl border border-[#e5e7eb] overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-[#f9fafb] text-left text-xs uppercase text-[#6b7280] tracking-wider">
+                <tr><th className="px-4 py-3">Title</th><th className="px-4 py-3">Subtitle</th><th className="px-4 py-3">Image</th><th className="px-4 py-3">Tag</th><th className="px-4 py-3">Order</th><th className="px-4 py-3">Active</th><th className="px-4 py-3">Actions</th></tr>
+              </thead>
+              <tbody className="divide-y divide-[#e5e7eb]">
+                {banners.map((b) => (
+                  <tr key={b.id} className="hover:bg-[#f9fafb]">
+                    <td className="px-4 py-3 font-medium text-[#0a0a0a]">{b.title}</td>
+                    <td className="px-4 py-3 text-[#6b7280] max-w-xs truncate">{b.subtitle}</td>
+                    <td className="px-4 py-3 text-[#6b7280] font-mono text-xs">{b.image}</td>
+                    <td className="px-4 py-3"><span className="inline-block px-2 py-0.5 rounded text-xs font-bold bg-[#fef2f2] text-[#dc2626]">{b.tag || "—"}</span></td>
+                    <td className="px-4 py-3 text-[#6b7280]">{b.sort_order}</td>
+                    <td className="px-4 py-3"><span className={`inline-block w-2 h-2 rounded-full ${b.is_active ? "bg-[#10b981]" : "bg-[#9ca3af]"}`} /></td>
+                    <td className="px-4 py-3"><div className="flex gap-2"><button onClick={() => startEdit(b)} className="px-3 py-1 rounded-md text-xs font-semibold bg-[#f3f4f6] text-[#0a0a0a] hover:bg-[#e5e7eb] transition-colors">Edit</button><button onClick={() => handleDelete(b.id)} className="px-3 py-1 rounded-md text-xs font-semibold bg-[#fef2f2] text-[#dc2626] hover:bg-[#fecaca] transition-colors">Delete</button></div></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
