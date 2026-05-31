@@ -33,6 +33,10 @@ export default function AuthForms({ initialView }: { initialView: View }) {
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (!loginTosAgreed) {
+      setError("You must agree to the Terms of Service to log in.");
+      return;
+    }
     setLoading(true);
     const err = await login(lemail, lpass);
     setLoading(false);
