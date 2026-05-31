@@ -8,19 +8,26 @@ import HomePage from "./_components/HomePage";
 import RecoveryForm from "./_components/RecoveryForm";
 
 export default function Page() {
-  const { user, loading, isRecovery } = useAuth();
-  const [recoveryDetected, setRecoveryDetected] = useState(false);
+  const { user, loading, isRecovery, isResetFlow } = useAuth();
   const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [pkceRecovery, setPkceRecovery] = useState(false);
 
-  // Detect recovery code on every page load (including from email links)
+  // Check hash synchronously on every render — catches recovery before Supabase auto-login
+  const hasRecoveryHash =
+    typeof window !== "undefined" && window.location.hash.includes("type=recovery");
+
+  // Clean hash and handle PKCE code flow
   useEffect(() => {
+    if (hasRecoveryHash) {
+      window.history.replaceState(null, "", window.location.pathname);
+      return;
+    }
+    if (isRecovery) return;
+
     (async () => {
       const searchParams = new URLSearchParams(window.location.search);
       const code = searchParams.get("code");
       if (!code) return;
-
-      // Only process if code is new and we don't already have a session
-      if (isRecovery || user) return;
 
       setRecoveryLoading(true);
       try {
@@ -28,7 +35,7 @@ export default function Page() {
         const { data } = await sb.auth.exchangeCodeForSession(code);
         if (data?.session) {
           window.history.replaceState(null, "", window.location.pathname);
-          setRecoveryDetected(true);
+          setPkceRecovery(true);
         }
       } catch {
         // ignore
@@ -36,7 +43,7 @@ export default function Page() {
         setRecoveryLoading(false);
       }
     })();
-  }, []);
+  }, [hasRecoveryHash, isRecovery]);
 
   if (loading || recoveryLoading) {
     return (
@@ -52,7 +59,8 @@ export default function Page() {
     );
   }
 
-  if (isRecovery || recoveryDetected) return <RecoveryForm />;
+  // Recovery / OTP reset flow always takes priority
+  if (hasRecoveryHash || isRecovery || pkceRecovery || isResetFlow) return <RecoveryForm />;
   if (!user) return <AuthForms initialView="login" />;
   return <HomePage />;
 }

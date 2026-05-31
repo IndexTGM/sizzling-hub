@@ -21,6 +21,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   isRecovery: boolean;
+  isResetFlow: boolean;
   login: (email: string, password: string) => Promise<string | null>;
   register: (
     fullName: string,
@@ -30,6 +31,8 @@ interface AuthContextType {
   ) => Promise<string | null>;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<string | null>;
+  sendOtp: (email: string) => Promise<string | null>;
+  verifyOtp: (email: string, token: string) => Promise<string | null>;
   updatePassword: (newPassword: string) => Promise<string | null>;
   updateProfile: (fullName: string) => Promise<string | null>;
 }
@@ -48,6 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isRecovery, setIsRecovery] = useState(false);
+  const [isResetFlow, setIsResetFlow] = useState(false);
 
   // On mount, check Supabase session
   useEffect(() => {
@@ -123,6 +127,73 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
         setUser(u);
         setIsRecovery(false);
+        setIsResetFlow(false);
+      }
+      return null;
+    },
+    []
+  );
+
+  const sendOtp = useCallback(
+    async (email: string): Promise<string | null> => {
+      if (!email.trim()) return "Please enter your email address.";
+
+      const sb = getSupabase();
+      const { error } = await sb.auth.signInWithOtp({
+        email,
+        options: { shouldCreateUser: false },
+      });
+
+      if (error) {
+        if (error.message.includes("User not found"))
+          return "No account found with this email.";
+        return error.message;
+      }
+      return null;
+    },
+    []
+  );
+
+  const verifyOtp = useCallback(
+    async (email: string, token: string): Promise<string | null> => {
+      if (!email.trim()) return "Email is required.";
+      if (!token.trim() || token.length !== 6) return "Please enter a valid 6-digit code.";
+
+      const sb = getSupabase();
+      const { data, error } = await sb.auth.verifyOtp({
+        email,
+        token,
+        type: "email",
+      });
+
+      if (error) {
+        if (error.message.includes("expired"))
+          return "Code has expired. Please request a new one.";
+        if (error.message.includes("Invalid"))
+          return "Invalid code. Please try again.";
+        return error.message;
+      }
+
+      if (data?.session?.user) {
+        setIsResetFlow(true);
+        // Don't set user — let RecoveryForm handle it after password update
+        const { data: profile } = await sb
+          .from("profiles")
+          .select("full_name, role")
+          .eq("id", data.session.user.id)
+          .maybeSingle();
+        const fullName =
+          profile?.full_name ||
+          (data.session.user.user_metadata?.full_name as string) ||
+          data.session.user.email ||
+          "";
+        const u: User = {
+          fullName,
+          email: data.session.user.email || "",
+          role: (profile?.role as string) || "customer",
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+        setUser(u);
       }
       return null;
     },
@@ -301,10 +372,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         loading,
         isRecovery,
+        isResetFlow,
         login,
         register,
         logout,
         resetPassword,
+        sendOtp,
+        verifyOtp,
         updatePassword,
         updateProfile,
       }}
