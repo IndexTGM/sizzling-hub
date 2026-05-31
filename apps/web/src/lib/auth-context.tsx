@@ -128,6 +128,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (newPassword: string): Promise<string | null> => {
       if (!newPassword || newPassword.length < 8)
         return "Password must be at least 8 characters long.";
+      if (!/[A-Z]/.test(newPassword))
+        return "Password must contain at least one uppercase letter.";
+      if (!/[a-z]/.test(newPassword))
+        return "Password must contain at least one lowercase letter.";
+      if (!/[0-9]/.test(newPassword))
+        return "Password must contain at least one number.";
+      if (!/[^A-Za-z0-9]/.test(newPassword))
+        return "Password must contain at least one special character.";
 
       const sb = getSupabase();
       const { error } = await sb.auth.updateUser({ password: newPassword });
@@ -210,6 +218,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return "Please enter a valid email address.";
       if (password.length < 8)
         return "Password must be at least 8 characters long.";
+      if (!/[A-Z]/.test(password))
+        return "Password must contain at least one uppercase letter.";
+      if (!/[a-z]/.test(password))
+        return "Password must contain at least one lowercase letter.";
+      if (!/[0-9]/.test(password))
+        return "Password must contain at least one number.";
+      if (!/[^A-Za-z0-9]/.test(password))
+        return "Password must contain at least one special character.";
       if (password !== confirmPassword) return "Passwords do not match.";
 
       const sb = getSupabase();

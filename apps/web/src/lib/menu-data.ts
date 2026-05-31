@@ -4,6 +4,9 @@ export interface MenuItem {
   category: string;
   price: number;
   imageName: string;
+  description?: string;
+  rating?: number;
+  stock?: number;
 }
 
 export interface CartItem extends MenuItem {
