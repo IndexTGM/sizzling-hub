@@ -50,14 +50,14 @@ export default function AppHeader({
         <Link href="/" className="flex items-center gap-3 shrink-0">
           <img
             src="/images/logo.png"
-            alt="Sizzling Hub"
+            alt="Ben's Tapsihan"
             className="w-9 h-9 rounded-lg object-contain"
             onError={(e) => {
               (e.target as HTMLImageElement).src = "/images/placeholder.png";
             }}
           />
           <h1 className="text-lg sm:text-xl font-black tracking-tight" style={{ color: P }}>
-            SIZZLING HUB
+            BEN'S TAPSIHAN
           </h1>
         </Link>
 

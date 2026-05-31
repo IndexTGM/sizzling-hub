@@ -11,6 +11,7 @@ export default function ProfileModal({
   onClose: () => void;
 }) {
   const { user, updateProfile } = useAuth();
+  const [editUsername, setEditUsername] = useState(user?.username || "");
   const [editName, setEditName] = useState(user?.fullName || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -37,7 +38,7 @@ export default function ProfileModal({
               {user?.fullName?.charAt(0)?.toUpperCase() || "U"}
             </div>
             <div className="min-w-0">
-              <p className="font-semibold text-sm text-[#0a0a0a] truncate">{user?.fullName}</p>
+              <p className="font-semibold text-sm text-[#0a0a0a] truncate">@{user?.username}</p>
               <p className="text-xs text-[#6b7280] truncate">{user?.email}</p>
             </div>
           </div>
@@ -48,17 +49,26 @@ export default function ProfileModal({
               setError("");
               setSuccess("");
               setLoading(true);
-              const err = await updateProfile(editName);
+              const err = await updateProfile(editUsername, editName);
               setLoading(false);
               if (err) {
                 setError(err);
               } else {
-                setSuccess("Name updated successfully!");
+                setSuccess("Profile updated successfully!");
                 setTimeout(onClose, 1200);
               }
             }}
             className="space-y-3"
           >
+            <label className="block text-sm font-semibold text-[#0a0a0a]">Username</label>
+            <input
+              type="text"
+              value={editUsername}
+              onChange={(e) => setEditUsername(e.target.value)}
+              placeholder="yourname"
+              className="w-full px-4 py-2.5 rounded-lg border border-[#e5e7eb] text-sm text-[#0a0a0a] placeholder-[#9ca3af] focus:outline-none focus:ring-2 focus:ring-[#dc2626]/30 focus:border-[#dc2626] transition-all duration-150"
+            />
+
             <label className="block text-sm font-semibold text-[#0a0a0a]">Display Name</label>
             <input
               type="text"

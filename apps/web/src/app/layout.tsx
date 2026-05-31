@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { AuthProvider } from "@/lib/auth-context";
 import { CartProvider } from "@/lib/cart-context";
 import { MenuProvider } from "@/lib/menu-context";
+import Footer from "./_components/Footer";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -16,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sizzling Hub – Ordering System",
-  description: "Sizzling Hub restaurant ordering system",
+  title: "Ben's Tapsihan – Ordering System",
+  description: "Ben's Tapsihan restaurant ordering system",
 };
 
 export default function RootLayout({
@@ -31,7 +32,10 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <AuthProvider>
           <MenuProvider>
-            <CartProvider>{children}</CartProvider>
+            <CartProvider>
+              {children}
+              <Footer />
+            </CartProvider>
           </MenuProvider>
         </AuthProvider>
       </body>

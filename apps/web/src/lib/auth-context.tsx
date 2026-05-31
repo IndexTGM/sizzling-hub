@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export interface User {
+  username: string;
   fullName: string;
   email: string;
   role: string;
@@ -20,8 +21,9 @@ export interface User {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<string | null>;
+  login: (username: string, password: string) => Promise<string | null>;
   register: (
+    username: string,
     fullName: string,
     email: string,
     password: string,
@@ -30,7 +32,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   signInWithOtp: (email: string) => Promise<string | null>;
   verifySignInOtp: (email: string, token: string) => Promise<string | null>;
-  updateProfile: (fullName: string) => Promise<string | null>;
+  updateProfile: (username: string, fullName: string) => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -41,6 +43,26 @@ let supabase: SupabaseClient | null = null;
 function getSupabase() {
   if (!supabase) supabase = createClient();
   return supabase;
+}
+
+function buildUser(
+  sessionUser: { email?: string; user_metadata?: Record<string, unknown> },
+  profile?: { username?: string; full_name?: string; role?: string } | null
+): User {
+  return {
+    username:
+      profile?.username ||
+      (sessionUser.user_metadata?.username as string) ||
+      sessionUser.email?.split("@")[0] ||
+      "",
+    fullName:
+      profile?.full_name ||
+      (sessionUser.user_metadata?.full_name as string) ||
+      sessionUser.email ||
+      "",
+    email: sessionUser.email || "",
+    role: (profile?.role as string) || "customer",
+  };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -59,19 +81,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (session?.user) {
           const { data: profile } = await sb
             .from("profiles")
-            .select("full_name, role")
+            .select("username, full_name, role")
             .eq("id", session.user.id)
             .maybeSingle();
-          const fullName =
-            profile?.full_name ||
-            (session.user.user_metadata?.full_name as string) ||
-            session.user.email ||
-            "";
-          setUser({
-            fullName,
-            email: session.user.email || "",
-            role: (profile?.role as string) || "customer",
-          });
+          const u = buildUser(session.user, profile);
+          setUser(u);
         }
       } catch {
         try {
@@ -87,36 +101,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(
-    async (email: string, password: string): Promise<string | null> => {
-      if (!email.trim()) return "Email is required.";
+    async (username: string, password: string): Promise<string | null> => {
+      if (!username.trim()) return "Username is required.";
       if (!password) return "Password is required.";
 
       const sb = getSupabase();
+
+      // Look up email by username from profiles
+      const { data: profile } = await sb
+        .from("profiles")
+        .select("email")
+        .eq("username", username.trim().toLowerCase())
+        .maybeSingle();
+
+      if (!profile?.email) return "No account found with that username.";
+
       const { data, error } = await sb.auth.signInWithPassword({
-        email,
+        email: profile.email,
         password,
       });
 
       if (error) {
         if (error.message.includes("Invalid login credentials"))
-          return "Incorrect email or password. Please try again.";
+          return "Incorrect username or password. Please try again.";
         if (error.message.includes("Email not confirmed"))
           return "Please confirm your email before logging in.";
         return error.message;
       }
 
       if (data.session?.user) {
-        const { data: profile } = await sb
+        const { data: fullProfile } = await sb
           .from("profiles")
-          .select("full_name, role")
+          .select("username, full_name, role")
           .eq("id", data.session.user.id)
           .maybeSingle();
-        const fullName = profile?.full_name || (data.session.user.user_metadata?.full_name as string) || data.session.user.email || "";
-        const u: User = {
-          fullName,
-          email: data.session.user.email || "",
-          role: (profile?.role as string) || "customer",
-        };
+        const u = buildUser(data.session.user, fullProfile);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
         setUser(u);
       }
@@ -127,11 +146,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = useCallback(
     async (
+      username: string,
       fullName: string,
       email: string,
       password: string,
       confirmPassword: string
     ): Promise<string | null> => {
+      if (!username.trim()) return "Username is required.";
+      if (username.trim().length < 3)
+        return "Username must be at least 3 characters.";
+      if (!/^[a-zA-Z0-9_]+$/.test(username.trim()))
+        return "Username can only contain letters, numbers, and underscores.";
       if (!fullName.trim()) return "Full name is required.";
       if (!email.trim()) return "Email is required.";
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
@@ -149,22 +174,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (password !== confirmPassword) return "Passwords do not match.";
 
       const sb = getSupabase();
+      const usernameLower = username.trim().toLowerCase();
 
-      const { data: profile } = await sb
-          .from("profiles")
-          .select("*")
-          .eq("email", email.trim())
-          .maybeSingle();
+      // Check if username is taken
+      const { data: existingUsername } = await sb
+        .from("profiles")
+        .select("id")
+        .eq("username", usernameLower)
+        .maybeSingle();
 
-      if (profile) {
-        return "An account with this email already exists.";
-      }
+      if (existingUsername) return "That username is already taken.";
+
+      // Check if email is taken
+      const { data: existingEmail } = await sb
+        .from("profiles")
+        .select("id")
+        .eq("email", email.trim().toLowerCase())
+        .maybeSingle();
+
+      if (existingEmail) return "An account with this email already exists.";
 
       const { data, error } = await sb.auth.signUp({
         email,
         password,
         options: {
-          data: { full_name: fullName.trim() },
+          data: {
+            username: usernameLower,
+            full_name: fullName.trim(),
+          },
         },
       });
 
@@ -175,6 +212,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // If email confirmation is off (dev), auto-login
       if (data.session?.user) {
         const u: User = {
+          username: usernameLower,
           fullName: fullName.trim(),
           email: data.session.user.email || email.toLowerCase(),
           role: "customer",
@@ -197,7 +235,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateProfile = useCallback(
-    async (fullName: string): Promise<string | null> => {
+    async (username: string, fullName: string): Promise<string | null> => {
+      if (!username.trim()) return "Username cannot be empty.";
       if (!fullName.trim()) return "Name cannot be empty.";
 
       const sb = getSupabase();
@@ -207,9 +246,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (!session?.user) return "You must be logged in.";
 
+      const usernameLower = username.trim().toLowerCase();
+
+      // Check if username is taken by someone else
+      const { data: existing } = await sb
+        .from("profiles")
+        .select("id")
+        .eq("username", usernameLower)
+        .neq("id", session.user.id)
+        .maybeSingle();
+
+      if (existing) return "That username is already taken.";
+
       const { error } = await sb
         .from("profiles")
         .update({
+          username: usernameLower,
           full_name: fullName.trim(),
         })
         .eq("id", session.user.id);
@@ -217,6 +269,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) return error.message;
 
       const updated: User = {
+        username: usernameLower,
         fullName: fullName.trim(),
         email: session.user.email || user?.email || "",
         role: user?.role || "customer",
@@ -251,7 +304,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const verifySignInOtp = useCallback(
     async (email: string, token: string): Promise<string | null> => {
       if (!email.trim()) return "Email is required.";
-      if (!token.trim() || token.length !== 8) return "Please enter a valid 8-digit code.";
+      if (!token.trim() || token.length !== 6) return "Please enter a valid 6-digit code.";
 
       const sb = getSupabase();
       const { data, error } = await sb.auth.verifyOtp({
@@ -271,19 +324,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data?.session?.user) {
         const { data: profile } = await sb
           .from("profiles")
-          .select("full_name, role")
+          .select("username, full_name, role")
           .eq("id", data.session.user.id)
           .maybeSingle();
-        const fullName =
-          profile?.full_name ||
-          (data.session.user.user_metadata?.full_name as string) ||
-          data.session.user.email ||
-          "";
-        const u: User = {
-          fullName,
-          email: data.session.user.email || "",
-          role: (profile?.role as string) || "customer",
-        };
+        const u = buildUser(data.session.user, profile);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
         setUser(u);
       }

@@ -1,76 +1,58 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
-import { useMenu } from "@/lib/menu-context";
 import { useCart } from "@/lib/cart-context";
-import { getImagePath, type MenuItem } from "@/lib/menu-data";
+import { getImagePath } from "@/lib/menu-data";
 import AppHeader from "./AppHeader";
 import CartSidebar from "./CartSidebar";
 import ProfileModal from "./ProfileModal";
-import PlaceholderImage from "./PlaceholderImage";
 
 const PRIMARY = "#dc2626";
-const AMBER = "#f59e0b";
+const BANNER_COLORS = [
+  "#f59e0b", // amber
+  "#3b82f6", // blue
+  "#10b981", // emerald
+  "#8b5cf6", // violet
+  "#06b6d4", // cyan
+  "#f97316", // orange
+  "#84cc16", // lime
+  "#ec4899", // pink
+];
 
 /* ───────────────────────────────────────────────
    Banner Data
    ─────────────────────────────────────────────── */
 interface Banner {
   id: string;
-  type: "featured" | "discount" | "announcement";
   title: string;
   subtitle: string;
   image: string;
   tag?: string;
-  color: string;
-  accentColor: string;
 }
 
 const BANNERS: Banner[] = [
   {
     id: "1",
-    type: "featured",
-    title: "Sisilog",
-    subtitle: "Our #1 Best Seller — sizzling pork sisig on garlic rice with a runny egg",
-    image: "sisilog",
+    title: "Chicken Fritters Silog",
+    subtitle: "Crispy on the outside, juicy on the inside. A new twist on a classic favorite!",
+    image: "chickenfritterssilog",
     tag: "BEST SELLER",
-    color: "#fef2f2",
-    accentColor: PRIMARY,
   },
   {
     id: "2",
-    type: "discount",
-    title: "20% OFF",
-    subtitle: "On all Silog meals every Monday! Start your week right.",
-    image: "tapsilog",
-    tag: "MONDAY MADNESS",
-    color: "#fffbeb",
-    accentColor: AMBER,
+    title: "Buffalo Wings with More Sauce Flavors",
+    subtitle: "Spice up your meal with our new variety of sauce flavors. Perfect for sharing (or not!).",
+    image: "buffalowings",
+    tag: "FLAVOR BOOST",
   },
   {
     id: "3",
-    type: "discount",
-    title: "Buy 1 Get 1",
-    subtitle: "Iced Tea — every Friday from 2PM to 5PM. Stay refreshed!",
+    title: "Iced Tea - Happy Hour",
+    subtitle: "Cool down with our refreshing iced tea. Happy Hour special: Buy 1 Get 1 Free from 1-3 PM!",
     image: "icedtea",
     tag: "HAPPY HOUR",
-    color: "#eff6ff",
-    accentColor: "#3b82f6",
   },
-];
-
-/* ───────────────────────────────────────────────
-   Most Ordered Names
-   ─────────────────────────────────────────────── */
-const MOST_ORDERED_NAMES = [
-  "Tapsilog",
-  "Sisilog",
-  "Bangsilog",
-  "Adobosilog",
-  "Chiksilog",
-  "Mango Shake",
 ];
 
 /* ───────────────────────────────────────────────
@@ -122,7 +104,9 @@ function BannerCarousel({
         className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide"
         style={{ scrollSnapType: "x mandatory" }}
       >
-        {banners.map((b) => (
+        {banners.map((b, i) => {
+          const accentColor = BANNER_COLORS[i % BANNER_COLORS.length];
+          return (
           <div
             key={b.id}
             className="w-full flex-shrink-0 snap-center"
@@ -132,11 +116,10 @@ function BannerCarousel({
               <div
                 className="relative flex flex-col sm:flex-row items-center rounded-2xl p-6 sm:p-8 gap-5 sm:gap-6 shadow-md border border-white/50 overflow-hidden"
                 style={{
-                  backgroundColor: b.accentColor,
-                  backgroundImage: `linear-gradient(135deg, ${b.accentColor} 0%, ${b.accentColor}dd 100%)`,
+                  backgroundColor: accentColor,
+                  backgroundImage: `linear-gradient(135deg, ${accentColor} 0%, ${accentColor}dd 100%)`,
                 }}
               >
-                {/* Subtle pattern over the banner background */}
                 <div className="absolute inset-0 opacity-10 pointer-events-none"
                   style={{
                     backgroundImage: "radial-gradient(circle at 20% 80%, #ffffff40 1px, transparent 1px)",
@@ -158,7 +141,7 @@ function BannerCarousel({
                   <button
                     onClick={onOrderNow}
                     className="px-6 py-3 rounded-xl bg-white text-sm font-bold transition-all duration-200 hover:scale-105 active:scale-95 shadow-lg"
-                    style={{ color: b.accentColor }}
+                    style={{ color: accentColor }}
                   >
                     Order Now →
                   </button>
@@ -175,116 +158,153 @@ function BannerCarousel({
               </div>
             </div>
           </div>
-        ))}
+        );
+        })}
       </div>
 
       {/* Dots */}
       <div className="flex justify-center gap-2 mt-4">
-        {banners.map((_, i) => (
+        {banners.map((_, i) => {
+          const dotColor = BANNER_COLORS[i % BANNER_COLORS.length];
+          return (
           <button
             key={i}
             onClick={() => goTo(i)}
-            className={`rounded-full transition-all duration-300 ${
+            className="rounded-full transition-all duration-300"
+            style={
               i === active
-                ? "w-8 h-2.5 bg-[#dc2626]"
-                : "w-2.5 h-2.5 bg-[#d1d5db] hover:bg-[#9ca3af]"
-            }`}
+                ? { width: 32, height: 10, backgroundColor: dotColor }
+                : { width: 10, height: 10, backgroundColor: "#d1d5db" }
+            }
           />
-        ))}
+        );
+        })}
       </div>
     </div>
   );
 }
 
 /* ───────────────────────────────────────────────
-   Category Cards
+   Our Story - History Section
    ─────────────────────────────────────────────── */
-function CategoryCards() {
-  const cats = [
-    { icon: "🍽️", label: "All", href: "/menu" },
-    { icon: "🍳", label: "Silog", href: "/menu?category=Silog" },
-    { icon: "🥤", label: "Drinks", href: "/menu?category=Drinks" },
-    { icon: "🍚", label: "Add-ons", href: "/menu?category=Add-ons" },
-  ];
-
+function OurStory() {
   return (
-    <div className="py-2 px-4 max-w-6xl mx-auto">
-      <h2 className="text-lg font-extrabold text-[#1f2937] mb-3">Categories</h2>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {cats.map((cat) => (
-          <Link
-            key={cat.label}
-            href={cat.href}
-            className="flex flex-col items-center gap-2 bg-white rounded-2xl py-5 shadow-sm border border-[#f3f4f6] hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
-          >
-            <div className="w-12 h-12 rounded-full bg-[#fef2f2] flex items-center justify-center text-xl">
-              {cat.icon}
-            </div>
-            <span className="text-xs font-bold text-[#374151]">{cat.label}</span>
-          </Link>
-        ))}
+    <section className="py-12 px-4 max-w-4xl mx-auto">
+      <div className="text-center mb-10">
+        <h2 className="text-2xl sm:text-3xl font-black text-[#1f2937] tracking-tight">Our Story</h2>
+        <div className="w-16 h-1 rounded-full mx-auto mt-3" style={{ backgroundColor: PRIMARY }} />
       </div>
-    </div>
-  );
-}
 
-/* ───────────────────────────────────────────────
-   Menu Item Card
-   ─────────────────────────────────────────────── */
-function MenuItemCard({
-  item,
-  onAdd,
-  imgErrors,
-  onImgError,
-}: {
-  item: MenuItem;
-  onAdd: (item: MenuItem) => void;
-  imgErrors: Set<string>;
-  onImgError: (name: string) => void;
-}) {
-  return (
-    <Link
-      href={`/menu/${item.id}`}
-      className="block bg-white rounded-xl border border-[#e5e7eb] overflow-hidden hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group animate-fade-in"
-    >
-      <div className="w-full h-36 bg-[#f3f4f6] relative overflow-hidden">
-        {imgErrors.has(item.imageName) ? (
-          <PlaceholderImage name={item.name} />
-        ) : (
+      <div className="bg-white rounded-2xl shadow-md border border-[#e5e7eb] overflow-hidden">
+        {/* Hero image */}
+        <div className="w-full h-48 sm:h-64 bg-[#f3f4f6] relative overflow-hidden">
           <img
-            src={getImagePath(item.imageName)}
-            alt={item.name}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            onError={() => onImgError(item.imageName)}
+            src="/images/story_background.jpg"
+            alt="Ben's Tapsihan"
+            className="w-full h-full object-cover"
+            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
           />
-        )}
-      </div>
-      <div className="p-3">
-        <h4 className="font-bold text-sm text-[#0a0a0a] truncate">{item.name}</h4>
-        <div className="flex items-center gap-1.5 mt-1">
-          <span className="text-xs" style={{ color: AMBER }}>★</span>
-          <span className="text-xs font-bold text-[#92400e]">
-            {(3.9 + (item.name.length * 0.07 + item.price * 0.002) % 1.1).toFixed(1)}
-          </span>
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end">
+            <div className="p-6">
+              <h3 className="text-2xl sm:text-3xl font-black text-white drop-shadow-lg">Ben's Tapsihan</h3>
+              <p className="text-white/80 text-sm font-medium">Since 2003 — Serving comfort, one sizzling plate at a time.</p>
+            </div>
+          </div>
         </div>
-        <div className="flex items-center justify-between mt-2">
-          <span className="text-base font-black" style={{ color: PRIMARY }}>
-            ₱{item.price}
-          </span>
-          <button
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onAdd(item);
-            }}
-            className="px-3 py-1.5 rounded-lg text-white text-xs font-bold transition-all duration-200 hover:scale-105 active:scale-95"
-            style={{ backgroundColor: PRIMARY }}
-          >
-            + Add
-          </button>
+
+        {/* Story content */}
+        <div className="p-6 sm:p-10 space-y-5 text-sm sm:text-base leading-relaxed text-[#4b5563]">
+          <p>
+            What started as a humble carinderia along the busy streets of Manila has grown into a beloved neighborhood
+            institution. <span className="font-bold text-[#0a0a0a]">Ben's Tapsihan</span> was born from a simple idea:
+            serve hearty, affordable Filipino comfort food that brings people together.
+          </p>
+          <p>
+            Our founder, <span className="font-semibold text-[#0a0a0a]">Kuya Ben</span>, believed that the best meals
+            are the ones shared with family and friends. He perfected the art of sizzling silog — garlic fried rice
+            topped with a runny egg and your choice of tender, flavorful meat — all served on a cast-iron plate that
+            crackles with excitement.
+          </p>
+          <p>
+            From our signature <span className="font-semibold" style={{ color: PRIMARY }}>Tapsilog</span> to the
+            crowd-favorite <span className="font-semibold" style={{ color: PRIMARY }}>Sisilog</span>, every dish is
+            made fresh to order using time-honored recipes passed down through generations. We source locally, cook
+            with love, and serve with a smile — because that's the Filipino way.
+          </p>
+          <p>
+            Today, Ben's Tapsihan continues Kuya Ben's legacy. Whether you're a regular who's been with us since day one
+            or a first-timer looking for your new favorite meal, you're family here. Come for the sizzle, stay for the
+            flavor.
+          </p>
         </div>
       </div>
-    </Link>
+    </section>
+  );
+}
+
+/* ───────────────────────────────────────────────
+   Top 1 Ordered
+   ─────────────────────────────────────────────── */
+function TopOrdered() {
+  return (
+    <section className="py-10 px-4 max-w-4xl mx-auto">
+      <div className="text-center mb-8">
+        <h2 className="text-2xl sm:text-3xl font-black text-[#1f2937] tracking-tight">Top #1 Ordered</h2>
+        <div className="w-16 h-1 rounded-full mx-auto mt-3" style={{ backgroundColor: PRIMARY }} />
+      </div>
+
+      <div
+        className="relative rounded-2xl overflow-hidden shadow-xl"
+        style={{
+          background: `linear-gradient(135deg, ${PRIMARY} 0%, #991b1b 100%)`,
+        }}
+      >
+        {/* Decorative pattern */}
+        <div className="absolute inset-0 opacity-10 pointer-events-none"
+          style={{
+            backgroundImage: "radial-gradient(circle at 30% 40%, #ffffff40 1px, transparent 1px)",
+            backgroundSize: "20px 20px",
+          }}
+        />
+
+        <div className="relative z-10 flex flex-col sm:flex-row items-center gap-6 p-8 sm:p-10">
+          {/* Trophy icon */}
+          <div className="flex-shrink-0">
+            <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center border-2 border-white/30">
+              <div className="text-center">
+                <span className="text-5xl">🏆</span>
+                <p className="text-white text-xs font-bold mt-1 tracking-wider">#1</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-1 text-center sm:text-left space-y-3">
+            <span className="inline-block px-3 py-1 rounded-md bg-yellow-400/20 backdrop-blur-sm text-yellow-300 text-xs font-extrabold tracking-widest uppercase border border-yellow-400/30">
+              ALL-TIME FAVORITE
+            </span>
+            <h3 className="text-3xl sm:text-4xl font-black text-white tracking-tight drop-shadow-sm">
+              Tapsilog
+            </h3>
+            <p className="text-white/80 text-sm sm:text-base font-medium max-w-md leading-relaxed">
+              The undisputed king of our menu. Tender beef tapa marinated to perfection, served on garlic rice
+              with a perfectly fried egg. The dish that started it all — and the one our customers can't get enough of.
+            </p>
+            <div className="flex items-center gap-2 justify-center sm:justify-start">
+              <span className="text-2xl font-black text-white">₱109</span>
+              <span className="text-white/60 text-sm line-through">₱129</span>
+              <span className="ml-2 px-2 py-0.5 rounded bg-yellow-400 text-xs font-bold text-[#0a0a0a]">SAVE ₱20</span>
+            </div>
+            <button
+              onClick={() => window.location.href = "/menu"}
+              className="inline-block px-8 py-3 rounded-xl bg-white text-sm font-bold transition-all duration-200 hover:scale-105 active:scale-95 shadow-lg"
+              style={{ color: PRIMARY }}
+            >
+              Order Now →
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -292,18 +312,9 @@ function MenuItemCard({
    HomePage Component
    ─────────────────────────────────────────────── */
 export default function HomePage() {
-  const { user } = useAuth();
-  const { menuItems, loading: menuLoading } = useMenu();
-  const { cart, addToCart } = useCart();
+  const { cart } = useCart();
   const [cartOpen, setCartOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [imgErrors, setImgErrors] = useState<Set<string>>(new Set());
-
-  function onImgError(name: string) {
-    setImgErrors((prev) => new Set(prev).add(name));
-  }
-
-  const mostOrdered = menuItems.filter((m) => MOST_ORDERED_NAMES.includes(m.name));
 
   return (
     <div className="min-h-screen bg-[#fafafa] flex flex-col">
@@ -318,58 +329,19 @@ export default function HomePage() {
         {/* Banner Carousel */}
         <BannerCarousel banners={BANNERS} onOrderNow={() => window.location.href = "/menu"} />
 
-        {/* Categories */}
-        <CategoryCards />
+        {/* Top #1 Ordered - featured prominently */}
+        <TopOrdered />
 
-        {/* Most Ordered */}
-        <div className="py-6 px-4 max-w-6xl mx-auto">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-extrabold text-[#1f2937]">Most Ordered</h2>
-            <Link
-              href="/menu"
-              className="text-sm font-bold text-[#dc2626] hover:underline"
-            >
-              See All →
-            </Link>
-          </div>
-
-          {menuLoading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="bg-white rounded-xl border border-[#e5e7eb] overflow-hidden">
-                  <div className="w-full h-36 bg-[#f3f4f6] animate-pulse" />
-                  <div className="p-3 space-y-2">
-                    <div className="h-4 bg-[#f3f4f6] rounded w-3/4 animate-pulse" />
-                    <div className="h-5 bg-[#f3f4f6] rounded w-1/2 animate-pulse" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : mostOrdered.length === 0 ? (
-            <p className="text-sm text-[#9ca3af] text-center py-8">Loading items...</p>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {mostOrdered.map((item, i) => (
-                <div key={item.id} style={{ animationDelay: `${i * 60}ms` }} className="animate-fade-in">
-                  <MenuItemCard
-                    item={item}
-                    onAdd={addToCart}
-                    imgErrors={imgErrors}
-                    onImgError={onImgError}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        {/* Our Story */}
+        <OurStory />
       </div>
 
       {/* Cart Sidebar */}
       <CartSidebar
         open={cartOpen}
         onClose={() => setCartOpen(false)}
-        imgErrors={imgErrors}
-        onImgError={onImgError}
+        imgErrors={new Set()}
+        onImgError={() => {}}
       />
 
       {/* Profile Modal */}
@@ -382,7 +354,7 @@ export default function HomePage() {
       <button
         onClick={() => setCartOpen(true)}
         className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95"
-        style={{ backgroundColor: "#dc2626", boxShadow: "0 4px 24px rgba(220, 38, 38, 0.4)" }}
+        style={{ backgroundColor: PRIMARY, boxShadow: "0 4px 24px rgba(220, 38, 38, 0.4)" }}
         aria-label="Open cart"
       >
         <svg className="w-6 h-6" fill="none" stroke="#fff" strokeWidth={2.5} viewBox="0 0 24 24">
