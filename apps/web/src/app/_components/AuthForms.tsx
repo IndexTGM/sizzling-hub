@@ -8,7 +8,7 @@ import InputField from "./InputField";
 type View = "login" | "register" | "forgot";
 
 export default function AuthForms({ initialView }: { initialView: View }) {
-  const { login, register } = useAuth();
+  const { login, register, resetPassword } = useAuth();
   const [view, setView] = useState<View>(initialView);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -65,9 +65,10 @@ export default function AuthForms({ initialView }: { initialView: View }) {
     setSuccess("");
     if (!lemail || !lemail.includes("@")) { setError("Please enter a valid email address."); return; }
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 1500));
+    const err = await resetPassword(lemail);
     setLoading(false);
-    setSuccess("This is not working yet.");
+    if (err) setError(err);
+    else setSuccess("Check your email for a password reset link.");
   }
 
   return (
