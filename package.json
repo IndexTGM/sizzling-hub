@@ -2,8 +2,10 @@
   "name": "sizzling-hub",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "apps/web/.next/server.js",
   "scripts": {
+    "build": "cd apps/web && npm install && npm run build",
+    "start": "cd apps/web && npm run start",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
