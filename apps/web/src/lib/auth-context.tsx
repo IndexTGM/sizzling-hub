@@ -20,8 +20,6 @@ export interface User {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  isRecovery: boolean;
-  isResetFlow: boolean;
   login: (email: string, password: string) => Promise<string | null>;
   register: (
     fullName: string,
@@ -30,10 +28,8 @@ interface AuthContextType {
     confirmPassword: string
   ) => Promise<string | null>;
   logout: () => Promise<void>;
-  resetPassword: (email: string) => Promise<string | null>;
-  sendOtp: (email: string) => Promise<string | null>;
-  verifyOtp: (email: string, token: string) => Promise<string | null>;
-  updatePassword: (newPassword: string) => Promise<string | null>;
+  signInWithOtp: (email: string) => Promise<string | null>;
+  verifySignInOtp: (email: string, token: string) => Promise<string | null>;
   updateProfile: (fullName: string) => Promise<string | null>;
 }
 
@@ -50,8 +46,6 @@ function getSupabase() {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isRecovery, setIsRecovery] = useState(false);
-  const [isResetFlow, setIsResetFlow] = useState(false);
 
   // On mount, check Supabase session
   useEffect(() => {
@@ -92,114 +86,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
-  const updatePassword = useCallback(
-    async (newPassword: string): Promise<string | null> => {
-      if (!newPassword || newPassword.length < 8)
-        return "Password must be at least 8 characters long.";
-      if (!/[A-Z]/.test(newPassword))
-        return "Password must contain at least one uppercase letter.";
-      if (!/[a-z]/.test(newPassword))
-        return "Password must contain at least one lowercase letter.";
-      if (!/[0-9]/.test(newPassword))
-        return "Password must contain at least one number.";
-      if (!/[^A-Za-z0-9]/.test(newPassword))
-        return "Password must contain at least one special character.";
-
-      const sb = getSupabase();
-      const { error } = await sb.auth.updateUser({ password: newPassword });
-
-      if (error) return error.message;
-
-      // Password updated — reload session to get user data
-      const {
-        data: { session },
-      } = await sb.auth.getSession();
-      if (session?.user) {
-        const fullName =
-          (session.user.user_metadata?.full_name as string) ||
-          session.user.email ||
-          "";
-        const u: User = {
-          fullName,
-          email: session.user.email || "",
-          role: user?.role || "customer",
-        };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
-        setUser(u);
-        setIsRecovery(false);
-        setIsResetFlow(false);
-      }
-      return null;
-    },
-    []
-  );
-
-  const sendOtp = useCallback(
-    async (email: string): Promise<string | null> => {
-      if (!email.trim()) return "Please enter your email address.";
-
-      const sb = getSupabase();
-      const { error } = await sb.auth.signInWithOtp({
-        email,
-        options: { shouldCreateUser: false },
-      });
-
-      if (error) {
-        if (error.message.includes("User not found"))
-          return "No account found with this email.";
-        return error.message;
-      }
-      return null;
-    },
-    []
-  );
-
-  const verifyOtp = useCallback(
-    async (email: string, token: string): Promise<string | null> => {
-      if (!email.trim()) return "Email is required.";
-      if (!token.trim() || token.length !== 6) return "Please enter a valid 6-digit code.";
-
-      const sb = getSupabase();
-      const { data, error } = await sb.auth.verifyOtp({
-        email,
-        token,
-        type: "email",
-      });
-
-      if (error) {
-        if (error.message.includes("expired"))
-          return "Code has expired. Please request a new one.";
-        if (error.message.includes("Invalid"))
-          return "Invalid code. Please try again.";
-        return error.message;
-      }
-
-      if (data?.session?.user) {
-        setIsResetFlow(true);
-        // Don't set user — let RecoveryForm handle it after password update
-        const { data: profile } = await sb
-          .from("profiles")
-          .select("full_name, role")
-          .eq("id", data.session.user.id)
-          .maybeSingle();
-        const fullName =
-          profile?.full_name ||
-          (data.session.user.user_metadata?.full_name as string) ||
-          data.session.user.email ||
-          "";
-        const u: User = {
-          fullName,
-          email: data.session.user.email || "",
-          role: (profile?.role as string) || "customer",
-        };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
-        setUser(u);
-      }
-      return null;
-    },
-    []
-  );
-
   const login = useCallback(
     async (email: string, password: string): Promise<string | null> => {
       if (!email.trim()) return "Email is required.";
@@ -220,7 +106,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (data.session?.user) {
-        // Fetch full_name from profiles table (joins on auth.users.id)
         const { data: profile } = await sb
           .from("profiles")
           .select("full_name, role")
@@ -296,10 +181,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
         setUser(u);
-        return null; // logged in immediately
+        return null;
       }
 
-      // Email confirmation required — return success message
       return "check-email";
     },
     []
@@ -323,7 +207,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (!session?.user) return "You must be logged in.";
 
-      // Update existing profile row
       const { error } = await sb
         .from("profiles")
         .update({
@@ -333,7 +216,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (error) return error.message;
 
-      // Update local state
       const updated: User = {
         fullName: fullName.trim(),
         email: session.user.email || user?.email || "",
@@ -346,13 +228,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [user?.email]
   );
 
-  const resetPassword = useCallback(
+  const signInWithOtp = useCallback(
     async (email: string): Promise<string | null> => {
       if (!email.trim()) return "Please enter your email address.";
 
       const sb = getSupabase();
-      const { error } = await sb.auth.resetPasswordForEmail(email, {
-        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || window.location.origin}/`,
+      const { error } = await sb.auth.signInWithOtp({
+        email,
+        options: { shouldCreateUser: false },
       });
 
       if (error) {
@@ -360,8 +243,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return "No account found with this email.";
         return error.message;
       }
+      return null;
+    },
+    []
+  );
 
-      return null; // success
+  const verifySignInOtp = useCallback(
+    async (email: string, token: string): Promise<string | null> => {
+      if (!email.trim()) return "Email is required.";
+      if (!token.trim() || token.length !== 8) return "Please enter a valid 8-digit code.";
+
+      const sb = getSupabase();
+      const { data, error } = await sb.auth.verifyOtp({
+        email,
+        token,
+        type: "email",
+      });
+
+      if (error) {
+        if (error.message.includes("expired"))
+          return "Code has expired. Please request a new one.";
+        if (error.message.includes("Invalid"))
+          return "Invalid code. Please try again.";
+        return error.message;
+      }
+
+      if (data?.session?.user) {
+        const { data: profile } = await sb
+          .from("profiles")
+          .select("full_name, role")
+          .eq("id", data.session.user.id)
+          .maybeSingle();
+        const fullName =
+          profile?.full_name ||
+          (data.session.user.user_metadata?.full_name as string) ||
+          data.session.user.email ||
+          "";
+        const u: User = {
+          fullName,
+          email: data.session.user.email || "",
+          role: (profile?.role as string) || "customer",
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+        setUser(u);
+      }
+      return null;
     },
     []
   );
@@ -371,15 +297,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         loading,
-        isRecovery,
-        isResetFlow,
         login,
         register,
         logout,
-        resetPassword,
-        sendOtp,
-        verifyOtp,
-        updatePassword,
+        signInWithOtp,
+        verifySignInOtp,
         updateProfile,
       }}
     >

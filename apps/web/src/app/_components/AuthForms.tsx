@@ -5,10 +5,10 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import InputField from "./InputField";
 
-type View = "login" | "register" | "forgot" | "otp";
+type View = "login" | "register" | "otp-signin" | "otp-verify";
 
 export default function AuthForms({ initialView }: { initialView: View }) {
-  const { login, register, sendOtp, verifyOtp } = useAuth();
+  const { login, register, signInWithOtp, verifySignInOtp } = useAuth();
   const [view, setView] = useState<View>(initialView);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -24,9 +24,9 @@ export default function AuthForms({ initialView }: { initialView: View }) {
   const [loginTosAgreed, setLoginTosAgreed] = useState(false);
   const [registerTosAgreed, setRegisterTosAgreed] = useState(false);
 
-  // OTP state
+  // OTP sign-in state
   const [otp, setOtp] = useState("");
-  const [resetEmail, setResetEmail] = useState("");
+  const [otpEmail, setOtpEmail] = useState("");
 
   function switchView(v: View) {
     setView(v);
@@ -65,36 +65,35 @@ export default function AuthForms({ initialView }: { initialView: View }) {
     }
   }
 
-  function handleForgotClick() { 
-    setResetEmail("");
+  function handleOtpSignInClick() {
+    setOtpEmail("");
     setOtp("");
-    switchView("forgot"); 
+    switchView("otp-signin");
   }
 
   async function handleSendOtp(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setSuccess("");
-    if (!lemail || !lemail.includes("@")) { setError("Please enter a valid email address."); return; }
+    if (!otpEmail || !otpEmail.includes("@")) { setError("Please enter a valid email address."); return; }
     setLoading(true);
-    const err = await sendOtp(lemail);
+    const err = await signInWithOtp(otpEmail);
     setLoading(false);
     if (err) {
       setError(err);
     } else {
-      setResetEmail(lemail);
-      setSuccess("Check your email for a 6-digit code.");
-      switchView("otp");
+      setSuccess("Check your email for an 8-digit sign-in code.");
+      switchView("otp-verify");
     }
   }
 
-  async function handleVerifyOtp(e: React.FormEvent) {
+  async function handleVerifySignInOtp(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setSuccess("");
-    if (!otp || otp.length !== 6) { setError("Please enter the 6-digit code."); return; }
+    if (!otp || otp.length !== 8) { setError("Please enter the 8-digit code."); return; }
     setLoading(true);
-    const err = await verifyOtp(resetEmail, otp);
+    const err = await verifySignInOtp(otpEmail, otp);
     setLoading(false);
     if (err) setError(err);
   }
@@ -107,12 +106,12 @@ export default function AuthForms({ initialView }: { initialView: View }) {
             onError={(e) => { (e.target as HTMLImageElement).src = "/images/placeholder.png"; }} />
           <h1 className="text-3xl font-black tracking-tight" style={{ color: "#dc2626" }}>SIZZLING HUB</h1>
           <p className="text-[#6b7280] mt-2 text-sm font-medium tracking-wide">
-            {view === "login" ? "Welcome back! Log in to continue." : view === "register" ? "Create your account to get started." : "Reset your password"}
+            {view === "login" ? "Welcome back! Log in to continue." : view === "register" ? "Create your account to get started." : view === "otp-signin" ? "Sign in without a password." : "Enter your verification code"}
           </p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-lg border border-[#e5e7eb] p-8 animate-slide-up">
-          {view !== "forgot" && (
+          {(view === "login" || view === "register") && (
             <div className="flex mb-6 bg-[#f3f4f6] rounded-lg p-1">
               {(["login", "register"] as const).map((v) => (
                 <button key={v} onClick={() => switchView(v)}
@@ -139,15 +138,20 @@ export default function AuthForms({ initialView }: { initialView: View }) {
                 <button type="submit" disabled={loading} className="w-full py-3 rounded-xl font-bold text-white text-sm tracking-wide transition-all duration-200"
                   style={{ backgroundColor: loading ? "#fca5a5" : "#dc2626" }}>{loading ? "Logging in…" : "Log In"}</button>
               </form>
-              <button type="button" onClick={handleForgotClick} className="mt-4 w-full text-center text-sm font-medium text-[#6b7280] hover:text-[#dc2626] transition-colors">Forgot Password?</button>
+
+              <div className="mt-5 pt-4 border-t border-[#e5e7eb]">
+                <button type="button" onClick={handleOtpSignInClick} className="w-full py-3 rounded-xl font-bold text-sm tracking-wide transition-all duration-200 border-2 border-[#dc2626] text-[#dc2626] hover:bg-[#fef2f2]">
+                  Sign In with OTP
+                </button>
+              </div>
             </>
           )}
 
-          {view === "forgot" && (
+          {view === "otp-signin" && (
             <>
               <form onSubmit={handleSendOtp} className="space-y-4">
-                <p className="text-sm text-[#6b7280] mb-2">Enter your email address and we'll send you a 6-digit code to reset your password.</p>
-                <InputField label="Email" type="email" value={lemail} onChange={setLEmail} placeholder="you@example.com" />
+                <p className="text-sm text-[#6b7280] mb-2">Enter your email address and we'll send you an 8-digit code to sign in instantly.</p>
+                <InputField label="Email" type="email" value={otpEmail} onChange={setOtpEmail} placeholder="you@example.com" />
                 <button type="submit" disabled={loading} className="w-full py-3 rounded-xl font-bold text-white text-sm tracking-wide transition-all duration-200"
                   style={{ backgroundColor: loading ? "#fca5a5" : "#dc2626" }}>{loading ? "Sending…" : "Send Code"}</button>
               </form>
@@ -155,17 +159,17 @@ export default function AuthForms({ initialView }: { initialView: View }) {
             </>
           )}
 
-          {view === "otp" && (
+          {view === "otp-verify" && (
             <>
-              <form onSubmit={handleVerifyOtp} className="space-y-4">
+              <form onSubmit={handleVerifySignInOtp} className="space-y-4">
                 <p className="text-sm text-[#6b7280] mb-2">
-                  We sent a 6-digit code to <span className="font-semibold text-[#0a0a0a]">{resetEmail}</span>. Enter it below.
+                  We sent an 8-digit code to <span className="font-semibold text-[#0a0a0a]">{otpEmail}</span>. Enter it below to sign in.
                 </p>
-                <InputField label="Verification Code" type="text" value={otp} onChange={(v: string) => setOtp(v.replace(/\D/g, "").slice(0, 6))} placeholder="000000" />
+                <InputField label="Verification Code" type="text" value={otp} onChange={(v: string) => setOtp(v.replace(/\D/g, "").slice(0, 8))} placeholder="00000000" />
                 <button type="submit" disabled={loading} className="w-full py-3 rounded-xl font-bold text-white text-sm tracking-wide transition-all duration-200"
-                  style={{ backgroundColor: loading ? "#fca5a5" : "#dc2626" }}>{loading ? "Verifying…" : "Verify Code"}</button>
+                  style={{ backgroundColor: loading ? "#fca5a5" : "#dc2626" }}>{loading ? "Verifying…" : "Verify & Sign In"}</button>
               </form>
-              <button type="button" onClick={handleForgotClick} className="mt-4 w-full text-center text-sm font-medium text-[#6b7280] hover:text-[#dc2626] transition-colors">← Back</button>
+              <button type="button" onClick={handleOtpSignInClick} className="mt-4 w-full text-center text-sm font-medium text-[#6b7280] hover:text-[#dc2626] transition-colors">← Back</button>
             </>
           )}
 
