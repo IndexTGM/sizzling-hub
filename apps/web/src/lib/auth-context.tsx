@@ -49,69 +49,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [isRecovery, setIsRecovery] = useState(false);
 
-  // On mount, check Supabase session and detect recovery flow
+  // On mount, check Supabase session
   useEffect(() => {
     (async () => {
       try {
         const sb = getSupabase();
 
-        // Handle PKCE exchange flow: ?code=... (from reset password email)
-        const searchParams = new URLSearchParams(window.location.search);
-        const code = searchParams.get("code");
-
-        // Also check hash for legacy flows: #type=recovery&access_token=...
-        const hashParams = new URLSearchParams(
-          window.location.hash.replace(/^#/, "")
-        );
-        const hashType = hashParams.get("type");
-
-        if (code) {
-          // PKCE flow — exchange code for session
-          const { data } = await sb.auth.exchangeCodeForSession(code);
-          if (data?.session) {
-            window.history.replaceState(null, "", window.location.pathname);
-            setIsRecovery(true);
-          }
-        } else if (hashType === "recovery") {
-          // Legacy hash flow
-          const accessToken = hashParams.get("access_token");
-          const refreshToken = hashParams.get("refresh_token");
-
-          if (accessToken && refreshToken) {
-            const { error: setErr } = await sb.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken,
-            });
-            if (!setErr) {
-              window.history.replaceState(null, "", window.location.pathname);
-              setIsRecovery(true);
-            }
-          }
-        } else {
-          // Normal login — check for existing session
-          const {
-            data: { session },
-          } = await sb.auth.getSession();
-          if (session?.user) {
-            const { data: profile } = await sb
-              .from("profiles")
-              .select("full_name, role")
-              .eq("id", session.user.id)
-              .maybeSingle();
-            const fullName =
-              profile?.full_name ||
-              (session.user.user_metadata?.full_name as string) ||
-              session.user.email ||
-              "";
-            setUser({
-              fullName,
-              email: session.user.email || "",
-              role: (profile?.role as string) || "customer",
-            });
-          }
+        const {
+          data: { session },
+        } = await sb.auth.getSession();
+        if (session?.user) {
+          const { data: profile } = await sb
+            .from("profiles")
+            .select("full_name, role")
+            .eq("id", session.user.id)
+            .maybeSingle();
+          const fullName =
+            profile?.full_name ||
+            (session.user.user_metadata?.full_name as string) ||
+            session.user.email ||
+            "";
+          setUser({
+            fullName,
+            email: session.user.email || "",
+            role: (profile?.role as string) || "customer",
+          });
         }
       } catch {
-        // Not logged in — fall back to localStorage cache
         try {
           const stored = localStorage.getItem(STORAGE_KEY);
           if (stored) setUser(JSON.parse(stored));
