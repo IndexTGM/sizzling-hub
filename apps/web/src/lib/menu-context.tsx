@@ -9,7 +9,7 @@ import {
 } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getImagePath, type MenuItem } from "@/lib/menu-data";
+import type { MenuItem } from "@/lib/menu-data";
 
 interface Category {
   id: string;

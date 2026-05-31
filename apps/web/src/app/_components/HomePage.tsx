@@ -4,11 +4,11 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
 import { useBanners } from "@/lib/banner-context";
-import { getImagePath } from "@/lib/menu-data";
 import AppHeader from "./AppHeader";
 import CartSidebar from "./CartSidebar";
 import ProfileModal from "./ProfileModal";
 import Footer from "./Footer";
+import StorageImage from "./StorageImage";
 
 const PRIMARY = "#dc2626";
 const BANNER_COLORS = [
@@ -119,11 +119,10 @@ function BannerCarousel({
                 </div>
                 <div className="relative z-10">
                   <div className="absolute inset-0 rounded-2xl bg-white/20 blur-md" />
-                  <img
-                    src={getImagePath(`${b.image}.jpg`)}
+                  <StorageImage
+                    imageBaseName={b.image}
                     alt={b.title}
                     className="relative w-28 h-28 sm:w-40 sm:h-40 object-cover rounded-2xl shadow-lg ring-2 ring-white/30"
-                    onError={(e) => { (e.target as HTMLImageElement).src = "/images/placeholder.png"; }}
                   />
                 </div>
               </div>
@@ -169,11 +168,10 @@ function OurStory() {
       <div className="bg-white rounded-2xl shadow-md border border-[#e5e7eb] overflow-hidden">
         {/* Hero image */}
         <div className="w-full h-48 sm:h-64 bg-[#f3f4f6] relative overflow-hidden">
-          <img
-            src="/images/story_background.jpg"
+          <StorageImage
+            imageBaseName="story_background"
             alt="Ben's Tapsihan"
             className="w-full h-full object-cover"
-            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end">
             <div className="p-6">

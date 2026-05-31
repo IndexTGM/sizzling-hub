@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import InputField from "./InputField";
+import StorageImage from "./StorageImage";
 
 type View = "login" | "register" | "otp-signin" | "otp-verify";
 
@@ -103,8 +104,11 @@ export default function AuthForms({ initialView }: { initialView: View }) {
     <div className="min-h-screen flex items-center justify-center bg-[#fafafa] px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-10 animate-fade-in">
-          <img src="/images/logo.png" alt="Ben's Tapsihan" className="w-20 h-20 mx-auto mb-4 object-contain"
-            onError={(e) => { (e.target as HTMLImageElement).src = "/images/placeholder.png"; }} />
+          <StorageImage
+            imageBaseName="logo"
+            alt="Ben's Tapsihan"
+            className="w-20 h-20 mx-auto mb-4 object-contain"
+          />
           <h1 className="text-3xl font-black tracking-tight" style={{ color: "#dc2626" }}>BEN'S TAPIHAN</h1>
           <p className="text-[#6b7280] mt-2 text-sm font-medium tracking-wide">
             {view === "login" ? "Welcome back! Log in to continue." : view === "register" ? "Create your account to get started." : view === "otp-signin" ? "Sign in without a password." : "Enter your verification code"}

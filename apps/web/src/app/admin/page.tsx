@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { createClient } from "@/lib/supabase/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getImagePath, type MenuItem } from "@/lib/menu-data";
+import type { MenuItem } from "@/lib/menu-data";
+import { getImagePath } from "@/lib/menu-data";
+import StorageImage from "@/app/_components/StorageImage";
 
 interface Profile { id: string; full_name: string; email: string; role: string; phone: string | null; created_at: string; }
 interface Order { id: string; customer_name: string; status: string; total: number; placed_at: string; items_count: number; }
@@ -33,7 +35,7 @@ export default function AdminPage() {
       <header className="sticky top-0 z-30 bg-white border-b border-[#e5e7eb] shadow-sm">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/images/logo.png" alt="Sizzling Hub" className="w-9 h-9 rounded-lg object-contain" />
+            <StorageImage imageBaseName="logo" alt="Sizzling Hub" className="w-9 h-9 rounded-lg object-contain" />
             <h1 className="text-2xl font-black tracking-tight" style={{ color: "#dc2626" }}>ADMIN PANEL</h1>
           </div>
           <a href="/" className="text-sm font-medium text-[#6b7280] hover:text-[#dc2626] transition-colors">← Back to Store</a>
@@ -42,7 +44,7 @@ export default function AdminPage() {
 
       <div className="bg-white border-b border-[#e5e7eb]">
         <div className="max-w-6xl mx-auto px-4 flex gap-1">
-          {(["profiles", "menu", "orders", "banners"] as AdminTab[]).map((t) => (
+          {(["profiles", "menu", "orders", "images", "banners"] as AdminTab[]).map((t) => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${tab === t ? "border-[#dc2626] text-[#dc2626]" : "border-transparent text-[#6b7280] hover:text-[#0a0a0a]"}`}>
               {t === "profiles" ? "Profiles" : t === "menu" ? "Menu Items" : t === "orders" ? "Orders" : t === "images" ? "Images" : "Banners"}
@@ -168,10 +170,10 @@ function MenuPanel() {
     setSaving(true); setError("");
     const sb = createClient();
     if (editing) {
-      const imageUrl = form.name.trim().toLowerCase().replace(/\s+/g, "") + ".png";
+      const imageUrl = form.name.trim().toLowerCase().replace(/\s+/g, "");
       await sb.from("menu_items").update({ name: form.name.trim(), price: form.price, image_url: imageUrl }).eq("id", editing.id);
     } else if (creating) {
-      const imageUrl = form.name.trim().toLowerCase().replace(/\s+/g, "") + ".png";
+      const imageUrl = form.name.trim().toLowerCase().replace(/\s+/g, "");
       const { error: insertErr } = await sb.from("menu_items").insert({ category_id: form.categoryId, name: form.name.trim(), price: form.price, image_url: imageUrl });
       if (insertErr) { setError(insertErr.message); setSaving(false); return; }
     }
@@ -268,7 +270,7 @@ function MenuPanel() {
               <tbody className="divide-y divide-[#e5e7eb]">
                 {filteredItems.map((item) => (
                   <tr key={item.id} className="hover:bg-[#f9fafb]">
-                    <td className="px-4 py-3"><div className="w-10 h-10 rounded-lg bg-[#f3f4f6] overflow-hidden"><img src={getImagePath(item.imageName)} alt={item.name} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = "/images/placeholder.png"; }} /></div></td>
+                    <td className="px-4 py-3"><div className="w-10 h-10 rounded-lg bg-[#f3f4f6] overflow-hidden"><StorageImage imageBaseName={item.imageName} alt={item.name} className="w-full h-full object-cover" /></div></td>
                     <td className="px-4 py-3 font-medium text-[#0a0a0a]">{item.name}</td>
                     <td className="px-4 py-3 text-[#6b7280]">{item.category}</td>
                     <td className="px-4 py-3 font-semibold" style={{ color: "#dc2626" }}>₱{item.price}</td>
@@ -362,7 +364,7 @@ function ImagesPanel() {
           {images.map((img) => (
             <div key={img.name} className="bg-white rounded-xl border border-[#e5e7eb] overflow-hidden group hover:shadow-md transition-all duration-200">
               <div className="w-full h-32 bg-[#f3f4f6] relative overflow-hidden">
-                <img src={img.url} alt={img.name} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = "/images/placeholder.png"; }} />
+                <img src={img.url} alt={img.name} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = getImagePath("placeholder.png"); }} />
                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                   <button onClick={() => handleCopyUrl(img.url)} className="w-8 h-8 rounded-lg bg-white/90 flex items-center justify-center hover:bg-white transition-colors" title="Copy URL"><svg className="w-4 h-4 text-[#0a0a0a]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg></button>
                   <button onClick={() => handleDelete(img.name)} disabled={deleting === img.name} className="w-8 h-8 rounded-lg bg-white/90 flex items-center justify-center hover:bg-[#fee2e2] transition-colors" title="Delete"><svg className="w-4 h-4 text-[#dc2626]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>

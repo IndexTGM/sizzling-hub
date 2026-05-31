@@ -1,8 +1,8 @@
 "use client";
 
 import { useCart } from "@/lib/cart-context";
-import { getImagePath } from "@/lib/menu-data";
 import PlaceholderImage from "./PlaceholderImage";
+import StorageImage from "./StorageImage";
 
 export default function CartSidebar({
   open,
@@ -55,8 +55,8 @@ export default function CartSidebar({
                   {imgErrors.has(item.imageName) ? (
                     <PlaceholderImage name={item.name} />
                   ) : (
-                    <img
-                      src={getImagePath(item.imageName)}
+                    <StorageImage
+                      imageBaseName={item.imageName}
                       alt={item.name}
                       className="w-full h-full object-cover"
                       onError={() => onImgError(item.imageName)}

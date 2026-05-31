@@ -6,12 +6,13 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { useMenu } from "@/lib/menu-context";
 import { useCart } from "@/lib/cart-context";
-import { getImagePath, type MenuItem } from "@/lib/menu-data";
+import type { MenuItem } from "@/lib/menu-data";
 import AppHeader from "@/app/_components/AppHeader";
 import CartSidebar from "@/app/_components/CartSidebar";
 import ProfileModal from "@/app/_components/ProfileModal";
 import PlaceholderImage from "@/app/_components/PlaceholderImage";
 import Footer from "@/app/_components/Footer";
+import StorageImage from "@/app/_components/StorageImage";
 
 const PRIMARY = "#dc2626";
 const AMBER = "#f59e0b";
@@ -127,8 +128,8 @@ export default function MenuContent() {
                     {imgErrors.has(item.imageName) ? (
                       <PlaceholderImage name={item.name} />
                     ) : (
-                      <img
-                        src={getImagePath(item.imageName)}
+                      <StorageImage
+                        imageBaseName={item.imageName}
                         alt={item.name}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                         onError={() => onImgError(item.imageName)}

@@ -1,5 +1,4 @@
 import Link from "next/link";
-import Footer from "../_components/Footer";
 
 export default function TermsPage() {
   return (
@@ -97,7 +96,6 @@ export default function TermsPage() {
             </p>
           </section>
         </div>
-        <Footer />
       </div>
     </div>
   );

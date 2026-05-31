@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
+import StorageImage from "./StorageImage";
 
 const P = "#dc2626";
 
@@ -48,13 +49,10 @@ export default function AppHeader({
       <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
         {/* Left: Logo */}
         <Link href="/" className="flex items-center gap-3 shrink-0">
-          <img
-            src="/images/logo.png"
+          <StorageImage
+            imageBaseName="logo"
             alt="Ben's Tapsihan"
             className="w-9 h-9 rounded-lg object-contain"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = "/images/placeholder.png";
-            }}
           />
           <h1 className="text-lg sm:text-xl font-black tracking-tight" style={{ color: P }}>
             BEN'S TAPSIHAN
