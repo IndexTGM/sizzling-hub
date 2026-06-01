@@ -352,6 +352,7 @@ function OrdersPanel() {
   const [statusFilter, setStatusFilter] = useState<"all" | OrderStatus>("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [receiptOrder, setReceiptOrder] = useState<AdminOrder | null>(null);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -416,7 +417,16 @@ function OrdersPanel() {
     fetchOrders();
   }, [fetchOrders]);
 
+  async function handleDeleteOrder(orderId: string) {
+    if (!confirm("Delete this order permanently? This cannot be undone.")) return;
+    const sb = createClient();
+    await sb.from("orders").delete().eq("id", orderId);
+    await fetchOrders();
+  }
+
   async function handleStatusChange(orderId: string, newStatus: OrderStatus) {
+    const oldOrder = orders.find((o) => o.id === orderId);
+    const wasPending = oldOrder?.status === "pending";
     setSavingId(orderId);
     const sb = createClient();
     const updates: Record<string, unknown> = { status: newStatus };
@@ -426,6 +436,24 @@ function OrdersPanel() {
     await sb.from("orders").update(updates).eq("id", orderId);
     await fetchOrders();
     setSavingId(null);
+    // Show receipt popup when confirming an order (moving from pending → any other)
+    if (wasPending && newStatus !== "pending") {
+      setReceiptOrder(orders.find((o) => o.id === orderId) || null);
+    }
+  }
+
+  function formatDateTime(iso: string): string {
+    const d = new Date(iso);
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const hours = d.getHours();
+    const mins = d.getMinutes().toString().padStart(2, "0");
+    const ampm = hours >= 12 ? "PM" : "AM";
+    const h12 = hours % 12 || 12;
+    return `${months[d.getMonth()]} ${d.getDate()}, ${h12}:${mins} ${ampm}`;
+  }
+
+  function handlePrint() {
+    window.print();
   }
 
   function toggleExpand(id: string) {
@@ -598,7 +626,7 @@ function OrdersPanel() {
                       )}
                     </div>
 
-                    {/* Status Change Dropdown */}
+                    {/* Status Change Dropdown & Delete */}
                     <div className="flex items-center gap-2 pt-2 border-t border-[#e5e7eb]">
                       <span className="text-xs font-semibold text-[#6b7280]">
                         Change Status:
@@ -620,18 +648,130 @@ function OrdersPanel() {
                           </option>
                         ))}
                       </select>
-                      {savingId === o.id && (
-                        <span className="text-xs text-[#6b7280] animate-pulse">
-                          Saving…
-                        </span>
+          {savingId === o.id && (
+            <span className="text-xs text-[#6b7280] animate-pulse">
+              Saving…
+            </span>
+          )}
+                      {o.status !== "pending" && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setReceiptOrder(o); }}
+                          className="ml-auto px-3 py-1.5 rounded-md text-xs font-semibold bg-[#dbeafe] text-[#1e40af] hover:bg-[#bfdbfe] transition-colors"
+                        >
+                          Print Receipt
+                        </button>
                       )}
-                    </div>
-                  </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDeleteOrder(o.id); }}
+                        className="px-3 py-1.5 rounded-md text-xs font-semibold bg-[#fee2e2] text-[#dc2626] hover:bg-[#fecaca] transition-colors"
+                      >
+                        Delete Order
+                      </button>
+        </div>
+      </div>
                 )}
               </div>
             );
           })}
         </div>
+      )}
+
+      {/* ─── Receipt Popup Modal ─── */}
+      {receiptOrder && (
+        <>
+          <div className="fixed inset-0 bg-black/40 z-50" onClick={() => setReceiptOrder(null)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-xl border border-[#e5e7eb] w-full max-w-md max-h-[90vh] overflow-y-auto">
+              {/* Print-only styles */}
+              <style jsx global>{`
+                @media print {
+                  body * { visibility: hidden; }
+                  .receipt-popup, .receipt-popup * { visibility: visible; }
+                  .receipt-popup { position: absolute; left: 0; top: 0; width: 100%; padding: 0; margin: 0; max-height: none !important; }
+                  .no-print { display: none !important; }
+                  @page { margin: 10mm; size: auto; }
+                }
+              `}</style>
+              <div className="receipt-popup p-5">
+                <div className="text-center mb-4">
+                  <h2 className="text-xl font-black" style={{ color: "#dc2626" }}>BEN'S TAPSIHAN</h2>
+                  <p className="text-xs text-[#9ca3af] font-mono mt-0.5">Order Receipt</p>
+                </div>
+                <div className="border-t border-b border-dashed border-[#e5e7eb] py-3 space-y-1.5">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[#6b7280] font-medium">Order #</span>
+                    <span className="font-mono font-bold text-[#0a0a0a]">{receiptOrder.id.slice(0, 8).toUpperCase()}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[#6b7280] font-medium">Customer</span>
+                    <span className="font-semibold text-[#0a0a0a]">{receiptOrder.customerName}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[#6b7280] font-medium">Type</span>
+                    <span className="font-semibold text-[#0a0a0a]">{ORDER_TYPE_ICON[receiptOrder.orderType]} {ORDER_TYPE_LABEL[receiptOrder.orderType]}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[#6b7280] font-medium">Placed</span>
+                    <span className="font-semibold text-[#0a0a0a]">{formatDateTime(receiptOrder.placedAt)}</span>
+                  </div>
+                  {receiptOrder.notes && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-[#6b7280] font-medium">Notes</span>
+                      <span className="font-semibold text-[#0a0a0a] italic max-w-[60%] text-right">{receiptOrder.notes}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="py-3 space-y-2">
+                  <p className="text-xs font-bold text-[#6b7280] uppercase tracking-wider">Items</p>
+                  {receiptOrder.items.map((item, i) => (
+                    <div key={i} className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-[#9ca3af] w-7">x{item.quantity}</span>
+                        <span className="font-semibold text-[#1f2937]">{item.name}</span>
+                      </div>
+                      <span className="font-bold text-[#374151]">₱{item.price * item.quantity}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="border-t border-dashed border-[#e5e7eb] pt-3 space-y-1.5 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-[#6b7280]">Subtotal</span>
+                    <span className="font-semibold text-[#1f2937]">₱{receiptOrder.subtotal}</span>
+                  </div>
+                  {receiptOrder.deliveryFee > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-[#6b7280]">Delivery Fee</span>
+                      <span className="font-semibold text-[#1f2937]">₱{receiptOrder.deliveryFee}</span>
+                    </div>
+                  )}
+                  {receiptOrder.discount > 0 && (
+                    <div className="flex justify-between text-[#10b981]">
+                      <span>Discount</span>
+                      <span className="font-semibold">-₱{receiptOrder.discount}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between border-t border-[#e5e7eb] pt-2 mt-1">
+                    <span className="text-base font-extrabold text-[#0a0a0a]">Total</span>
+                    <span className="text-lg font-extrabold" style={{ color: "#dc2626" }}>₱{receiptOrder.total}</span>
+                  </div>
+                </div>
+                <div className="text-center mt-4 pt-3 border-t border-dashed border-[#e5e7eb]">
+                  <p className="text-xs text-[#9ca3af]">Thank you for your order!</p>
+                  <p className="text-xs text-[#d1d5db] mt-0.5">Receipt • {formatDateTime(receiptOrder.placedAt)}</p>
+                </div>
+                <div className="flex gap-2 mt-4 no-print">
+                  <button onClick={handlePrint} className="flex-1 px-4 py-2.5 rounded-xl text-white text-sm font-bold transition-all duration-200 hover:scale-105 flex items-center justify-center gap-2" style={{ backgroundColor: "#dc2626" }}>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                    </svg>
+                    Print Receipt
+                  </button>
+                  <button onClick={() => setReceiptOrder(null)} className="px-4 py-2.5 rounded-xl border border-[#e5e7eb] text-sm font-medium text-[#6b7280] hover:bg-[#f3f4f6] transition-colors">Close</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

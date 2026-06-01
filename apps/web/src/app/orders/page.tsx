@@ -108,7 +108,7 @@ function formatDate(iso: string): string {
 function OrderCard({ order }: { order: Order }) {
   const statusCfg = STATUS_CONFIG[order.status];
   return (
-    <div className="block bg-white rounded-2xl p-5 border border-[#e5e7eb] hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
+    <Link href={`/orders/${order.id}`} className="block bg-white rounded-2xl p-5 border border-[#e5e7eb] hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
       <div className="flex items-start justify-between mb-3">
         <div>
           <p className="text-sm font-extrabold text-[#374151] tracking-wide">
@@ -167,7 +167,7 @@ function OrderCard({ order }: { order: Order }) {
           </p>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
 
