@@ -10,8 +10,10 @@ import {
 } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import * as companyEmailValidator from 'company-email-validator';
+
 function isValidEmail(email: string): boolean {
-  return /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email);
+  return !companyEmailValidator.isCompanyEmail(email);
 }
 
 export interface User {
