@@ -178,16 +178,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
       const subtotal = cart.reduce((sum, c) => sum + c.price * c.quantity, 0);
 
-      // 1. Create the order
+      // 1. Create the order (no payment fields — manual confirmation by admin)
       const { data: order, error: orderErr } = await sb
         .from("orders")
         .insert({
           customer_id: session.user.id,
           order_type: "takeout",
           status: "pending",
-          payment_method: "cash",
-          payment_status: "unpaid",
           subtotal,
+          delivery_fee: 0,
+          discount: 0,
           total: subtotal,
         })
         .select("id")

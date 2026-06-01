@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { getImageCandidates, getImagePath } from "@/lib/menu-data";
+import { getImageCandidates, getImagePath, cacheResolvedUrl } from "@/lib/menu-data";
 
 interface StorageImageProps {
   imageBaseName: string;
@@ -53,6 +53,8 @@ export default function StorageImage({
   }
 
   function handleLoad() {
+    // Cache the winning URL so subsequent renders skip the trial-and-error loop
+    cacheResolvedUrl(imageBaseName, src);
     onLoad?.();
   }
 
@@ -62,6 +64,7 @@ export default function StorageImage({
         src={fallbackSrc}
         alt={alt}
         className={className}
+        loading="lazy"
         onError={(e) => {
           (e.target as HTMLImageElement).style.display = "none";
         }}
@@ -76,6 +79,7 @@ export default function StorageImage({
       src={src}
       alt={alt}
       className={className}
+      loading="lazy"
       onLoad={handleLoad}
       onError={handleError}
     />

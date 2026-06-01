@@ -286,40 +286,353 @@ function MenuPanel() {
   );
 }
 
+type OrderStatus =
+  | "pending"
+  | "confirmed"
+  | "preparing"
+  | "otw"
+  | "ready"
+  | "completed"
+  | "cancelled";
+type OrderType = "dine_in" | "takeout" | "delivery";
+
+const STATUS_OPTIONS: { value: OrderStatus; label: string }[] = [
+  { value: "pending", label: "Pending" },
+  { value: "confirmed", label: "Confirmed" },
+  { value: "preparing", label: "Preparing" },
+  { value: "otw", label: "On The Way" },
+  { value: "ready", label: "Ready" },
+  { value: "completed", label: "Completed" },
+  { value: "cancelled", label: "Cancelled" },
+];
+
+const STATUS_STYLE: Record<
+  OrderStatus,
+  { label: string; color: string; bg: string }
+> = {
+  pending: { label: "Pending", color: "#92400e", bg: "#fef3c7" },
+  confirmed: { label: "Confirmed", color: "#1e40af", bg: "#dbeafe" },
+  preparing: { label: "Preparing", color: "#6b21a8", bg: "#f3e8ff" },
+  otw: { label: "On The Way", color: "#c2410c", bg: "#ffedd5" },
+  ready: { label: "Ready", color: "#065f46", bg: "#d1fae5" },
+  completed: { label: "Completed", color: "#1e3a5f", bg: "#e0f2fe" },
+  cancelled: { label: "Cancelled", color: "#991b1b", bg: "#fee2e2" },
+};
+
+const ORDER_TYPE_ICON: Record<OrderType, string> = {
+  dine_in: "🍽️",
+  takeout: "🛍️",
+  delivery: "🛵",
+};
+const ORDER_TYPE_LABEL: Record<OrderType, string> = {
+  dine_in: "Dine In",
+  takeout: "Takeout",
+  delivery: "Delivery",
+};
+
+interface AdminOrder {
+  id: string;
+  customerName: string;
+  customerEmail: string;
+  orderType: OrderType;
+  status: OrderStatus;
+  subtotal: number;
+  deliveryFee: number;
+  discount: number;
+  total: number;
+  notes: string | null;
+  items: { name: string; quantity: number; price: number }[];
+  placedAt: string;
+  completedAt: string | null;
+}
+
 function OrdersPanel() {
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState<AdminOrder[]>([]);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { (async () => {
+  const [statusFilter, setStatusFilter] = useState<"all" | OrderStatus>("all");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [savingId, setSavingId] = useState<string | null>(null);
+
+  const fetchOrders = useCallback(async () => {
+    setLoading(true);
     const sb = createClient();
-    const { data } = await sb.from("orders").select("id, status, total, placed_at, customer:profiles(full_name)").order("placed_at", { ascending: false });
-    if (data) setOrders(data.map((row: any) => ({ id: row.id, customer_name: (row.customer as any)?.full_name || "Unknown", status: row.status, total: row.total, placed_at: row.placed_at, items_count: 0 })));
+    const { data: rows } = await sb
+      .from("orders")
+      .select(
+        "id, order_type, status, subtotal, delivery_fee, discount, total, notes, placed_at, completed_at, customer:profiles(full_name, email)"
+      )
+      .order("placed_at", { ascending: false });
+
+    if (!rows) {
+      setOrders([]);
+      setLoading(false);
+      return;
+    }
+
+    const ids = rows.map((r) => r.id);
+    const { data: items } = await sb
+      .from("order_items")
+      .select("order_id, quantity, unit_price, menu_item:menu_items(name)")
+      .in("order_id", ids);
+
+    const itemsByOrder = new Map<
+      string,
+      { name: string; quantity: number; price: number }[]
+    >();
+    if (items) {
+      for (const it of items) {
+        const arr = itemsByOrder.get(it.order_id) || [];
+        arr.push({
+          name: (it.menu_item as any)?.name || "Unknown",
+          quantity: it.quantity,
+          price: it.unit_price,
+        });
+        itemsByOrder.set(it.order_id, arr);
+      }
+    }
+
+    setOrders(
+      rows.map((r: any) => ({
+        id: r.id,
+        customerName:
+          (r.customer as any)?.full_name || (r.customer as any)?.email || "N/A",
+        customerEmail: (r.customer as any)?.email || "",
+        orderType: r.order_type as OrderType,
+        status: r.status as OrderStatus,
+        subtotal: r.subtotal,
+        deliveryFee: r.delivery_fee,
+        discount: r.discount,
+        total: r.total,
+        notes: r.notes,
+        items: itemsByOrder.get(r.id) || [],
+        placedAt: r.placed_at,
+        completedAt: r.completed_at,
+      }))
+    );
     setLoading(false);
-  })(); }, []);
+  }, []);
+
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
+
+  async function handleStatusChange(orderId: string, newStatus: OrderStatus) {
+    setSavingId(orderId);
+    const sb = createClient();
+    const updates: Record<string, unknown> = { status: newStatus };
+    if (newStatus === "completed") {
+      updates.completed_at = new Date().toISOString();
+    }
+    await sb.from("orders").update(updates).eq("id", orderId);
+    await fetchOrders();
+    setSavingId(null);
+  }
+
+  function toggleExpand(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const filtered =
+    statusFilter === "all"
+      ? orders
+      : orders.filter((o) => o.status === statusFilter);
+
   if (loading) return <LoadingSkeleton />;
   if (!orders.length) return <EmptyState message="No orders yet." />;
 
-  const statusColors: Record<string, string> = { pending: "bg-yellow-100 text-yellow-800", confirmed: "bg-blue-100 text-blue-800", preparing: "bg-purple-100 text-purple-800", ready: "bg-green-100 text-green-800", delivered: "bg-gray-100 text-gray-800", cancelled: "bg-red-100 text-red-800" };
-
   return (
-    <div className="bg-white rounded-xl border border-[#e5e7eb] overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-[#f9fafb] text-left text-xs uppercase text-[#6b7280] tracking-wider">
-            <tr><th className="px-4 py-3">Order #</th><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Placed</th></tr>
-          </thead>
-          <tbody className="divide-y divide-[#e5e7eb]">
-            {orders.map((o) => (
-              <tr key={o.id} className="hover:bg-[#f9fafb]">
-                <td className="px-4 py-3 font-mono text-xs text-[#6b7280]">{o.id.slice(0, 8)}…</td>
-                <td className="px-4 py-3 font-medium text-[#0a0a0a]">{o.customer_name}</td>
-                <td className="px-4 py-3"><span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${statusColors[o.status] || "bg-gray-100 text-gray-800"}`}>{o.status}</span></td>
-                <td className="px-4 py-3 font-semibold" style={{ color: "#dc2626" }}>₱{o.total}</td>
-                <td className="px-4 py-3 text-[#6b7280] text-xs">{new Date(o.placed_at).toLocaleString()}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <div className="space-y-4">
+      <h2 className="text-lg font-bold text-[#0a0a0a]">
+        Orders ({orders.length})
+      </h2>
+
+      {/* Status Filter Tabs */}
+      <div className="flex gap-1 flex-wrap">
+        <button
+          onClick={() => setStatusFilter("all")}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+            statusFilter === "all"
+              ? "bg-[#dc2626] text-white"
+              : "bg-[#f3f4f6] text-[#6b7280] hover:text-[#dc2626]"
+          }`}
+        >
+          All
+        </button>
+        {STATUS_OPTIONS.map((s) => (
+          <button
+            key={s.value}
+            onClick={() => setStatusFilter(s.value)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              statusFilter === s.value
+                ? "bg-[#dc2626] text-white"
+                : "bg-[#f3f4f6] text-[#6b7280] hover:text-[#dc2626]"
+            }`}
+          >
+            {s.label}
+          </button>
+        ))}
       </div>
+
+      {filtered.length === 0 ? (
+        <EmptyState
+          message={`No ${statusFilter === "all" ? "" : statusFilter} orders.`}
+        />
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((o) => {
+            const s = STATUS_STYLE[o.status];
+            const isExpanded = expanded.has(o.id);
+            return (
+              <div
+                key={o.id}
+                className="bg-white rounded-xl border border-[#e5e7eb] overflow-hidden"
+              >
+                {/* Summary Row */}
+                <div
+                  className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-[#f9fafb] transition-colors"
+                  onClick={() => toggleExpand(o.id)}
+                >
+                  <div className="flex-shrink-0 text-lg">
+                    {isExpanded ? "▼" : "▶"}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-bold text-[#6b7280]">
+                        {o.id.slice(0, 8).toUpperCase()}…
+                      </span>
+                      <span className="text-xs">
+                        {ORDER_TYPE_ICON[o.orderType]}{" "}
+                        {ORDER_TYPE_LABEL[o.orderType]}
+                      </span>
+                    </div>
+                    <p className="text-sm font-semibold text-[#0a0a0a] truncate">
+                      {o.customerName}
+                    </p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p
+                      className="text-sm font-black"
+                      style={{ color: "#dc2626" }}
+                    >
+                      ₱{o.total}
+                    </p>
+                    <span
+                      className="inline-block px-2 py-0.5 rounded-full text-xs font-extrabold"
+                      style={{ backgroundColor: s.bg, color: s.color }}
+                    >
+                      {s.label}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Expanded Details */}
+                {isExpanded && (
+                  <div className="border-t border-[#e5e7eb] px-4 py-3 space-y-3 bg-[#fafafa]">
+                    {/* Items */}
+                    <div className="space-y-1">
+                      <p className="text-xs font-bold text-[#6b7280] uppercase tracking-wider">
+                        Items
+                      </p>
+                      {o.items.map((item, i) => (
+                        <div
+                          key={i}
+                          className="flex items-center gap-2 text-sm"
+                        >
+                          <span className="text-xs font-bold text-[#9ca3af] w-7">
+                            x{item.quantity}
+                          </span>
+                          <span className="flex-1 font-semibold text-[#1f2937]">
+                            {item.name}
+                          </span>
+                          <span className="font-bold text-[#374151]">
+                            ₱{item.price * item.quantity}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Totals */}
+                    <div className="border-t border-[#e5e7eb] pt-2 space-y-0.5 text-xs text-[#6b7280]">
+                      <div className="flex justify-between">
+                        <span>Subtotal</span>
+                        <span className="font-semibold">₱{o.subtotal}</span>
+                      </div>
+                      {o.deliveryFee > 0 && (
+                        <div className="flex justify-between">
+                          <span>Delivery Fee</span>
+                          <span className="font-semibold">
+                            ₱{o.deliveryFee}
+                          </span>
+                        </div>
+                      )}
+                      {o.discount > 0 && (
+                        <div className="flex justify-between text-[#10b981]">
+                          <span>Discount</span>
+                          <span className="font-semibold">-₱{o.discount}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-sm font-black text-[#0a0a0a] pt-1 border-t border-[#e5e7eb]">
+                        <span>Total</span>
+                        <span style={{ color: "#dc2626" }}>₱{o.total}</span>
+                      </div>
+                    </div>
+
+                    {/* Info */}
+                    <div className="text-xs text-[#9ca3af] space-y-0.5">
+                      <p>
+                        Placed: {new Date(o.placedAt).toLocaleString()}
+                      </p>
+                      {o.completedAt && (
+                        <p>
+                          Completed:{" "}
+                          {new Date(o.completedAt).toLocaleString()}
+                        </p>
+                      )}
+                      {o.notes && (
+                        <p className="italic">Note: {o.notes}</p>
+                      )}
+                    </div>
+
+                    {/* Status Change Dropdown */}
+                    <div className="flex items-center gap-2 pt-2 border-t border-[#e5e7eb]">
+                      <span className="text-xs font-semibold text-[#6b7280]">
+                        Change Status:
+                      </span>
+                      <select
+                        value={o.status}
+                        onChange={(e) =>
+                          handleStatusChange(
+                            o.id,
+                            e.target.value as OrderStatus
+                          )
+                        }
+                        disabled={savingId === o.id}
+                        className="text-xs font-semibold px-2 py-1.5 rounded-lg border border-[#e5e7eb] bg-white text-[#0a0a0a] cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#dc2626]/30"
+                      >
+                        {STATUS_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                      {savingId === o.id && (
+                        <span className="text-xs text-[#6b7280] animate-pulse">
+                          Saving…
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

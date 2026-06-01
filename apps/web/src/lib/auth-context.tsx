@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export interface User {
+  id: string;
   username: string;
   fullName: string;
   email: string;
@@ -46,10 +47,12 @@ function getSupabase() {
 }
 
 function buildUser(
+  id: string,
   sessionUser: { email?: string; user_metadata?: Record<string, unknown> },
   profile?: { username?: string; full_name?: string; role?: string } | null
 ): User {
   return {
+    id,
     username:
       profile?.username ||
       (sessionUser.user_metadata?.username as string) ||
@@ -84,7 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             .select("username, full_name, role")
             .eq("id", session.user.id)
             .maybeSingle();
-          const u = buildUser(session.user, profile);
+          const u = buildUser(session.user.id, session.user, profile);
           setUser(u);
         }
       } catch {
@@ -135,7 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .select("username, full_name, role")
           .eq("id", data.session.user.id)
           .maybeSingle();
-        const u = buildUser(data.session.user, fullProfile);
+        const u = buildUser(data.session.user.id, data.session.user, fullProfile);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
         setUser(u);
       }
@@ -212,6 +215,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // If email confirmation is off (dev), auto-login
       if (data.session?.user) {
         const u: User = {
+          id: data.session.user.id,
           username: usernameLower,
           fullName: fullName.trim(),
           email: data.session.user.email || email.toLowerCase(),
@@ -269,6 +273,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) return error.message;
 
       const updated: User = {
+        id: session.user.id,
         username: usernameLower,
         fullName: fullName.trim(),
         email: session.user.email || user?.email || "",
@@ -278,7 +283,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(updated);
       return null;
     },
-    [user?.email]
+    [user]
   );
 
   const signInWithOtp = useCallback(
@@ -327,7 +332,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .select("username, full_name, role")
           .eq("id", data.session.user.id)
           .maybeSingle();
-        const u = buildUser(data.session.user, profile);
+        const u = buildUser(data.session.user.id, data.session.user, profile);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
         setUser(u);
       }
