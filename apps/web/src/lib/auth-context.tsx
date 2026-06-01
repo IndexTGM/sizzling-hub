@@ -10,6 +10,9 @@ import {
 } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
+function isValidEmail(email: string): boolean {
+  return /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email);
+}
 
 export interface User {
   id: string;
@@ -162,7 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return "Username can only contain letters, numbers, and underscores.";
       if (!fullName.trim()) return "Full name is required.";
       if (!email.trim()) return "Email is required.";
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      if (!isValidEmail(email))
         return "Please enter a valid email address.";
       if (password.length < 8)
         return "Password must be at least 8 characters long.";
@@ -289,6 +292,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithOtp = useCallback(
     async (email: string): Promise<string | null> => {
       if (!email.trim()) return "Please enter your email address.";
+      if (!isValidEmail(email)) return "Please enter a valid email address.";
 
       const sb = getSupabase();
       const { error } = await sb.auth.signInWithOtp({
