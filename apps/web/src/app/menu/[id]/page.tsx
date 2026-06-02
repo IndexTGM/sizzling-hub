@@ -6,11 +6,11 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { useMenu } from "@/lib/menu-context";
 import { useCart } from "@/lib/cart-context";
-import { getImagePath } from "@/lib/menu-data";
 import AppHeader from "@/app/_components/AppHeader";
 import CartSidebar from "@/app/_components/CartSidebar";
 import ProfileModal from "@/app/_components/ProfileModal";
 import PlaceholderImage from "@/app/_components/PlaceholderImage";
+import StorageImage from "@/app/_components/StorageImage";
 
 const PRIMARY = "#dc2626";
 const AMBER = "#f59e0b";
@@ -85,7 +85,14 @@ export default function MenuItemPage() {
             {imgError ? (
               <PlaceholderImage name={item.name} />
             ) : (
-              <img src={getImagePath(item.imageName)} alt={item.name} className="w-full h-full object-cover" onError={() => setImgError(true)} />
+              <StorageImage
+                imageBaseName={item.imageName}
+                alt={item.name}
+                className="w-full h-full object-cover"
+                priority
+                transform={{ width: 800, quality: 80, format: "webp" }}
+                onError={() => setImgError(true)}
+              />
             )}
             {isSoldOut && (
               <div className="absolute inset-0 bg-black/55 flex items-center justify-center">

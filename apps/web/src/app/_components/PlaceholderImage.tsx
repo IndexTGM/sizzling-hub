@@ -8,6 +8,8 @@ export default function PlaceholderImage({ name }: { name: string }) {
       src={getImagePath("placeholder.png")}
       alt={name}
       className="w-full h-full object-cover"
+      loading="lazy"
+      decoding="async"
     />
   );
 }

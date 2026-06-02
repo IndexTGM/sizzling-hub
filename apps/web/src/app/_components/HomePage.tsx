@@ -123,6 +123,7 @@ function BannerCarousel({
                     imageBaseName={b.image}
                     alt={b.title}
                     className="relative w-28 h-28 sm:w-40 sm:h-40 object-cover rounded-2xl shadow-lg ring-2 ring-white/30"
+                    priority={i === 0}
                   />
                 </div>
               </div>
