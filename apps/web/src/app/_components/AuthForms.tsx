@@ -109,7 +109,7 @@ export default function AuthForms({ initialView }: { initialView: View }) {
             alt="Ben's Tapsihan"
             className="w-20 h-20 mx-auto mb-4 object-contain"
           />
-          <h1 className="text-3xl font-black tracking-tight" style={{ color: "#dc2626" }}>BEN'S TAPIHAN</h1>
+          <h1 className="text-3xl font-black tracking-tight" style={{ color: "#dc2626" }}>BEN'S TAPSIHAN</h1>
           <p className="text-[#6b7280] mt-2 text-sm font-medium tracking-wide">
             {view === "login" ? "Welcome back! Log in to continue." : view === "register" ? "Create your account to get started." : view === "otp-signin" ? "Sign in without a password." : "Enter your verification code"}
           </p>
