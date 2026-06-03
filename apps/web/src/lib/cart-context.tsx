@@ -24,7 +24,7 @@ interface CartContextType {
   updateNote: (id: string, oldNote: string, newNote: string) => void;
   removeFromCart: (id: string, note: string) => void;
   clearCart: () => void;
-  placeOrder: (orderType?: "dine_in" | "takeout" | "delivery" | "pickup") => Promise<{ success: boolean; error?: string }>;
+  placeOrder: (orderType?: "dine_in" | "takeout" | "delivery" | "pickup", address?: { street: string; city: string; province: string; zip?: string | null } | null) => Promise<{ success: boolean; error?: string }>;
 }
 
 const CartContext = createContext<CartContextType | null>(null);
@@ -166,7 +166,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const placeOrder = useCallback(async (
-    orderType: "dine_in" | "takeout" | "delivery" | "pickup" = "delivery"
+    orderType: "dine_in" | "takeout" | "delivery" | "pickup" = "delivery",
+    address?: { street: string; city: string; province: string; zip?: string | null } | null
   ): Promise<{ success: boolean; error?: string }> => {
     if (cart.length === 0) return { success: false, error: "Cart is empty." };
     try {
@@ -185,9 +186,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
         }
       }
 
+      const addressStr = address
+        ? `${address.street}, ${address.city}, ${address.province}${address.zip ? ` ${address.zip}` : ""}`
+        : null;
+
       const { data: order, error: orderErr } = await sb.from("orders").insert({
         customer_id: session.user.id, order_type: orderType, status: "pending",
         subtotal, delivery_fee: 0, discount: 0, total: subtotal,
+        notes: addressStr ? `Address: ${addressStr}` : null,
       }).select("id").single();
 
       if (orderErr || !order) return { success: false, error: orderErr?.message || "Failed to create order." };

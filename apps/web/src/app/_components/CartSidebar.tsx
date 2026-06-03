@@ -1,12 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
 import { useToast } from "@/app/_components/Toast";
+import { createClient } from "@/lib/supabase/client";
 import PlaceholderImage from "./PlaceholderImage";
 import StorageImage from "./StorageImage";
+import AddressModal from "./AddressModal";
 
 type OrderMethod = "delivery" | "pickup";
+
+interface SavedAddress {
+  id: string;
+  label: string;
+  street: string;
+  city: string;
+  province: string;
+  zip: string | null;
+  is_default: boolean;
+}
 
 export default function CartSidebar({
   open,
@@ -19,16 +32,41 @@ export default function CartSidebar({
   imgErrors: Set<string>;
   onImgError: (name: string) => void;
 }) {
+  const { user } = useAuth();
   const { cart, itemCount, total, updateQty, removeFromCart, placeOrder } = useCart();
   const { showToast } = useToast();
   const [placing, setPlacing] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [orderMethod, setOrderMethod] = useState<OrderMethod>("delivery");
+  const [addressModalOpen, setAddressModalOpen] = useState(false);
+  const [defaultAddress, setDefaultAddress] = useState<SavedAddress | null>(null);
+  const [addressLoading, setAddressLoading] = useState(false);
+
+  // Fetch default address when delivery is selected
+  useEffect(() => {
+    if (!user || orderMethod !== "delivery") {
+      setDefaultAddress(null);
+      return;
+    }
+    (async () => {
+      setAddressLoading(true);
+      const sb = createClient();
+      const { data } = await sb
+        .from("addresses")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("is_default", true)
+        .maybeSingle();
+      if (data) setDefaultAddress(data as SavedAddress);
+      else setDefaultAddress(null);
+      setAddressLoading(false);
+    })();
+  }, [user, orderMethod, addressModalOpen]); // re-fetch when modal closes
 
   async function handleConfirmOrder() {
     setConfirmOpen(false);
     setPlacing(true);
-    const result = await placeOrder(orderMethod);
+    const result = await placeOrder(orderMethod, defaultAddress);
     setPlacing(false);
     if (result.success) {
       showToast("Order placed successfully! We're preparing your food now. 🍳", "success");
@@ -37,6 +75,9 @@ export default function CartSidebar({
       showToast(result.error || "Failed to place order.", "error");
     }
   }
+
+  const hasDeliveryAddress = orderMethod === "delivery" && defaultAddress !== null;
+  const needsAddress = orderMethod === "delivery" && !addressLoading && defaultAddress === null;
 
   return (
     <>
@@ -149,12 +190,40 @@ export default function CartSidebar({
               </button>
             </div>
 
+            {/* Address warning for delivery */}
+            {needsAddress && (
+              <div className="p-3 rounded-xl bg-red-50 border border-red-200 space-y-2">
+                <p className="text-xs font-semibold text-red-700">⚠️ No delivery address set</p>
+                <p className="text-xs text-red-500">Please add your delivery address to place a delivery order.</p>
+                <button
+                  onClick={() => setAddressModalOpen(true)}
+                  className="w-full py-2 rounded-lg bg-red-600 text-white text-xs font-bold hover:bg-red-700 transition-colors"
+                >
+                  Set Delivery Address
+                </button>
+              </div>
+            )}
+
+            {hasDeliveryAddress && (
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200">
+                <p className="text-xs font-semibold text-emerald-700 mb-1">📍 Delivering to:</p>
+                <p className="text-xs text-emerald-600 font-medium">{defaultAddress.street}</p>
+                <p className="text-xs text-emerald-500">{defaultAddress.city}, {defaultAddress.province}</p>
+                <button
+                  onClick={() => setAddressModalOpen(true)}
+                  className="mt-2 text-xs font-semibold text-emerald-700 underline hover:no-underline"
+                >
+                  Change Address
+                </button>
+              </div>
+            )}
+
             <div className="flex items-center justify-between">
               <span className="text-sm text-[#6b7280] font-medium">Total</span>
               <span className="text-xl font-black" style={{ color: "#dc2626" }}>₱{total}</span>
             </div>
             <button
-              disabled={cart.length === 0 || placing}
+              disabled={cart.length === 0 || placing || needsAddress}
               className="w-full py-3 rounded-xl font-bold text-white text-sm tracking-wide transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed hover:scale-[1.02] active:scale-100"
               style={{ backgroundColor: "#dc2626" }}
               onClick={() => setConfirmOpen(true)}
@@ -196,6 +265,17 @@ export default function CartSidebar({
                   {orderMethod === "delivery" ? "🛵 Delivery" : "🛍️ Pickup"}
                 </span>
               </div>
+
+              {/* Delivery address */}
+              {orderMethod === "delivery" && defaultAddress && (
+                <div className="px-5 pt-2">
+                  <div className="p-3 rounded-xl bg-gray-50 border border-gray-200">
+                    <p className="text-xs font-semibold text-gray-400 mb-1">📍 Delivery Address</p>
+                    <p className="text-sm font-semibold text-gray-800">{defaultAddress.street}</p>
+                    <p className="text-xs text-gray-500">{defaultAddress.city}, {defaultAddress.province}{defaultAddress.zip ? ` ${defaultAddress.zip}` : ""}</p>
+                  </div>
+                </div>
+              )}
 
               {/* Items list */}
               <div className="px-5 py-4 space-y-1.5 max-h-[50vh] overflow-y-auto">
@@ -243,6 +323,13 @@ export default function CartSidebar({
           </div>
         </>
       )}
+
+      {/* Address Modal */}
+      <AddressModal
+        open={addressModalOpen}
+        onClose={() => setAddressModalOpen(false)}
+        userId={user?.id || ""}
+      />
     </>
   );
 }
