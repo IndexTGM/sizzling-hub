@@ -23,7 +23,7 @@ export default function DashboardPanel() {
     const sb = createClient();
     const [{ count: orderCount }, { data: revenueRows }, { count: customerCount }, { count: menuCount }, { count: pendingCount }, { data: recent }] = await Promise.all([
       sb.from("orders").select("*", { count: "exact", head: true }),
-      sb.from("orders").select("total").eq("status", "completed"),
+      sb.from("orders").select("total").in("status", ["delivered", "out_for_delivery"]),
       sb.from("profiles").select("*", { count: "exact", head: true }).eq("role", "customer"),
       sb.from("menu_items").select("*", { count: "exact", head: true }),
       sb.from("orders").select("*", { count: "exact", head: true }).eq("status", "pending"),
@@ -48,7 +48,7 @@ export default function DashboardPanel() {
     <div className="space-y-8">
       <div><h2 className="text-xl font-black text-gray-900 tracking-tight">Dashboard</h2><p className="text-sm text-gray-400 mt-0.5">Store overview</p></div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Total Revenue" value={rev} sub="Completed orders" color="#10b981" />
+      <StatCard label="Total Revenue" value={rev} sub="From delivered orders" color="#10b981" />
         <StatCard label="Orders" value={String(stats.totalOrders)} sub={`${stats.pendingOrders} pending`} color="#f59e0b" />
         <StatCard label="Customers" value={String(stats.totalCustomers)} color="#3b82f6" />
         <StatCard label="Menu Items" value={String(stats.totalMenuItems)} color="#ec4899" />
@@ -64,7 +64,7 @@ export default function DashboardPanel() {
                     <td className="px-4 py-3 font-mono text-xs font-bold text-gray-400">#{o.id.slice(0, 8).toUpperCase()}</td>
                     <td className="px-4 py-3 font-semibold text-gray-700">{o.customer}</td>
                     <td className="px-4 py-3 font-bold text-red-600">₱{o.total}</td>
-                    <td className="px-4 py-3"><span className={`inline-block px-2 py-0.5 rounded-full text-xs font-extrabold ${o.status === "completed" ? "bg-emerald-50 text-emerald-600" : o.status === "pending" ? "bg-amber-50 text-amber-600" : o.status === "cancelled" ? "bg-red-50 text-red-600" : "bg-blue-50 text-blue-600"}`}>{o.status}</span></td>
+                    <td className="px-4 py-3"><span className={`inline-block px-2 py-0.5 rounded-full text-xs font-extrabold ${o.status === "delivered" ? "bg-emerald-50 text-emerald-600" : o.status === "pending" ? "bg-amber-50 text-amber-600" : o.status === "cancelled" ? "bg-red-50 text-red-600" : o.status === "out_for_delivery" ? "bg-orange-50 text-orange-600" : "bg-blue-50 text-blue-600"}`}>{o.status}</span></td>
                     <td className="px-4 py-3 text-gray-400 hidden sm:table-cell">{new Date(o.placed_at).toLocaleDateString()}</td>
                   </tr>
                 ))}
