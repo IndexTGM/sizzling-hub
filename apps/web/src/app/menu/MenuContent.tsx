@@ -33,6 +33,7 @@ export default function MenuContent() {
 
   const searchParams = useSearchParams();
   const [activeCategory, setActiveCategory] = useState(() => searchParams.get("category") || "all");
+  const [search, setSearch] = useState("");
   const [cartOpen, setCartOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [imgErrors, setImgErrors] = useState<Set<string>>(new Set());
@@ -51,13 +52,16 @@ export default function MenuContent() {
     return CATEGORIES;
   }, [categories]);
 
-  const filteredItems = useMemo(
-    () =>
-      activeCategory === "all"
-        ? menuItems
-        : menuItems.filter((item) => item.category === activeCategory),
-    [menuItems, activeCategory]
-  );
+  const filteredItems = useMemo(() => {
+    let items = activeCategory === "all"
+      ? menuItems
+      : menuItems.filter((item) => item.category === activeCategory);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      items = items.filter((item) => item.name.toLowerCase().includes(q));
+    }
+    return items;
+  }, [menuItems, activeCategory, search]);
 
   return (
     <div className="min-h-screen bg-[#fafafa] flex flex-col">
@@ -79,6 +83,15 @@ export default function MenuContent() {
             Back to Home
           </Link>
           <h2 className="text-2xl font-black text-[#0a0a0a] mb-4">Menu</h2>
+
+          {/* Search and Category Tabs */}
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search menu items…"
+            className="w-full px-4 py-2.5 rounded-xl border border-[#e5e7eb] bg-white text-sm text-[#0a0a0a] placeholder-[#9ca3af] focus:outline-none focus:ring-2 focus:ring-[#dc2626]/30 focus:border-[#dc2626] transition-all mb-4"
+          />
 
           {/* Category Tabs */}
           <div className="flex gap-2 mb-6 overflow-x-auto pb-1">
@@ -152,9 +165,7 @@ export default function MenuContent() {
                     <p className="text-[#6b7280] text-sm">{item.category}</p>
                     <div className="flex items-center gap-1.5 mt-1 mb-3">
                       <span className="text-xs" style={{ color: AMBER }}>★</span>
-                      <span className="text-xs font-bold text-[#92400e]">
-                        {(3.9 + (item.name.length * 0.07 + item.price * 0.002) % 1.1).toFixed(1)}
-                      </span>
+                      <span className="text-xs font-bold text-[#92400e]">{item.rating?.toFixed(1)}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-lg font-black" style={{ color: PRIMARY }}>₱{item.price}</span>

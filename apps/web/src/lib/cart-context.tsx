@@ -65,7 +65,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
           const menuIds = [...new Set(rows.map((r: any) => r.menu_item_id))];
           const { data: menuRows } = await sb
             .from("menu_items")
-            .select("id, name, price, image_url, stock, categories(name)")
+            .select("id, name, price, image_url, stock, rating, categories(name)")
             .in("id", menuIds);
 
           const menuMap = new Map<string, MenuItem>();
@@ -73,7 +73,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
             for (const mr of menuRows) {
               menuMap.set(mr.id, {
                 id: mr.id, name: mr.name, price: mr.price,
-                imageName: mr.image_url || "", stock: mr.stock ?? 0,
+                imageName: mr.image_url || "", stock: mr.stock ?? 0, rating: mr.rating ?? 0,
                 category: (mr as any).categories?.name || "Uncategorized",
               });
             }

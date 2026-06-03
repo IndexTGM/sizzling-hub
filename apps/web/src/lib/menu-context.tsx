@@ -40,7 +40,7 @@ async function fetchMenuData(): Promise<{ menuItems: MenuItem[]; categories: Cat
 
     const [catsRes, itemsRes] = await Promise.all([
       sb.from("categories").select("id, name, slug").eq("is_active", true).order("sort_order"),
-      sb.from("menu_items").select("id, name, price, image_url, stock, categories!inner(name)").eq("is_available", true).order("name"),
+      sb.from("menu_items").select("id, name, price, image_url, stock, rating, categories!inner(name)").eq("is_available", true).order("name"),
     ]);
 
     const categories = (catsRes.data || []) as Category[];
@@ -50,6 +50,7 @@ async function fetchMenuData(): Promise<{ menuItems: MenuItem[]; categories: Cat
       price: row.price,
       imageName: row.image_url || "",
       stock: row.stock ?? 0,
+      rating: row.rating ?? 0,
       category: row.categories?.name || "Uncategorized",
     }));
 

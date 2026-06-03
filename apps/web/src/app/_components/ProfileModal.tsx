@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { createClient } from "@/lib/supabase/client";
 import AddressModal from "./AddressModal";
+import ConfirmModal from "./ConfirmModal";
 
 export default function ProfileModal({
   open,
@@ -18,6 +20,46 @@ export default function ProfileModal({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [addressModalOpen, setAddressModalOpen] = useState(false);
+  const [reviewsModalOpen, setReviewsModalOpen] = useState(false);
+  const [reviews, setReviews] = useState<{ id: string; menuItemId: string; menuItemName: string; rating: number; comment: string | null; createdAt: string }[]>([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState<{ reviewId: string; menuItemId: string } | null>(null);
+
+  useEffect(() => {
+    if (reviewsModalOpen && user) {
+      setReviewsLoading(true);
+      const sb = createClient();
+      sb.from("reviews")
+        .select("id, rating, comment, created_at, menu_item_id, menu_item:menu_items(name)")
+        .eq("customer_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(50)
+        .then(({ data }) => {
+          setReviews((data || []).map((r: any) => ({
+            id: r.id,
+            menuItemId: r.menu_item_id || "",
+            menuItemName: r.menu_item?.name || "Unknown item",
+            rating: r.rating,
+            comment: r.comment,
+            createdAt: r.created_at,
+          })));
+          setReviewsLoading(false);
+        });
+    }
+  }, [reviewsModalOpen, user]);
+
+  async function handleDeleteReview(reviewId: string, menuItemId: string) {
+    setDeletingId(reviewId);
+    const sb = createClient();
+    await sb.from("reviews").delete().eq("id", reviewId);
+    setReviews((prev) => prev.filter((r) => r.id !== reviewId));
+    setDeletingId(null);
+    // Recalculate the menu item rating
+    if (menuItemId) {
+      try { await sb.rpc("recalc_menu_item_rating", { p_menu_item_id: menuItemId }); } catch { /* ignore */ }
+    }
+  }
 
   if (!open) return null;
 
@@ -93,6 +135,20 @@ export default function ProfileModal({
             </button>
           </form>
 
+          {/* Reviews button */}
+          <div className="mt-4 pt-4 border-t border-[#f3f4f6]">
+            <button
+              type="button"
+              onClick={() => setReviewsModalOpen(true)}
+              className="w-full py-2.5 rounded-xl bg-amber-50 text-amber-700 text-sm font-bold hover:bg-amber-100 transition-colors flex items-center justify-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+              </svg>
+              My Reviews
+            </button>
+          </div>
+
           {/* Manage Addresses button */}
           <div className="mt-4 pt-4 border-t border-[#f3f4f6]">
             <button
@@ -109,6 +165,70 @@ export default function ProfileModal({
           </div>
         </div>
       </div>
+
+      {/* Reviews Modal */}
+      {reviewsModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-fade-in" onClick={() => setReviewsModalOpen(false)}>
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div className="relative z-10 bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[#f3f4f6]">
+              <h3 className="text-lg font-extrabold text-[#0a0a0a]">My Reviews</h3>
+              <button onClick={() => setReviewsModalOpen(false)} className="p-1.5 rounded-lg hover:bg-[#f3f4f6] transition-colors">
+                <svg className="w-5 h-5" fill="none" stroke="#6b7280" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2">
+              {reviewsLoading ? (
+                <p className="text-sm text-[#9ca3af] text-center py-4">Loading reviews...</p>
+              ) : reviews.length === 0 ? (
+                <p className="text-sm text-[#9ca3af] text-center py-4">No reviews yet.</p>
+              ) : (
+                reviews.map((r) => (
+                  <div key={r.id} className="flex items-start justify-between py-3 px-4 rounded-xl bg-[#f9fafb]">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-[#1f2937]">{r.menuItemName}</span>
+                        <div className="flex gap-0.5">
+                          {[1,2,3,4,5].map((s) => (
+                            <span key={s} className="text-xs" style={{ color: s <= r.rating ? "#f59e0b" : "#d1d5db" }}>★</span>
+                          ))}
+                        </div>
+                      </div>
+                      {r.comment && <p className="text-sm text-[#4b5563] mt-1 leading-relaxed">{r.comment}</p>}
+                      <p className="text-xs text-[#9ca3af] mt-1">{new Date(r.createdAt).toLocaleDateString()}</p>
+                    </div>
+                    <button
+                      onClick={() => setDeleteConfirmOpen({ reviewId: r.id, menuItemId: r.menuItemId })}
+                      disabled={deletingId === r.id}
+                      className="ml-3 px-2 py-1 rounded text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100 flex-shrink-0 transition-colors"
+                    >
+                      {deletingId === r.id ? "..." : "Delete"}
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Delete Confirm Modal ─── */}
+      <ConfirmModal
+        open={deleteConfirmOpen !== null}
+        title="Delete Review"
+        message="Are you sure you want to delete this review? This action cannot be undone."
+        confirmLabel="Delete"
+        confirmDanger
+        onConfirm={() => {
+          if (deleteConfirmOpen) {
+            handleDeleteReview(deleteConfirmOpen.reviewId, deleteConfirmOpen.menuItemId);
+            setDeleteConfirmOpen(null);
+          }
+        }}
+        onCancel={() => setDeleteConfirmOpen(null)}
+      />
 
       {/* Nested Address Modal */}
       <AddressModal
