@@ -17,10 +17,11 @@ type OrderStatus =
   | "pending"
   | "confirmed"
   | "preparing"
+  | "ready"
   | "out_for_delivery"
   | "delivered"
   | "cancelled";
-type OrderType = "dine_in" | "takeout" | "delivery";
+type OrderType = "dine_in" | "takeout" | "delivery" | "pickup";
 
 interface OrderItem {
   name: string;
@@ -49,6 +50,7 @@ const STATUS_CONFIG: Record<
   pending: { label: "Pending", color: "#92400e", bg: "#fef3c7" },
   confirmed: { label: "Confirmed", color: "#1e40af", bg: "#dbeafe" },
   preparing: { label: "Preparing", color: "#6b21a8", bg: "#f3e8ff" },
+  ready: { label: "Ready for Pickup", color: "#059669", bg: "#d1fae5" },
   out_for_delivery: { label: "Out for Delivery", color: "#c2410c", bg: "#ffedd5" },
   delivered: { label: "Delivered", color: "#1e3a5f", bg: "#e0f2fe" },
   cancelled: { label: "Cancelled", color: "#991b1b", bg: "#fee2e2" },
@@ -58,11 +60,13 @@ const ORDER_TYPE_ICON: Record<OrderType, string> = {
   dine_in: "🍽️",
   takeout: "🛍️",
   delivery: "🛵",
+  pickup: "🛍️",
 };
 const ORDER_TYPE_LABEL: Record<OrderType, string> = {
   dine_in: "Dine In",
   takeout: "Takeout",
   delivery: "Delivery",
+  pickup: "Pickup",
 };
 
 /* ─── Progress tracker steps ─── */
@@ -74,18 +78,22 @@ const DELIVERY_STEPS = [
   { key: "delivered", label: "Delivered", icon: "🏠" },
 ];
 
-const STEP_ORDER = [
-  "placed",
-  "confirmed",
-  "preparing",
-  "out_for_delivery",
-  "delivered",
+const PICKUP_STEPS = [
+  { key: "placed", label: "Order Placed", icon: "📝" },
+  { key: "confirmed", label: "Confirmed", icon: "✅" },
+  { key: "preparing", label: "Preparing", icon: "👨‍🍳" },
+  { key: "ready", label: "Ready for Pickup", icon: "📦" },
+  { key: "delivered", label: "Picked Up", icon: "✅" },
 ];
 
-function getStepIndex(status: OrderStatus): number {
+const STEP_ORDER_DELIVERY = ["placed", "confirmed", "preparing", "out_for_delivery", "delivered"];
+const STEP_ORDER_PICKUP = ["placed", "confirmed", "preparing", "ready", "delivered"];
+
+function getStepIndex(status: OrderStatus, orderType?: OrderType): number {
   if (status === "cancelled") return -1;
   const key = status === "pending" ? "placed" : status;
-  return STEP_ORDER.indexOf(key);
+  const steps = orderType === "pickup" ? STEP_ORDER_PICKUP : STEP_ORDER_DELIVERY;
+  return steps.indexOf(key);
 }
 
 function formatDateTime(iso: string): string {
@@ -171,8 +179,9 @@ export default function OrderDetailPage() {
   const isCancelled = order?.status === "cancelled";
   const isFinal = order?.status === "delivered" || order?.status === "cancelled";
   const isProcessing = order && !isFinal;
-  const steps = DELIVERY_STEPS;
-  const stepIdx = order ? getStepIndex(order.status) : -1;
+  const isPickup = order?.orderType === "pickup";
+  const steps = isPickup ? PICKUP_STEPS : DELIVERY_STEPS;
+  const stepIdx = order ? getStepIndex(order.status, order.orderType) : -1;
 
   return (
     <div className="min-h-screen bg-[#fafafa] flex flex-col">
@@ -332,6 +341,7 @@ export default function OrderDetailPage() {
                   confirmed: { accent: "#1d4ed8", accentBg: "#dbeafe", accentBorder: "#bfdbfe", icon: "✅", title: "Order Confirmed" },
                   preparing: { accent: "#7c3aed", accentBg: "#ede9fe", accentBorder: "#ddd6fe", icon: "👨‍🍳", title: "Preparing Your Order" },
                   out_for_delivery: { accent: "#ea580c", accentBg: "#ffedd5", accentBorder: "#fed7aa", icon: "🛵", title: "Out for Delivery" },
+                  ready: { accent: "#059669", accentBg: "#d1fae5", accentBorder: "#a7f3d0", icon: "📦", title: "Ready for Pickup" },
                 };
                 const s = statusStyles[order!.status] ?? statusStyles.pending;
                 return (
@@ -349,6 +359,7 @@ export default function OrderDetailPage() {
                       {order!.status === "confirmed" && "The kitchen is getting ready to prepare your food."}
                       {order!.status === "preparing" && "Our chefs are cooking your meal with care."}
                       {order!.status === "out_for_delivery" && "Your order is on the way. Almost there!"}
+                      {order!.status === "ready" && "Your order is ready! Come pick it up at the counter."}
                     </p>
                   </div>
                 </div>

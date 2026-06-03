@@ -176,27 +176,30 @@ function DashboardPanel() {
 /* ──────────────────────────────────────────────────
    Shared Order Types
    ────────────────────────────────────────────────── */
-type OrderStatus = "pending" | "confirmed" | "preparing" | "out_for_delivery" | "delivered" | "cancelled";
-type OrderType = "dine_in" | "takeout" | "delivery";
+type OrderStatus = "pending" | "confirmed" | "preparing" | "ready" | "out_for_delivery" | "delivered" | "cancelled";
+type OrderType = "dine_in" | "takeout" | "delivery" | "pickup";
 
 const STATUS_OPTIONS: { value: OrderStatus; label: string }[] = [
   { value: "pending", label: "Pending" }, { value: "confirmed", label: "Confirmed" }, { value: "preparing", label: "Preparing" },
-  { value: "out_for_delivery", label: "Out for Delivery" }, { value: "delivered", label: "Delivered" }, { value: "cancelled", label: "Cancelled" },
+  { value: "ready", label: "Ready" }, { value: "out_for_delivery", label: "Out for Delivery" }, { value: "delivered", label: "Delivered" }, { value: "cancelled", label: "Cancelled" },
 ];
 const STATUS_BG: Record<OrderStatus, string> = {
   pending: "bg-amber-50 text-amber-600", confirmed: "bg-blue-50 text-blue-600", preparing: "bg-purple-50 text-purple-600",
-  out_for_delivery: "bg-orange-50 text-orange-600", delivered: "bg-cyan-50 text-cyan-600", cancelled: "bg-red-50 text-red-600",
+  ready: "bg-emerald-50 text-emerald-600", out_for_delivery: "bg-orange-50 text-orange-600", delivered: "bg-cyan-50 text-cyan-600", cancelled: "bg-red-50 text-red-600",
 };
 
 /** Returns only the valid next statuses based on the current status. */
-function getNextStatuses(current: OrderStatus): OrderStatus[] {
+function getNextStatuses(current: OrderStatus, orderType?: OrderType): OrderStatus[] {
   switch (current) {
     case "pending":
       return ["confirmed", "cancelled"];
     case "confirmed":
       return ["preparing", "cancelled"];
     case "preparing":
-      return ["out_for_delivery", "cancelled"];
+      // Pickup orders skip out_for_delivery and go to ready
+      return orderType === "pickup" ? ["ready", "cancelled"] : ["out_for_delivery", "cancelled"];
+    case "ready":
+      return ["delivered", "cancelled"];
     case "out_for_delivery":
       return ["delivered", "cancelled"];
     case "delivered":
@@ -206,8 +209,8 @@ function getNextStatuses(current: OrderStatus): OrderStatus[] {
       return [];
   }
 }
-const OT_ICON: Record<OrderType, string> = { dine_in: "🍽️", takeout: "🛍️", delivery: "🛵" };
-const OT_LABEL: Record<OrderType, string> = { dine_in: "Dine In", takeout: "Takeout", delivery: "Delivery" };
+const OT_ICON: Record<OrderType, string> = { dine_in: "🍽️", takeout: "🛍️", delivery: "🛵", pickup: "🛍️" };
+const OT_LABEL: Record<OrderType, string> = { dine_in: "Dine In", takeout: "Takeout", delivery: "Delivery", pickup: "Pickup" };
 
 interface AdminOrder {
   id: string; customerName: string; customerEmail: string; orderType: OrderType; status: OrderStatus;
@@ -523,7 +526,7 @@ function OrdersPanel() {
                           <span className="text-xs font-semibold text-gray-400">Status:</span>
                           <select value={o.status} onChange={(e) => handleStatusChange(o.id, e.target.value as OrderStatus)} disabled={savingId === o.id} className="text-xs font-semibold px-2 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-800 cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-500/30">
                             <option value={o.status} className="bg-white">{o.status.replace(/_/g, " ")} (current)</option>
-                            {getNextStatuses(o.status).map((s) => (
+                        {getNextStatuses(o.status, o.orderType).map((s) => (
                               <option key={s} value={s} className="bg-white">{s.replace(/_/g, " ")}</option>
                             ))}
                           </select>

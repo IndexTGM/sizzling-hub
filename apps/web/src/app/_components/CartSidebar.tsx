@@ -6,6 +6,8 @@ import { useToast } from "@/app/_components/Toast";
 import PlaceholderImage from "./PlaceholderImage";
 import StorageImage from "./StorageImage";
 
+type OrderMethod = "delivery" | "pickup";
+
 export default function CartSidebar({
   open,
   onClose,
@@ -21,11 +23,12 @@ export default function CartSidebar({
   const { showToast } = useToast();
   const [placing, setPlacing] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [orderMethod, setOrderMethod] = useState<OrderMethod>("delivery");
 
   async function handleConfirmOrder() {
     setConfirmOpen(false);
     setPlacing(true);
-    const result = await placeOrder("delivery");
+    const result = await placeOrder(orderMethod);
     setPlacing(false);
     if (result.success) {
       showToast("Order placed successfully! We're preparing your food now. 🍳", "success");
@@ -120,6 +123,32 @@ export default function CartSidebar({
 
           {/* Footer */}
           <div className="border-t border-[#e5e7eb] px-5 py-4 space-y-3">
+            {/* Pickup / Delivery toggle */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setOrderMethod("delivery")}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 ${
+                  orderMethod === "delivery"
+                    ? "text-white"
+                    : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                }`}
+                style={orderMethod === "delivery" ? { backgroundColor: "#dc2626" } : undefined}
+              >
+                🛵 Delivery
+              </button>
+              <button
+                onClick={() => setOrderMethod("pickup")}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 ${
+                  orderMethod === "pickup"
+                    ? "text-white"
+                    : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                }`}
+                style={orderMethod === "pickup" ? { backgroundColor: "#dc2626" } : undefined}
+              >
+                🛍️ Pickup
+              </button>
+            </div>
+
             <div className="flex items-center justify-between">
               <span className="text-sm text-[#6b7280] font-medium">Total</span>
               <span className="text-xl font-black" style={{ color: "#dc2626" }}>₱{total}</span>
@@ -157,6 +186,15 @@ export default function CartSidebar({
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
+              </div>
+
+              {/* Order method badge */}
+              <div className="px-5 pt-3">
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold ${
+                  orderMethod === "delivery" ? "bg-orange-50 text-orange-600" : "bg-emerald-50 text-emerald-600"
+                }`}>
+                  {orderMethod === "delivery" ? "🛵 Delivery" : "🛍️ Pickup"}
+                </span>
               </div>
 
               {/* Items list */}

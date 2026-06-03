@@ -24,7 +24,7 @@ interface CartContextType {
   updateNote: (id: string, oldNote: string, newNote: string) => void;
   removeFromCart: (id: string, note: string) => void;
   clearCart: () => void;
-  placeOrder: (orderType?: "dine_in" | "takeout" | "delivery") => Promise<{ success: boolean; error?: string }>;
+  placeOrder: (orderType?: "dine_in" | "takeout" | "delivery" | "pickup") => Promise<{ success: boolean; error?: string }>;
 }
 
 const CartContext = createContext<CartContextType | null>(null);
@@ -166,7 +166,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const placeOrder = useCallback(async (
-    orderType: "dine_in" | "takeout" | "delivery" = "delivery"
+    orderType: "dine_in" | "takeout" | "delivery" | "pickup" = "delivery"
   ): Promise<{ success: boolean; error?: string }> => {
     if (cart.length === 0) return { success: false, error: "Cart is empty." };
     try {

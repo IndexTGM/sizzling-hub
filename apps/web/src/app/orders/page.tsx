@@ -20,7 +20,7 @@ type OrderStatus =
   | "out_for_delivery"
   | "delivered"
   | "cancelled";
-type OrderType = "dine_in" | "takeout" | "delivery";
+type OrderType = "dine_in" | "takeout" | "delivery" | "pickup";
 
 interface OrderItem {
   name: string;
@@ -57,11 +57,13 @@ const ORDER_TYPE_ICON: Record<OrderType, string> = {
   dine_in: "🍽️",
   takeout: "🛍️",
   delivery: "🛵",
+  pickup: "🛍️",
 };
 const ORDER_TYPE_LABEL: Record<OrderType, string> = {
   dine_in: "Dine In",
   takeout: "Takeout",
   delivery: "Delivery",
+  pickup: "Pickup",
 };
 
 type FilterTab = "all" | OrderStatus;
