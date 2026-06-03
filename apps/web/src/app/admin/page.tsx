@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { createClient } from "@/lib/supabase/client";
 import type { MenuItem } from "@/lib/menu-data";
-import { getImagePath } from "@/lib/menu-data";
+import { getImagePath, clearImageCache } from "@/lib/menu-data";
 import { logAudit } from "@/lib/audit-log";
 import StorageImage from "@/app/_components/StorageImage";
 
@@ -319,7 +319,7 @@ function MenuPanel() {
     if (creating && !form.categoryId) { setError("Please select a category."); return; }
     setSaving(true); setError("");
     const sb = createClient();
-    const imageUrl = form.name.trim().toLowerCase().replace(/\s+/g, "");
+    const imageUrl = form.name.trim();
     if (editing) {
       await sb.from("menu_items").update({ name: form.name.trim(), price: form.price, image_url: imageUrl, stock: form.stock }).eq("id", editing.id);
       logAudit({ action: "update_menu_item", entity_type: "menu_item", entity_id: editing.id, details: { name: form.name.trim(), price: form.price, stock: form.stock } });
@@ -597,7 +597,7 @@ function ImagesPanel() {
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; if (!file) return;
     if (!file.type.startsWith("image/")) { alert("Only images allowed."); return; }
-    setUploading(true); const sb = createClient(); const fn = `${Date.now()}-${file.name.replace(/\s+/g, "_")}`;
+    setUploading(true); const sb = createClient(); const fn = file.name;
     const { error } = await sb.storage.from("images").upload(fn, file);
     if (error) alert("Upload failed: " + error.message); else logAudit({ action: "upload_image", entity_type: "image", entity_id: fn, details: { originalName: file.name } });
     setUploading(false); await fetchImages(); e.target.value = "";
@@ -607,7 +607,10 @@ function ImagesPanel() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between"><div><h2 className="text-xl font-black text-gray-900 tracking-tight">Image Manager</h2><p className="text-sm text-gray-400 mt-0.5">{images.length} files</p></div>
-        <label className="px-4 py-2.5 rounded-lg bg-red-600 text-white text-sm font-bold hover:bg-red-700 active:scale-95 cursor-pointer">{uploading ? "Uploading…" : "+ Upload Image"}<input type="file" accept="image/*" onChange={handleUpload} disabled={uploading} className="hidden" /></label>
+        <div className="flex items-center gap-2">
+          <button onClick={() => { clearImageCache(); alert("Image cache cleared. Pages will now look for the latest uploaded files."); }} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-600 text-xs font-semibold hover:bg-gray-200 transition-colors">🗑 Clear Cache</button>
+          <label className="px-4 py-2.5 rounded-lg bg-red-600 text-white text-sm font-bold hover:bg-red-700 active:scale-95 cursor-pointer">{uploading ? "Uploading…" : "+ Upload Image"}<input type="file" accept="image/*" onChange={handleUpload} disabled={uploading} className="hidden" /></label>
+        </div>
       </div>
       {images.length === 0 ? <EmptyState message="No images." /> : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">

@@ -16,7 +16,7 @@ export interface CartItem extends MenuItem {
   note?: string;
 }
 
-const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif"] as const;
+const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"] as const;
 
 /**
  * Default image transformation parameters to reduce payload size.
@@ -56,7 +56,10 @@ function buildTransformParams(opts: ImageTransformOptions): string {
 const resolvedUrlCache = new Map<string, string>();
 
 // --- sessionStorage persistence so cache survives page reloads ---
-const STORAGE_CACHE_KEY = "sizzling_img_cache";
+// Bump this version whenever images are replaced with different extensions
+// (e.g., Tapsilog.jpg → Tapsilog.png) to invalidate stale client-side caches.
+const CACHE_VERSION = 2;
+const STORAGE_CACHE_KEY = `sizzling_img_cache_v${CACHE_VERSION}`;
 
 function loadCacheFromStorage(): void {
   if (typeof window === "undefined") return;
@@ -146,10 +149,17 @@ export function getImageCandidates(
   });
 }
 
+let imageCacheVersion = 0;
+
+export function getImageCacheVersion(): number {
+  return imageCacheVersion;
+}
+
 /**
  * Clear the cache (useful if images are re-uploaded with different extensions).
  */
 export function clearImageCache(): void {
+  imageCacheVersion++;
   resolvedUrlCache.clear();
   if (typeof window !== "undefined") {
     try {

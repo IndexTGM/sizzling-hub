@@ -10,6 +10,7 @@ import AppHeader from "@/app/_components/AppHeader";
 import CartSidebar from "@/app/_components/CartSidebar";
 import ProfileModal from "@/app/_components/ProfileModal";
 import Footer from "@/app/_components/Footer";
+import StorageImage from "@/app/_components/StorageImage";
 
 const PRIMARY = "#dc2626";
 
@@ -27,6 +28,7 @@ interface OrderItem {
   name: string;
   quantity: number;
   price: number;
+  imageName: string;
 }
 
 interface Order {
@@ -117,6 +119,7 @@ export default function OrderDetailPage() {
   const [cartOpen, setCartOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [imgErrors] = useState<Set<string>>(new Set());
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const hasLoadedRef = useRef(false);
@@ -146,7 +149,7 @@ export default function OrderDetailPage() {
 
     const { data: items } = await sb
       .from("order_items")
-      .select("quantity, unit_price, menu_item:menu_items(name)")
+      .select("quantity, unit_price, menu_item:menu_items(name, image_url)")
       .eq("order_id", id);
 
     setOrder({
@@ -162,6 +165,7 @@ export default function OrderDetailPage() {
         name: it.menu_item?.name || "Unknown",
         quantity: it.quantity,
         price: it.unit_price,
+        imageName: it.menu_item?.image_url || "",
       })),
       placedAt: row.placed_at,
       completedAt: row.completed_at,
@@ -291,13 +295,28 @@ export default function OrderDetailPage() {
                     )}
                   </div>
 
-                  <div className="py-3 space-y-2">
+                   <div className="py-3 space-y-2">
                     <p className="text-xs font-bold text-[#6b7280] uppercase tracking-wider">Items</p>
                     {order.items.map((item, i) => (
                       <div key={i} className="flex items-center justify-between text-sm">
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-bold text-[#9ca3af] w-7">x{item.quantity}</span>
-                          <span className="font-semibold text-[#1f2937]">{item.name}</span>
+                          <div className="flex items-center gap-2">
+                            {item.imageName && (
+                              <button
+                                onClick={() => setLightboxSrc(item.imageName)}
+                                className="w-9 h-9 rounded-lg overflow-hidden flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-[#dc2626]/40 transition-all duration-200 hover:scale-105 bg-[#f3f4f6]"
+                                title="View image"
+                              >
+                                <StorageImage
+                                  imageBaseName={item.imageName}
+                                  alt={item.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              </button>
+                            )}
+                            <span className="font-semibold text-[#1f2937]">{item.name}</span>
+                          </div>
                         </div>
                         <span className="font-bold text-[#374151]">₱{item.price * item.quantity}</span>
                       </div>
@@ -399,6 +418,38 @@ export default function OrderDetailPage() {
                       </div>
                     );
                   })}
+                </div>
+              )}
+
+              {/* ─── Image Lightbox ─── */}
+              {lightboxSrc && (
+                <div
+                  className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-fade-in no-print"
+                  onClick={() => setLightboxSrc(null)}
+                >
+                  {/* Backdrop */}
+                  <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+                  {/* Image container */}
+                  <div
+                    className="relative z-10 max-w-2xl w-full max-h-[85vh] rounded-2xl overflow-hidden shadow-2xl"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      onClick={() => setLightboxSrc(null)}
+                      className="absolute top-3 right-3 z-20 w-9 h-9 rounded-full bg-black/50 hover:bg-black/70 text-white flex items-center justify-center transition-all duration-200"
+                      aria-label="Close"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                    <StorageImage
+                      imageBaseName={lightboxSrc}
+                      alt="Item preview"
+                      className="w-full h-auto max-h-[85vh] object-contain bg-[#0a0a0a]"
+                      priority
+                    />
+                  </div>
                 </div>
               )}
 

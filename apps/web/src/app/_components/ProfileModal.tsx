@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
+import AddressModal from "./AddressModal";
 
 export default function ProfileModal({
   open,
@@ -16,6 +17,7 @@ export default function ProfileModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [addressModalOpen, setAddressModalOpen] = useState(false);
 
   if (!open) return null;
 
@@ -90,8 +92,30 @@ export default function ProfileModal({
               {loading ? "Saving…" : "Save Changes"}
             </button>
           </form>
+
+          {/* Manage Addresses button */}
+          <div className="mt-4 pt-4 border-t border-[#f3f4f6]">
+            <button
+              type="button"
+              onClick={() => setAddressModalOpen(true)}
+              className="w-full py-2.5 rounded-xl bg-gray-100 text-gray-700 text-sm font-bold hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Manage Delivery Addresses
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Nested Address Modal */}
+      <AddressModal
+        open={addressModalOpen}
+        onClose={() => setAddressModalOpen(false)}
+        userId={user?.id || ""}
+      />
     </>
   );
 }

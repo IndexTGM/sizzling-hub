@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
@@ -39,10 +39,15 @@ export default function MenuItemPage() {
   const [cartOpen, setCartOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [imgError, setImgError] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [note, setNote] = useState("");
 
   const item = useMemo(() => menuItems.find((m) => m.id === id), [menuItems, id]);
+
+  // Stable transform refs so StorageImage doesn't reset on every render
+  const heroTransform = useRef({ width: 800, quality: 80, format: "webp" as const });
+  const lightboxTransform = useRef({ width: 1200, quality: 90, format: "webp" as const });
 
   if (!item) {
     return (
@@ -82,18 +87,29 @@ export default function MenuItemPage() {
 
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto">
-          <div className="relative w-full h-64 sm:h-80 bg-[#f3f4f6] overflow-hidden">
+          <div
+            className="relative w-full h-64 sm:h-80 bg-[#f3f4f6] overflow-hidden cursor-pointer group"
+            onClick={() => !imgError && setLightboxOpen(true)}
+          >
             {imgError ? (
               <PlaceholderImage name={item.name} />
             ) : (
-              <StorageImage
-                imageBaseName={item.imageName}
-                alt={item.name}
-                className="w-full h-full object-cover"
-                priority
-                transform={{ width: 800, quality: 80, format: "webp" }}
-                onError={() => setImgError(true)}
-              />
+              <>
+                <StorageImage
+                  imageBaseName={item.imageName}
+                  alt={item.name}
+                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  priority
+                  transform={heroTransform.current}
+                  onError={() => setImgError(true)}
+                />
+                {/* Hover overlay */}
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300 flex items-center justify-center">
+                  <span className="text-white text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-black/50 backdrop-blur-sm px-4 py-2 rounded-xl">
+                    Click to view
+                  </span>
+                </div>
+              </>
             )}
             {isSoldOut && (
               <div className="absolute inset-0 bg-black/55 flex items-center justify-center">
@@ -164,6 +180,37 @@ export default function MenuItemPage() {
         <button onClick={handleAddToCart} disabled={isSoldOut} className="flex-1 px-6 py-3.5 rounded-2xl text-white text-sm font-extrabold transition-all duration-200 disabled:bg-[#e5e7eb] disabled:text-[#9ca3af] hover:scale-[1.02] active:scale-100"
           style={{ backgroundColor: isSoldOut ? "#e5e7eb" : PRIMARY }}>{isSoldOut ? "Unavailable" : `Add ${quantity} to Cart`}</button>
       </div>
+
+      {/* ─── Image Lightbox ─── */}
+      {lightboxOpen && !imgError && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setLightboxOpen(false)}
+        >
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div
+            className="relative z-10 max-w-3xl w-full max-h-[90vh] rounded-2xl overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setLightboxOpen(false)}
+              className="absolute top-3 right-3 z-20 w-9 h-9 rounded-full bg-black/50 hover:bg-black/70 text-white flex items-center justify-center transition-all duration-200"
+              aria-label="Close"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <StorageImage
+              imageBaseName={item.imageName}
+              alt={item.name}
+              className="w-full h-auto max-h-[90vh] object-contain bg-[#0a0a0a]"
+              priority
+              transform={lightboxTransform.current}
+            />
+          </div>
+        </div>
+      )}
 
       <CartSidebar open={cartOpen} onClose={() => setCartOpen(false)} imgErrors={new Set([imgError ? item.imageName : ""])} onImgError={() => {}} />
       <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />

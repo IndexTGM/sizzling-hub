@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { type MenuItem, type CartItem } from "@/lib/menu-data";
 import { useAuth } from "@/lib/auth-context";
+import { useMenu } from "@/lib/menu-context";
 import { logAudit } from "@/lib/audit-log";
 import { haversineDistance, STORE_LOCATION, MAX_DELIVERY_RADIUS_KM } from "@/lib/store-config";
 
@@ -43,6 +44,7 @@ function cartKey(itemId: string, note: string) {
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const { refreshMenu } = useMenu();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -238,6 +240,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
           })),
         },
       });
+
+      // Silent refresh menu so stock counts update across all open views
+      refreshMenu().catch(() => { /* best-effort, ignore failures */ });
 
       return { success: true };
     } catch (err: any) {

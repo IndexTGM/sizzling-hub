@@ -5,6 +5,7 @@ import {
   getImageCandidates,
   getImagePath,
   cacheResolvedUrl,
+  clearImageCache,
   type ImageTransformOptions,
 } from "@/lib/menu-data";
 
@@ -46,13 +47,15 @@ export default function StorageImage({
   const [errored, setErrored] = useState(false);
   const candidatesRef = useRef<string[]>([]);
   const indexRef = useRef(0);
+  const wasCachedRef = useRef(false); // track if we started from a cached URL
 
   useEffect(() => {
-    // Reset state when imageBaseName changes
     setLoaded(false);
     setErrored(false);
     candidatesRef.current = getImageCandidates(imageBaseName, transform);
     indexRef.current = 0;
+    // If only 1 candidate, it's a cached URL — flag it so we can retry on failure
+    wasCachedRef.current = candidatesRef.current.length === 1;
     if (candidatesRef.current.length > 0) {
       setSrc(candidatesRef.current[0]);
     } else {
@@ -64,6 +67,19 @@ export default function StorageImage({
     indexRef.current++;
     if (indexRef.current < candidatesRef.current.length) {
       setSrc(candidatesRef.current[indexRef.current]);
+    } else if (wasCachedRef.current) {
+      // Cached URL failed (file was deleted/replaced) — clear cache & retry all
+      clearImageCache();
+      wasCachedRef.current = false;
+      candidatesRef.current = getImageCandidates(imageBaseName, transform);
+      indexRef.current = 0;
+      if (candidatesRef.current.length > 0) {
+        setSrc(candidatesRef.current[0]);
+      } else {
+        setErrored(true);
+        setSrc(fallbackSrc);
+        onError?.();
+      }
     } else {
       setErrored(true);
       setSrc(fallbackSrc);
@@ -72,7 +88,6 @@ export default function StorageImage({
   }
 
   function handleLoad() {
-    // Cache the winning URL so subsequent renders skip the trial-and-error loop
     cacheResolvedUrl(imageBaseName, src);
     setLoaded(true);
     onLoad?.();
