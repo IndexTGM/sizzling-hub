@@ -43,10 +43,8 @@ export default function Footer() {
           <div className="space-y-3">
             <h4 className="text-sm font-bold text-white tracking-wide uppercase">Hours</h4>
             <ul className="space-y-2 text-sm text-[#9ca3af]">
-              <li>Monday - Friday</li>
-              <li className="text-white font-medium">7:00 AM - 10:00 PM</li>
-              <li className="mt-2">Saturday - Sunday</li>
-              <li className="text-white font-medium">8:00 AM - 11:00 PM</li>
+              <li>Monday - Saturday</li>
+              <li className="text-white font-medium">11:00 AM - 11:00 PM</li>
             </ul>
           </div>
 
