@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { logAudit } from "@/lib/audit-log";
+import ConfirmModal from "@/app/_components/ConfirmModal";
 import { LoadingSkeleton, EmptyState } from "./shared";
 import type { OrderStatus, OrderType, AdminOrder } from "./shared";
 import { STATUS_OPTIONS, STATUS_BG, getNextStatuses, OT_ICON, OT_LABEL } from "./shared";
@@ -14,6 +15,7 @@ export default function OrdersPanel() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [savingId, setSavingId] = useState<string | null>(null);
   const [receiptOrder, setReceiptOrder] = useState<AdminOrder | null>(null);
+  const [deleteOrderId, setDeleteOrderId] = useState<string | null>(null);
   const hasOrdersLoaded = React.useRef(false);
   const fetchOrders = useCallback(async () => {
     if (!hasOrdersLoaded.current) setLoading(true);
@@ -33,7 +35,7 @@ export default function OrdersPanel() {
     const interval = setInterval(fetchOrders, 1000);
     return () => clearInterval(interval);
   }, [fetchOrders]);
-  async function handleDeleteOrder(orderId: string) { if (!confirm("Delete permanently?")) return; const sb = createClient(); await sb.from("orders").delete().eq("id", orderId); logAudit({ action: "delete_order", entity_type: "order", entity_id: orderId }); await fetchOrders(); }
+  async function handleDeleteOrder(orderId: string) { const sb = createClient(); await sb.from("orders").delete().eq("id", orderId); logAudit({ action: "delete_order", entity_type: "order", entity_id: orderId }); await fetchOrders(); setDeleteOrderId(null); }
   async function handleStatusChange(orderId: string, newStatus: OrderStatus) {
     const oldOrder = orders.find((o) => o.id === orderId); setSavingId(orderId); const sb = createClient();
     const updates: Record<string, unknown> = { status: newStatus }; if (newStatus === "delivered") updates.completed_at = new Date().toISOString();
@@ -115,7 +117,7 @@ export default function OrdersPanel() {
                       )}
                       {o.status !== "pending" && <button onClick={(e) => { e.stopPropagation(); setReceiptOrder(o); }} className="ml-auto px-3 py-1.5 rounded-md text-xs font-semibold bg-blue-50 text-blue-600 hover:bg-blue-100">Print Receipt</button>}
                       {(o.status === "pending" || o.status === "delivered" || o.status === "cancelled") && (
-                        <button onClick={(e) => { e.stopPropagation(); handleDeleteOrder(o.id); }} className="px-3 py-1.5 rounded-md text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100">Delete</button>
+                        <button onClick={(e) => { e.stopPropagation(); setDeleteOrderId(o.id); }} className="px-3 py-1.5 rounded-md text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100">Delete</button>
                       )}
                     </div>
                   </div>
@@ -153,6 +155,15 @@ export default function OrdersPanel() {
           </div>
         </>
       )}
+      <ConfirmModal
+        open={deleteOrderId !== null}
+        title="Delete Order"
+        message={`Permanently delete order #${deleteOrderId?.slice(0, 8).toUpperCase() || ""}? This action cannot be undone.`}
+        confirmLabel="Delete"
+        confirmDanger
+        onConfirm={() => deleteOrderId && handleDeleteOrder(deleteOrderId)}
+        onCancel={() => setDeleteOrderId(null)}
+      />
     </div>
   );
 }

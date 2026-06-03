@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { logAudit } from "@/lib/audit-log";
+import ConfirmModal from "@/app/_components/ConfirmModal";
 import { LoadingSkeleton, EmptyState } from "./shared";
 
 export default function BannersPanel() {
@@ -13,6 +14,7 @@ export default function BannersPanel() {
   const [form, setForm] = useState({ title: "", subtitle: "", image: "", tag: "", sort_order: 0, is_active: true });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const fetchBanners = useCallback(async () => { const sb = createClient(); const { data } = await sb.from("banners").select("*").order("sort_order"); if (data) setBanners(data); setLoading(false); }, []);
   useEffect(() => { fetchBanners(); }, [fetchBanners]);
   function startEdit(b: typeof banners[0]) { setEditing(b.id); setCreating(false); setForm({ title: b.title, subtitle: b.subtitle, image: b.image, tag: b.tag || "", sort_order: b.sort_order, is_active: b.is_active }); setError(""); }
@@ -25,7 +27,7 @@ export default function BannersPanel() {
     else { const { error: insertErr } = await sb.from("banners").insert({ title: form.title.trim(), subtitle: form.subtitle.trim(), image: form.image.trim(), tag: form.tag.trim() || null, sort_order: form.sort_order, is_active: form.is_active }); if (insertErr) { setError(insertErr.message); setSaving(false); return; } logAudit({ action: "create_banner", entity_type: "banner" }); }
     setSaving(false); cancelEdit(); await fetchBanners();
   }
-  async function handleDelete(id: string) { if (!confirm("Delete?")) return; const sb = createClient(); await sb.from("banners").delete().eq("id", id); logAudit({ action: "delete_banner", entity_type: "banner", entity_id: id }); await fetchBanners(); }
+  async function handleDelete(id: string) { const sb = createClient(); await sb.from("banners").delete().eq("id", id); logAudit({ action: "delete_banner", entity_type: "banner", entity_id: id }); await fetchBanners(); setDeleteId(null); }
   if (loading) return <LoadingSkeleton />;
   return (
     <div className="space-y-6">
@@ -52,11 +54,20 @@ export default function BannersPanel() {
               <td className="px-4 py-3 font-semibold text-gray-800">{b.title}</td><td className="px-4 py-3 text-gray-500 max-w-xs truncate">{b.subtitle}</td><td className="px-4 py-3 text-gray-400 font-mono text-xs">{b.image}</td>
               <td className="px-4 py-3"><span className="inline-block px-2 py-0.5 rounded text-xs font-bold bg-red-50 text-red-600">{b.tag || "—"}</span></td><td className="px-4 py-3 text-gray-400">{b.sort_order}</td>
               <td className="px-4 py-3"><span className={`inline-block w-2 h-2 rounded-full ${b.is_active ? "bg-emerald-500" : "bg-gray-300"}`} /></td>
-              <td className="px-4 py-3"><div className="flex gap-2"><button onClick={() => startEdit(b)} className="px-3 py-1 rounded-md text-xs font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200">Edit</button><button onClick={() => handleDelete(b.id)} className="px-3 py-1 rounded-md text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100">Delete</button></div></td>
+              <td className="px-4 py-3"><div className="flex gap-2"><button onClick={() => startEdit(b)} className="px-3 py-1 rounded-md text-xs font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200">Edit</button><button onClick={() => setDeleteId(b.id)} className="px-3 py-1 rounded-md text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100">Delete</button></div></td>
             </tr>
           ))}</tbody>
         </table></div></div>
       )}
+      <ConfirmModal
+        open={deleteId !== null}
+        title="Delete Banner"
+        message="Are you sure you want to delete this banner? This action cannot be undone."
+        confirmLabel="Delete"
+        confirmDanger
+        onConfirm={() => deleteId && handleDelete(deleteId)}
+        onCancel={() => setDeleteId(null)}
+      />
     </div>
   );
 }
