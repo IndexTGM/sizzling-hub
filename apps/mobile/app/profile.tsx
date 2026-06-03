@@ -60,23 +60,9 @@ export default function ProfileScreen() {
                 </Text>
             </View>
             <Text style={styles.displayName}>{user?.fullName}</Text>
-            <View
-                style={[
-                styles.roleBadge,
-                user?.role === "admin"
-                    ? styles.roleBadgeAdmin
-                    : styles.roleBadgeCustomer,
-                ]}
-            >
-                <Text
-                style={[
-                    styles.roleText,
-                    user?.role === "admin"
-                    ? styles.roleTextAdmin
-                    : styles.roleTextCustomer,
-                ]}
-                >
-                {user?.role === "admin" ? "🔧 Admin" : "👤 Customer"}
+            <View style={[styles.roleBadge, styles.roleBadgeCustomer]}>
+                <Text style={[styles.roleText, styles.roleTextCustomer]}>
+                    👤 Customer
                 </Text>
             </View>
             </View>
@@ -192,18 +178,12 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 14,
   },
-  roleBadgeAdmin: {
-    backgroundColor: "#fef2f2",
-  },
   roleBadgeCustomer: {
     backgroundColor: "#f0fdf4",
   },
   roleText: {
     fontSize: 13,
     fontWeight: "600",
-  },
-  roleTextAdmin: {
-    color: PRIMARY,
   },
   roleTextCustomer: {
     color: "#16a34a",

@@ -294,8 +294,6 @@ export default function OrdersScreen() {
   const { user } = useAuth();
   const { itemCount } = useCart();
   const [activeFilter, setActiveFilter] = useState<FilterTab>("all");
-  const isAdmin = user?.role === "admin";
-
   const filteredOrders = useMemo(() => {
     if (activeFilter === "all") return MOCK_ORDERS;
     return MOCK_ORDERS.filter((o) => o.status === activeFilter);
@@ -423,15 +421,6 @@ export default function OrdersScreen() {
           <Text style={styles.footerLabelActive}>Orders</Text>
         </TouchableOpacity>
 
-        {isAdmin && (
-          <TouchableOpacity
-            style={styles.footerBtn}
-            onPress={() => router.push("/admin")}
-          >
-            <Text style={styles.footerIcon}>⚙️</Text>
-            <Text style={styles.footerLabel}>Admin</Text>
-          </TouchableOpacity>
-        )}
       </View>
     </SafeAreaView>
   );

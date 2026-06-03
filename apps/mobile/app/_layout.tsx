@@ -65,7 +65,6 @@ export default function RootLayout() {
           <Stack.Screen name="order-detail" />
           <Stack.Screen name="terms" />
           <Stack.Screen name="privacy" />
-          <Stack.Screen name="admin" />
           </Stack>
         </AuthGate>
       </CartProvider>

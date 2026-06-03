@@ -340,15 +340,6 @@ export default function OrderDetailScreen() {
             <Text style={styles.footerIconActive}>📋</Text>
             <Text style={styles.footerLabelActive}>Orders</Text>
           </TouchableOpacity>
-          {user?.role === "Admin" && (
-            <TouchableOpacity
-              style={styles.footerBtn}
-              onPress={() => router.push("/admin")}
-            >
-              <Text style={styles.footerIcon}>⚙️</Text>
-              <Text style={styles.footerLabel}>Admin</Text>
-            </TouchableOpacity>
-          )}
         </View>
       </SafeAreaView>
     );
@@ -608,15 +599,6 @@ export default function OrderDetailScreen() {
           <Text style={styles.footerLabelActive}>Orders</Text>
         </TouchableOpacity>
 
-        {user?.role === "Admin" && (
-          <TouchableOpacity
-            style={styles.footerBtn}
-            onPress={() => router.push("/admin")}
-          >
-            <Text style={styles.footerIcon}>⚙️</Text>
-            <Text style={styles.footerLabel}>Admin</Text>
-          </TouchableOpacity>
-        )}
       </View>
     </SafeAreaView>
   );

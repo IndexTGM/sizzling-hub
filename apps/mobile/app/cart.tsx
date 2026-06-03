@@ -316,15 +316,6 @@ export default function CartScreen() {
           <Text style={styles.footerLabel}>Orders</Text>
         </TouchableOpacity>
 
-        {user?.role === "admin" && (
-          <TouchableOpacity
-            style={styles.footerBtn}
-            onPress={() => router.push("/admin")}
-          >
-            <Text style={styles.footerIcon}>⚙️</Text>
-            <Text style={styles.footerLabel}>Admin</Text>
-          </TouchableOpacity>
-        )}
       </View>
 
       {/* ─── Checkout Confirmation Modal ─── */}
