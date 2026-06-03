@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { type MenuItem, type CartItem } from "@/lib/menu-data";
 import { useAuth } from "@/lib/auth-context";
+import { logAudit } from "@/lib/audit-log";
 
 interface CartContextType {
   cart: CartItem[];
@@ -217,6 +218,19 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
       // 4. Clear local state
       setCart([]);
+
+      // 5. Log this order placement (customer audit)
+      logAudit({
+        source: "customer",
+        action: "place_order",
+        entity_type: "order",
+        entity_id: order.id,
+        details: {
+          order_type: "takeout",
+          item_count: orderItems.length,
+          total: subtotal,
+        },
+      });
 
       return { success: true };
     } catch (err: any) {
