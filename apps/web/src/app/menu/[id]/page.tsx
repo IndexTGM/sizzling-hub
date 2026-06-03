@@ -70,8 +70,9 @@ export default function MenuItemPage() {
   const totalPrice = item.price * quantity;
 
   function handleAddToCart() {
-    addToCart(item!);
-    for (let i = 1; i < quantity; i++) addToCart(item!);
+    const trimmedNote = note.trim();
+    addToCart(item!, trimmedNote);
+    for (let i = 1; i < quantity; i++) addToCart(item!, trimmedNote);
     if (typeof window !== "undefined") window.history.back();
   }
 

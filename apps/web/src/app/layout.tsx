@@ -4,6 +4,7 @@ import { AuthProvider } from "@/lib/auth-context";
 import { CartProvider } from "@/lib/cart-context";
 import { MenuProvider } from "@/lib/menu-context";
 import { BannerProvider } from "@/lib/banner-context";
+import { ToastProvider } from "@/app/_components/Toast";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -40,15 +41,17 @@ export default function RootLayout({
         <link rel="preconnect" href="https://supabase.co" crossOrigin="anonymous" />
       </head>
       <body className="min-h-full flex flex-col">
-        <AuthProvider>
-          <MenuProvider>
-            <BannerProvider>
-              <CartProvider>
-                {children}
-              </CartProvider>
-            </BannerProvider>
-          </MenuProvider>
-        </AuthProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <MenuProvider>
+              <BannerProvider>
+                <CartProvider>
+                  {children}
+                </CartProvider>
+              </BannerProvider>
+            </MenuProvider>
+          </AuthProvider>
+        </ToastProvider>
       </body>
     </html>
   );

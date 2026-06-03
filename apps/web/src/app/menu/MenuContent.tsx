@@ -117,11 +117,15 @@ export default function MenuContent() {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filteredItems.map((item, i) => (
+              {filteredItems.map((item, i) => {
+                const soldOut = (item.stock ?? 0) <= 0;
+                return (
                 <Link
                   key={item.id}
                   href={`/menu/${item.id}`}
-                  className="block bg-white rounded-xl border border-[#e5e7eb] overflow-hidden hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 group animate-fade-in"
+                  className={`block bg-white rounded-xl border border-[#e5e7eb] overflow-hidden hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 group animate-fade-in ${
+                    soldOut ? "opacity-75" : ""
+                  }`}
                   style={{ animationDelay: `${i * 40}ms` }}
                 >
                   <div className="w-full h-40 bg-[#f3f4f6] relative overflow-hidden">
@@ -131,9 +135,16 @@ export default function MenuContent() {
                       <StorageImage
                         imageBaseName={item.imageName}
                         alt={item.name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        className={`w-full h-full object-cover transition-transform duration-300 ${
+                          soldOut ? "" : "group-hover:scale-105"
+                        }`}
                         onError={() => onImgError(item.imageName)}
                       />
+                    )}
+                    {soldOut && (
+                      <div className="absolute inset-0 bg-black/55 flex items-center justify-center">
+                        <span className="text-white text-sm font-extrabold uppercase tracking-widest drop-shadow-lg">Sold Out</span>
+                      </div>
                     )}
                   </div>
                   <div className="p-4">
@@ -148,16 +159,22 @@ export default function MenuContent() {
                     <div className="flex items-center justify-between">
                       <span className="text-lg font-black" style={{ color: PRIMARY }}>₱{item.price}</span>
                       <button
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); addToCart(item); }}
-                        className="px-4 py-2 rounded-lg text-white text-sm font-bold transition-all duration-200 hover:scale-105 active:scale-95"
-                        style={{ backgroundColor: PRIMARY }}
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (!soldOut) addToCart(item); }}
+                        className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-200 ${
+                          soldOut
+                            ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                            : "text-white hover:scale-105 active:scale-95"
+                        }`}
+                        style={soldOut ? undefined : { backgroundColor: PRIMARY }}
+                        disabled={soldOut}
                       >
-                        + Add
+                        {soldOut ? "Sold Out" : "+ Add"}
                       </button>
                     </div>
                   </div>
                 </Link>
-              ))}
+              );
+              })}
             </div>
           )}
         </div>

@@ -17,9 +17,8 @@ type OrderStatus =
   | "pending"
   | "confirmed"
   | "preparing"
-  | "otw"
-  | "ready"
-  | "completed"
+  | "out_for_delivery"
+  | "delivered"
   | "cancelled";
 type OrderType = "dine_in" | "takeout" | "delivery";
 
@@ -50,9 +49,8 @@ const STATUS_CONFIG: Record<
   pending: { label: "Pending", color: "#92400e", bg: "#fef3c7" },
   confirmed: { label: "Confirmed", color: "#1e40af", bg: "#dbeafe" },
   preparing: { label: "Preparing", color: "#6b21a8", bg: "#f3e8ff" },
-  otw: { label: "On The Way", color: "#c2410c", bg: "#ffedd5" },
-  ready: { label: "Ready", color: "#065f46", bg: "#d1fae5" },
-  completed: { label: "Completed", color: "#1e3a5f", bg: "#e0f2fe" },
+  out_for_delivery: { label: "Out for Delivery", color: "#c2410c", bg: "#ffedd5" },
+  delivered: { label: "Delivered", color: "#1e3a5f", bg: "#e0f2fe" },
   cancelled: { label: "Cancelled", color: "#991b1b", bg: "#fee2e2" },
 };
 
@@ -68,28 +66,20 @@ const ORDER_TYPE_LABEL: Record<OrderType, string> = {
 };
 
 /* ─── Progress tracker steps ─── */
-const DINE_IN_STEPS = [
-  { key: "placed", label: "Order Placed", icon: "📝" },
-  { key: "confirmed", label: "Confirmed", icon: "✅" },
-  { key: "preparing", label: "Preparing", icon: "👨‍🍳" },
-  { key: "ready", label: "Ready", icon: "📦" },
-  { key: "completed", label: "Completed", icon: "✨" },
-];
 const DELIVERY_STEPS = [
   { key: "placed", label: "Order Placed", icon: "📝" },
   { key: "confirmed", label: "Confirmed", icon: "✅" },
   { key: "preparing", label: "Preparing", icon: "👨‍🍳" },
-  { key: "otw", label: "On The Way", icon: "🛵" },
-  { key: "completed", label: "Delivered", icon: "🏠" },
+  { key: "out_for_delivery", label: "Out for Delivery", icon: "🛵" },
+  { key: "delivered", label: "Delivered", icon: "🏠" },
 ];
 
 const STEP_ORDER = [
   "placed",
   "confirmed",
   "preparing",
-  "ready",
-  "otw",
-  "completed",
+  "out_for_delivery",
+  "delivered",
 ];
 
 function getStepIndex(status: OrderStatus): number {
@@ -111,10 +101,6 @@ function formatDateTime(iso: string): string {
   return `${months[d.getMonth()]} ${d.getDate()}, ${h12}:${mins} ${ampm}`;
 }
 
-function handlePrint() {
-  window.print();
-}
-
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
@@ -125,13 +111,14 @@ export default function OrderDetailPage() {
   const [imgErrors] = useState<Set<string>>(new Set());
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
+  const hasLoadedRef = useRef(false);
 
-  const fetchOrder = useCallback(async () => {
+  const fetchOrder = useCallback(async (silent = false) => {
     if (!id || !user) {
       setLoading(false);
       return;
     }
-    setLoading(true);
+    if (!hasLoadedRef.current) setLoading(true);
     const sb = createClient();
 
     const { data: row } = await sb
@@ -172,15 +159,19 @@ export default function OrderDetailPage() {
       completedAt: row.completed_at,
     });
     setLoading(false);
+    hasLoadedRef.current = true;
   }, [id, user]);
 
   useEffect(() => {
     fetchOrder();
+    const interval = setInterval(() => fetchOrder(true), 1000);
+    return () => clearInterval(interval);
   }, [fetchOrder]);
 
   const isCancelled = order?.status === "cancelled";
-  const isDelivery = order?.orderType === "delivery";
-  const steps = isDelivery ? DELIVERY_STEPS : DINE_IN_STEPS;
+  const isFinal = order?.status === "delivered" || order?.status === "cancelled";
+  const isProcessing = order && !isFinal;
+  const steps = DELIVERY_STEPS;
   const stepIdx = order ? getStepIndex(order.status) : -1;
 
   return (
@@ -333,6 +324,36 @@ export default function OrderDetailPage() {
                   </div>
                 </div>
               </div>
+
+              {/* ─── Processing Indicator ─── */}
+              {isProcessing && (() => {
+                const statusStyles: Record<string, { accent: string; accentBg: string; accentBorder: string; icon: string; title: string }> = {
+                  pending: { accent: "#b45309", accentBg: "#fef3c7", accentBorder: "#fde68a", icon: "⏳", title: "Order Received" },
+                  confirmed: { accent: "#1d4ed8", accentBg: "#dbeafe", accentBorder: "#bfdbfe", icon: "✅", title: "Order Confirmed" },
+                  preparing: { accent: "#7c3aed", accentBg: "#ede9fe", accentBorder: "#ddd6fe", icon: "👨‍🍳", title: "Preparing Your Order" },
+                  out_for_delivery: { accent: "#ea580c", accentBg: "#ffedd5", accentBorder: "#fed7aa", icon: "🛵", title: "Out for Delivery" },
+                };
+                const s = statusStyles[order!.status] ?? statusStyles.pending;
+                return (
+                <div className="bg-white rounded-2xl p-5 border no-print flex items-center gap-4 animate-fade-in-scale" style={{ borderColor: s.accentBorder, backgroundColor: s.accentBg }}>
+                  <div className="flex-shrink-0 relative">
+                    <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: `${s.accent}15` }}>
+                      <span className="text-2xl">{s.icon}</span>
+                    </div>
+                    <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full animate-ping" style={{ backgroundColor: s.accent }} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-extrabold" style={{ color: s.accent }}>{s.title}</p>
+                    <p className="text-xs mt-0.5 opacity-70" style={{ color: s.accent }}>
+                      {order!.status === "pending" && "Hang tight — the restaurant will confirm your order soon."}
+                      {order!.status === "confirmed" && "The kitchen is getting ready to prepare your food."}
+                      {order!.status === "preparing" && "Our chefs are cooking your meal with care."}
+                      {order!.status === "out_for_delivery" && "Your order is on the way. Almost there!"}
+                    </p>
+                  </div>
+                </div>
+              );
+              })()}
 
               {/* ─── Progress Tracker ─── */}
               {!isCancelled && (

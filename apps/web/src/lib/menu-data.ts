@@ -13,6 +13,7 @@ export interface MenuItem {
 
 export interface CartItem extends MenuItem {
   quantity: number;
+  note?: string;
 }
 
 const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif"] as const;

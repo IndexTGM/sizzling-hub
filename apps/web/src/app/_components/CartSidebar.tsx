@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { useCart } from "@/lib/cart-context";
+import { useToast } from "@/app/_components/Toast";
 import PlaceholderImage from "./PlaceholderImage";
 import StorageImage from "./StorageImage";
 
@@ -15,10 +17,27 @@ export default function CartSidebar({
   imgErrors: Set<string>;
   onImgError: (name: string) => void;
 }) {
-  const { cart, itemCount, total, updateQty, removeFromCart, placeOrder, loading } = useCart();
+  const { cart, itemCount, total, updateQty, removeFromCart, placeOrder } = useCart();
+  const { showToast } = useToast();
+  const [placing, setPlacing] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  async function handleConfirmOrder() {
+    setConfirmOpen(false);
+    setPlacing(true);
+    const result = await placeOrder("delivery");
+    setPlacing(false);
+    if (result.success) {
+      showToast("Order placed successfully! We're preparing your food now. 🍳", "success");
+      onClose();
+    } else {
+      showToast(result.error || "Failed to place order.", "error");
+    }
+  }
 
   return (
     <>
+      {/* Cart Sidebar */}
       <div
         className={`fixed inset-y-0 right-0 w-full sm:max-w-sm bg-white border-l border-[#e5e7eb] shadow-xl z-50 transform transition-transform duration-300 ${
           open ? "translate-x-0" : "translate-x-full"
@@ -49,52 +68,54 @@ export default function CartSidebar({
               </div>
             )}
 
-            {cart.map((item) => (
-              <div key={item.id} className="flex items-center gap-3 p-3 rounded-xl bg-[#f9fafb] animate-fade-in">
-                <div className="w-12 h-12 rounded-lg bg-[#f3f4f6] overflow-hidden flex-shrink-0">
-                  {imgErrors.has(item.imageName) ? (
-                    <PlaceholderImage name={item.name} />
-                  ) : (
-                    <StorageImage
-                      imageBaseName={item.imageName}
-                      alt={item.name}
-                      className="w-full h-full object-cover"
-                      onError={() => onImgError(item.imageName)}
-                    />
-                  )}
-                </div>
+            {cart.map((item) => {
+              const note = item.note ?? "";
+              return (
+              <div key={`${item.id}-${note}`} className="p-3 rounded-xl bg-[#f9fafb] animate-fade-in space-y-2">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-lg bg-[#f3f4f6] overflow-hidden flex-shrink-0">
+                    {imgErrors.has(item.imageName) ? (
+                      <PlaceholderImage name={item.name} />
+                    ) : (
+                      <StorageImage
+                        imageBaseName={item.imageName}
+                        alt={item.name}
+                        className="w-full h-full object-cover"
+                        onError={() => onImgError(item.imageName)}
+                      />
+                    )}
+                  </div>
 
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm text-[#0a0a0a] truncate">{item.name}</p>
-                  <p className="text-xs text-[#6b7280]">₱{item.price}</p>
-                </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm text-[#0a0a0a] truncate">{item.name}</p>
+                    <p className="text-xs text-[#6b7280]">₱{item.price}</p>
+                    {note && <p className="text-xs text-[#9ca3af] italic mt-0.5 truncate">"{note}"</p>}
+                  </div>
 
-                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => updateQty(item.id, note, -1)}
+                      className="w-7 h-7 rounded-full border border-[#e5e7eb] flex items-center justify-center text-sm font-bold text-[#6b7280] hover:bg-[#f3f4f6] transition-colors"
+                    >−</button>
+                    <span className="w-5 text-center text-sm font-bold text-[#0a0a0a]">{item.quantity}</span>
+                    <button
+                      onClick={() => updateQty(item.id, note, 1)}
+                      className="w-7 h-7 rounded-full border border-[#e5e7eb] flex items-center justify-center text-sm font-bold text-[#6b7280] hover:bg-[#f3f4f6] transition-colors"
+                    >+</button>
+                  </div>
+
                   <button
-                    onClick={() => updateQty(item.id, -1)}
-                    className="w-7 h-7 rounded-full border border-[#e5e7eb] flex items-center justify-center text-sm font-bold text-[#6b7280] hover:bg-[#f3f4f6] transition-colors"
+                    onClick={() => removeFromCart(item.id, note)}
+                    className="text-[#9ca3af] hover:text-[#dc2626] transition-colors p-1"
                   >
-                    −
-                  </button>
-                  <span className="w-5 text-center text-sm font-bold text-[#0a0a0a]">{item.quantity}</span>
-                  <button
-                    onClick={() => updateQty(item.id, 1)}
-                    className="w-7 h-7 rounded-full border border-[#e5e7eb] flex items-center justify-center text-sm font-bold text-[#6b7280] hover:bg-[#f3f4f6] transition-colors"
-                  >
-                    +
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
                   </button>
                 </div>
-
-                <button
-                  onClick={() => removeFromCart(item.id)}
-                  className="text-[#9ca3af] hover:text-[#dc2626] transition-colors p-1"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
               </div>
-            ))}
+            );
+            })}
           </div>
 
           {/* Footer */}
@@ -104,20 +125,12 @@ export default function CartSidebar({
               <span className="text-xl font-black" style={{ color: "#dc2626" }}>₱{total}</span>
             </div>
             <button
-              disabled={cart.length === 0}
+              disabled={cart.length === 0 || placing}
               className="w-full py-3 rounded-xl font-bold text-white text-sm tracking-wide transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed hover:scale-[1.02] active:scale-100"
               style={{ backgroundColor: "#dc2626" }}
-              onClick={async () => {
-                const result = await placeOrder();
-                if (result.success) {
-                  alert("Order placed successfully!");
-                  onClose();
-                } else {
-                  alert(result.error || "Failed to place order.");
-                }
-              }}
+              onClick={() => setConfirmOpen(true)}
             >
-              Place Order
+              {placing ? "Placing Order…" : "Place Order"}
             </button>
           </div>
         </div>
@@ -125,6 +138,72 @@ export default function CartSidebar({
 
       {open && (
         <div className="fixed inset-0 bg-black/20 z-30" onClick={onClose} />
+      )}
+
+      {/* ─── Custom Confirm Order Modal ─── */}
+      {confirmOpen && (
+        <>
+          <div className="fixed inset-0 bg-black/30 z-[60]" onClick={() => setConfirmOpen(false)} />
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl border border-[#e5e7eb] shadow-xl w-full max-w-sm max-h-[85vh] overflow-y-auto animate-fade-in-scale">
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[#f3f4f6]">
+                <h3 className="font-black text-base text-[#0a0a0a]">Confirm Your Order</h3>
+                <button
+                  onClick={() => setConfirmOpen(false)}
+                  className="p-1.5 rounded-lg hover:bg-[#f3f4f6] transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="#6b7280" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Items list */}
+              <div className="px-5 py-4 space-y-1.5 max-h-[50vh] overflow-y-auto">
+                {cart.map((item, idx) => (
+                  <div key={idx} className="flex items-center justify-between py-1">
+                    <div className="flex-1 min-w-0 pr-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-[#9ca3af] w-6 text-right">{item.quantity}x</span>
+                        <span className="text-sm font-semibold text-[#1f2937] truncate">{item.name}</span>
+                      </div>
+                      {item.note && (
+                        <p className="text-xs text-[#9ca3af] italic ml-8 mt-0.5">"{item.note}"</p>
+                      )}
+                    </div>
+                    <span className="text-sm font-bold text-[#374151] flex-shrink-0">₱{item.price * item.quantity}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Total */}
+              <div className="border-t border-[#f3f4f6] px-5 py-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-base font-extrabold text-[#0a0a0a]">Total</span>
+                  <span className="text-xl font-black" style={{ color: "#dc2626" }}>₱{total}</span>
+                </div>
+              </div>
+
+              {/* Buttons */}
+              <div className="border-t border-[#f3f4f6] px-5 py-4 flex gap-3">
+                <button
+                  onClick={() => setConfirmOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-600 text-sm font-bold hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmOrder}
+                  className="flex-1 py-2.5 rounded-xl text-white text-sm font-bold hover:opacity-90 transition-all duration-200"
+                  style={{ backgroundColor: "#dc2626" }}
+                >
+                  Place Order
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </>
   );

@@ -55,7 +55,7 @@ export function MenuProvider({ children }: { children: ReactNode }) {
         // Fetch menu items with category name via join
         const { data: items } = await sb
           .from("menu_items")
-          .select("id, name, price, image_url, categories!inner(name)")
+          .select("id, name, price, image_url, stock, categories!inner(name)")
           .eq("is_available", true)
           .order("name");
 
@@ -65,6 +65,7 @@ export function MenuProvider({ children }: { children: ReactNode }) {
             name: row.name,
             price: row.price,
             imageName: row.image_url || "",
+            stock: row.stock ?? 0,
             category: row.categories?.name || "Uncategorized",
           }));
           setMenuItems(mapped);
