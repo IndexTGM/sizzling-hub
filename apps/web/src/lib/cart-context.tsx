@@ -13,6 +13,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { type MenuItem, type CartItem } from "@/lib/menu-data";
 import { useAuth } from "@/lib/auth-context";
 import { logAudit } from "@/lib/audit-log";
+import { haversineDistance, STORE_LOCATION, MAX_DELIVERY_RADIUS_KM } from "@/lib/store-config";
 
 interface CartContextType {
   cart: CartItem[];
@@ -176,6 +177,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
       if (!session?.user) return { success: false, error: "You must be logged in." };
 
       const subtotal = cart.reduce((sum, c) => sum + c.price * c.quantity, 0);
+
+      // Validate delivery address is within range
+      if (orderType === "delivery" && address && (address as any).addressLat != null && (address as any).addressLng != null) {
+        const dist = haversineDistance(STORE_LOCATION.lat, STORE_LOCATION.lng, (address as any).addressLat, (address as any).addressLng);
+        if (dist > MAX_DELIVERY_RADIUS_KM) {
+          return { success: false, error: `Delivery address is ${dist.toFixed(1)} km away — our maximum range is ${MAX_DELIVERY_RADIUS_KM} km.` };
+        }
+      }
 
       // Validate stock
       for (const item of cart) {
