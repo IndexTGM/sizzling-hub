@@ -16,12 +16,12 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
     const current = segments[0] as string | undefined;
     const inAuthScreen = current === "index" || !current;
-    const inForgotScreen = current === "forgot-password";
+    const isPublicScreen = inAuthScreen || current === "terms" || current === "privacy";
     const isAuthenticated = user !== null;
 
-    if (!isAuthenticated && !inAuthScreen && !inForgotScreen) {
+    if (!isAuthenticated && !isPublicScreen) {
       router.replace("/");
-    } else if (isAuthenticated && (inAuthScreen || inForgotScreen)) {
+    } else if (isAuthenticated && inAuthScreen) {
       router.replace("/home");
     }
   }, [user, loading, segments]);
@@ -56,7 +56,6 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="index" />
-          <Stack.Screen name="forgot-password" />
           <Stack.Screen name="home" />
           <Stack.Screen name="profile" />
           <Stack.Screen name="menu" />
@@ -64,6 +63,8 @@ export default function RootLayout() {
           <Stack.Screen name="cart" />
           <Stack.Screen name="orders" />
           <Stack.Screen name="order-detail" />
+          <Stack.Screen name="terms" />
+          <Stack.Screen name="privacy" />
           <Stack.Screen name="admin" />
           </Stack>
         </AuthGate>

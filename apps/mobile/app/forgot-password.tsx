@@ -12,14 +12,13 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { useAuth } from "@/lib/auth-context";
+import { supabase } from "@/lib/supabase";
 
 const PRIMARY = "#dc2626";
 const PRIMARY_LIGHT = "#fca5a5";
 
 export default function ForgotPasswordScreen() {
   const router = useRouter();
-  const { resetPassword } = useAuth();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -33,10 +32,12 @@ export default function ForgotPasswordScreen() {
       return;
     }
     setLoading(true);
-    const err = await resetPassword(email);
+    const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: "sizzlinghub://reset-password",
+    });
     setLoading(false);
     if (err) {
-      setError(err);
+      setError(err.message);
     } else {
       setSuccess(
         "If an account with that email exists, we've sent a password reset link."
@@ -54,18 +55,16 @@ export default function ForgotPasswordScreen() {
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Logo */}
           <View style={styles.logoSection}>
             <Image
               source={require("../assets/images/logo.png")}
               style={styles.logo}
               resizeMode="contain"
             />
-            <Text style={styles.logoTitle}>SIZZLING HUB</Text>
+            <Text style={styles.logoTitle}>BEN'S TAPSIHAN</Text>
             <Text style={styles.logoSubtitle}>Reset your password</Text>
           </View>
 
-          {/* Card */}
           <View style={styles.card}>
             {success ? (
               <View style={styles.form}>
@@ -98,7 +97,7 @@ export default function ForgotPasswordScreen() {
 
                 {error ? (
                   <View style={styles.alertError}>
-                    <Text style={styles.alertText}>{error}</Text>
+                    <Text style={styles.alertTextError}>{error}</Text>
                   </View>
                 ) : null}
 
@@ -151,7 +150,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   logoTitle: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: "800",
     color: PRIMARY,
     letterSpacing: -0.5,
@@ -210,7 +209,7 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 8,
   },
-  alertText: {
+  alertTextError: {
     color: PRIMARY,
     fontSize: 13,
     fontWeight: "500",
