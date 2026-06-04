@@ -3,6 +3,8 @@ import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { CartProvider } from "@/lib/cart-context";
+import { BannerProvider } from "@/lib/banner-context";
+import { MenuProvider } from "@/lib/menu-context";
 
 const PRIMARY = "#dc2626";
 
@@ -47,6 +49,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 export default function RootLayout() {
   return (
     <AuthProvider>
+      <BannerProvider>
+      <MenuProvider>
       <CartProvider>
         <AuthGate>
           <Stack
@@ -64,10 +68,13 @@ export default function RootLayout() {
           <Stack.Screen name="orders" />
           <Stack.Screen name="order-detail" />
           <Stack.Screen name="terms" />
+          <Stack.Screen name="addresses" />
           <Stack.Screen name="privacy" />
           </Stack>
         </AuthGate>
       </CartProvider>
+      </MenuProvider>
+      </BannerProvider>
     </AuthProvider>
   );
 }

@@ -5,240 +5,259 @@ import {
   TouchableOpacity,
   Image,
   ScrollView,
-  FlatList,
   useWindowDimensions,
-  type ImageSourcePropType,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { useRef, useState, useCallback, useMemo, memo } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
+import { getImageUrl, getImageCandidates } from "@/lib/storage";
+import { useBanners } from "@/lib/banner-context";
 
 const PRIMARY = "#dc2626";
-const AMBER = "#f59e0b";
-const GREEN = "#10b981";
-
-// ─── Static Image Map ───────────────────────────────────────────
-const IMAGES: Record<string, ImageSourcePropType> = {
-  placeholder: require("../assets/images/placeholder.png"),
-  logo: require("../assets/images/logo.png"),
-};
-const getImage = (key: string) => IMAGES[key] ?? IMAGES.placeholder;
-
-// ─── Banner Data ────────────────────────────────────────────────
-interface Banner {
-  id: string;
-  type: "featured" | "discount" | "announcement";
-  title: string;
-  subtitle: string;
-  image: string;
-  tag?: string;
-  color: string;
-  accentColor: string;
-}
-
-const BANNERS: Banner[] = [
-  {
-    id: "1",
-    type: "featured",
-    title: "Sisilog",
-    subtitle: "Our #1 Best Seller — sizzling pork sisig on garlic rice with a runny egg",
-    image: "sisilog",
-    tag: "BEST SELLER",
-    color: "#fef2f2",
-    accentColor: PRIMARY,
-  },
-  {
-    id: "2",
-    type: "discount",
-    title: "20% OFF",
-    subtitle: "On all Silog meals every Monday! Start your week right.",
-    image: "tapsilog",
-    tag: "MONDAY MADNESS",
-    color: "#fffbeb",
-    accentColor: AMBER,
-  },
-  {
-    id: "3",
-    type: "discount",
-    title: "Buy 1 Get 1",
-    subtitle: "Iced Tea — every Friday from 2PM to 5PM. Stay refreshed!",
-    image: "icedtea",
-    tag: "HAPPY HOUR",
-    color: "#eff6ff",
-    accentColor: "#3b82f6",
-  },
+const PLACEHOLDER = getImageUrl("placeholder.png");
+const LOGO_URL = getImageUrl("logo.png");
+const BANNER_COLORS = [
+  "#f59e0b", "#3b82f6", "#10b981", "#8b5cf6",
+  "#06b6d4", "#f97316", "#84cc16", "#ec4899",
 ];
 
-// ─── Must Try / Most Ordered ────────────────────────────────────
-const MUST_TRY = ["1","8","4","10","5","26"]; // Tapsilog, Sisilog, Bangsilog, Adobosilog, Chicksilog, Mango Shake
+// ═══════════════════════════════════════════════════════════════
+//  Storage Image (loads from Supabase, falls back to placeholder)
+// ═══════════════════════════════════════════════════════════════
+function StorageImg({ imageBase, style, resizeMode }: { imageBase: string; style: any; resizeMode?: "cover" | "contain" }) {
+  const [candidates, setCandidates] = useState<string[]>([PLACEHOLDER]);
+  const [tryIdx, setTryIdx] = useState(0);
 
-// ─── Menu Data Quick Access ─────────────────────────────────────
-import { MENU_ITEMS } from "@/lib/menu-data";
+  useEffect(() => {
+    setTryIdx(0);
+    setCandidates([...getImageCandidates(imageBase), PLACEHOLDER]);
+  }, [imageBase]);
 
-// ─── Dot Indicator ──────────────────────────────────────────────
-function Dots({ total, active }: { total: number; active: number }) {
+  const handleError = () => {
+    if (tryIdx < candidates.length - 1) {
+      setTryIdx(tryIdx + 1);
+    }
+  };
+
   return (
-    <View style={styles.dotsRow}>
-      {Array.from({ length: total }).map((_, i) => (
-        <View
-          key={i}
-          style={[
-            styles.dot,
-            i === active ? styles.dotActive : styles.dotInactive,
-          ]}
-        />
-      ))}
+    <Image
+      source={{ uri: candidates[tryIdx] }}
+      style={style}
+      resizeMode={resizeMode || "cover"}
+      onError={handleError}
+    />
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Banner Carousel
+// ═══════════════════════════════════════════════════════════════
+function BannerCarousel({ banners, onOrderNow }: { banners: { id: string; title: string; subtitle: string; image: string; tag: string | null }[]; onOrderNow: () => void }) {
+  const { width: screenWidth } = useWindowDimensions();
+  const scrollRef = useRef<ScrollView>(null);
+  const [active, setActive] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (banners.length === 0) return;
+    timerRef.current = setInterval(() => {
+      setActive((prev) => {
+        const next = (prev + 1) % banners.length;
+        scrollRef.current?.scrollTo({ x: next * screenWidth, animated: true });
+        return next;
+      });
+    }, 4000);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [screenWidth, banners.length]);
+
+  const onScrollEnd = useCallback((e: any) => {
+    const idx = Math.round(e.nativeEvent.contentOffset.x / screenWidth);
+    setActive(idx);
+  }, [screenWidth]);
+
+  return (
+    <View style={styles.bannerSection}>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={onScrollEnd}
+        scrollEventThrottle={16}
+      >
+        {banners.map((b, i) => {
+          const accent = BANNER_COLORS[i % BANNER_COLORS.length];
+          return (
+            <View key={b.id} style={{ width: screenWidth, paddingHorizontal: 12 }}>
+              <View style={[styles.bannerCard, { backgroundColor: accent }]}>
+                <View style={styles.bannerText}>
+                  {b.tag && (
+                    <View style={styles.bannerTag}>
+                      <Text style={styles.bannerTagText}>{b.tag}</Text>
+                    </View>
+                  )}
+                  <Text style={styles.bannerTitle}>{b.title}</Text>
+                  <Text style={styles.bannerSubtitle} numberOfLines={3}>{b.subtitle}</Text>
+                  <TouchableOpacity
+                    style={styles.bannerBtn}
+                    onPress={onOrderNow}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.bannerBtnText, { color: accent }]}>Order Now →</Text>
+                  </TouchableOpacity>
+                </View>
+                <StorageImg imageBase={b.image} style={styles.bannerImg} />
+              </View>
+            </View>
+          );
+        })}
+      </ScrollView>
+
+      {/* Dots */}
+      <View style={styles.dotsRow}>
+        {banners.map((_, i) => {
+          const dotColor = BANNER_COLORS[i % BANNER_COLORS.length];
+          return (
+            <TouchableOpacity
+              key={i}
+              onPress={() => {
+                setActive(i);
+                scrollRef.current?.scrollTo({ x: i * screenWidth, animated: true });
+              }}
+              style={[
+                styles.dot,
+                i === active
+                  ? { width: 32, height: 10, backgroundColor: dotColor }
+                  : { width: 10, height: 10, backgroundColor: "#d1d5db" },
+              ]}
+            />
+          );
+        })}
+      </View>
     </View>
   );
 }
 
-// ─── Responsive Grid Layout ─────────────────────────────────────
-function useItemGrid() {
-  const { width } = useWindowDimensions();
-  const horizontalPadding = 16;
-  const gap = 10;
-  const availableWidth = width - horizontalPadding * 2;
-
-  const numColumns =
-    availableWidth < 360 ? 2 : availableWidth < 600 ? 3 : availableWidth < 900 ? 4 : 5;
-  const cardWidth = (availableWidth - gap * (numColumns - 1)) / numColumns;
-
-  return { numColumns, cardWidth, gap };
-}
-
-// ─── Item Card (responsive grid) ────────────────────────────────
-const ItemCard = memo(function ItemCard({
-  id,
-  cardWidth,
-  gap,
-}: {
-  id: string;
-  cardWidth: number;
-  gap: number;
-}) {
-  const router = useRouter();
-  const item = useMemo(() => MENU_ITEMS.find((m) => m.id === id), [id]);
-  if (!item) return null;
-
-  const imgHeight = cardWidth * 0.85;
-
+// ═══════════════════════════════════════════════════════════════
+//  Top #1 Ordered
+// ═══════════════════════════════════════════════════════════════
+function TopOrdered({ onOrderNow }: { onOrderNow: () => void }) {
   return (
-    <TouchableOpacity
-      style={[styles.itemCard, { width: cardWidth, marginBottom: gap }]}
-      activeOpacity={0.85}
-      onPress={() =>
-        router.push({ pathname: "/menu-item", params: { id: item.id } })
-      }
-    >
-      <Image
-        source={getImage(item.image)}
-        style={[styles.itemCardImg, { width: cardWidth, height: imgHeight }]}
-        resizeMode="cover"
-      />
-      <View style={styles.itemCardBody}>
-        <Text style={styles.itemCardName} numberOfLines={2}>
-          {item.name}
-        </Text>
-        <View style={styles.itemCardRow}>
-          <Text style={styles.itemCardPrice}>₱{item.price}</Text>
-          <View style={styles.itemCardRating}>
-            <Text style={styles.itemCardStar}>★</Text>
-            <Text style={styles.itemCardRatingNum}>{item.rating}</Text>
+    <View style={styles.sectionWrap}>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Top #1 Ordered</Text>
+        <View style={styles.titleBar} />
+      </View>
+
+      <View style={styles.topCard}>
+        <View style={styles.topCardInner}>
+          <View style={styles.trophyWrap}>
+            <View style={styles.trophyCircle}>
+              <Text style={styles.trophyEmoji}>🏆</Text>
+              <Text style={styles.trophyLabel}>#1</Text>
+            </View>
+          </View>
+
+          <View style={styles.topCardContent}>
+            <View style={styles.topTag}>
+              <Text style={styles.topTagText}>ALL-TIME FAVORITE</Text>
+            </View>
+            <Text style={styles.topTitle}>Tapsilog</Text>
+            <Text style={styles.topSubtitle}>
+              The undisputed king of our menu. Tender beef tapa marinated to perfection, served on garlic rice with a perfectly fried egg. The dish that started it all — and the one our customers can't get enough of.
+            </Text>
+            <View style={styles.topPriceRow}>
+              <Text style={styles.topPrice}>₱109</Text>
+              <Text style={styles.topPriceOld}>₱129</Text>
+              <View style={styles.topSaveBadge}>
+                <Text style={styles.topSaveText}>SAVE ₱20</Text>
+              </View>
+            </View>
+            <TouchableOpacity style={styles.topBtn} onPress={onOrderNow} activeOpacity={0.8}>
+              <Text style={styles.topBtnText}>Order Now →</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </View>
-    </TouchableOpacity>
+    </View>
   );
-});
+}
 
-// ─── Main Screen ────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+//  Our Story
+// ═══════════════════════════════════════════════════════════════
+function OurStory() {
+  const candidates = getImageCandidates("story_background");
+  const [storyIdx, setStoryIdx] = useState(0);
+  const [storySrc, setStorySrc] = useState(candidates[0]);
+
+  const handleStoryError = () => {
+    if (storyIdx < candidates.length - 1) {
+      const next = storyIdx + 1;
+      setStoryIdx(next);
+      setStorySrc(candidates[next]);
+    } else {
+      setStorySrc(PLACEHOLDER);
+    }
+  };
+
+  return (
+    <View style={styles.sectionWrap}>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Our Story</Text>
+        <View style={styles.titleBar} />
+      </View>
+
+      <View style={styles.storyCard}>
+        <View style={styles.storyImgWrap}>
+          <Image source={{ uri: storySrc }} style={styles.storyImg} resizeMode="cover" onError={handleStoryError} />
+          <View style={styles.storyImgOverlay}>
+            <Text style={styles.storyImgTitle}>Ben's Tapsihan</Text>
+            <Text style={styles.storyImgSub}>Since 2003 — Serving comfort, one sizzling plate at a time.</Text>
+          </View>
+        </View>
+
+        <View style={styles.storyBody}>
+          <Text style={styles.storyText}>
+            What started as a humble carinderia along the busy streets of Manila has grown into a beloved neighborhood institution. <Text style={styles.storyBold}>Ben's Tapsihan</Text> was born from a simple idea: serve hearty, affordable Filipino comfort food that brings people together.
+          </Text>
+          <Text style={styles.storyText}>
+            Our founder, <Text style={styles.storyBold}>Kuya Ben</Text>, believed that the best meals are the ones shared with family and friends. He perfected the art of sizzling silog — garlic fried rice topped with a runny egg and your choice of tender, flavorful meat — all served on a cast-iron plate that crackles with excitement.
+          </Text>
+          <Text style={styles.storyText}>
+            From our signature <Text style={{ color: PRIMARY, fontWeight: "700" }}>Tapsilog</Text> to the crowd-favorite <Text style={{ color: PRIMARY, fontWeight: "700" }}>Sisilog</Text>, every dish is made fresh to order using time-honored recipes passed down through generations. We source locally, cook with love, and serve with a smile — because that's the Filipino way.
+          </Text>
+          <Text style={styles.storyText}>
+            Today, Ben's Tapsihan continues Kuya Ben's legacy. Whether you're a regular who's been with us since day one or a first-timer looking for your new favorite meal, you're family here. Come for the sizzle, stay for the flavor.
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Main Home Screen
+// ═══════════════════════════════════════════════════════════════
 export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { itemCount } = useCart();
-  const { width: screenWidth } = useWindowDimensions();
-  const { numColumns: itemCols, cardWidth: itemCardW, gap: itemGap } = useItemGrid();
-  const itemGridKey = useMemo(
-    () => `home-items-${itemCols}-${itemCardW.toFixed(0)}`,
-    [itemCols, itemCardW]
-  );
-  const bannerRef = useRef<FlatList<Banner>>(null);
-  const [activeBanner, setActiveBanner] = useState(0);
+  const { banners } = useBanners();
 
-  const ItemGrid = useCallback(
-    () => (
-      <FlatList
-        key={itemGridKey}
-        data={MUST_TRY}
-        numColumns={itemCols}
-        keyExtractor={(id) => id}
-        columnWrapperStyle={itemCols > 1 ? { gap: itemGap } : undefined}
-        contentContainerStyle={{ paddingHorizontal: 16 }}
-        scrollEnabled={false}
-        renderItem={({ item: id }) => (
-          <ItemCard id={id} cardWidth={itemCardW} gap={itemGap} />
-        )}
-      />
-    ),
-    [itemGridKey, itemCols, itemCardW, itemGap]
-  );
-
-  const onBannerScroll = useCallback(
-    (e: { nativeEvent: { contentOffset: { x: number } } }) => {
-      const idx = Math.round(e.nativeEvent.contentOffset.x / screenWidth);
-      setActiveBanner(idx);
-    },
-    [screenWidth]
-  );
-
-  const renderBannerItem = useCallback(
-    ({ item }: { item: Banner }) => (
-      <View style={{ width: screenWidth, paddingHorizontal: 14 }}>
-        <View style={[styles.bannerCard, { backgroundColor: item.color }]}>
-          <View style={styles.bannerText}>
-            {item.tag && (
-              <View
-                style={[styles.bannerTag, { backgroundColor: item.accentColor }]}
-              >
-                <Text style={styles.bannerTagText}>{item.tag}</Text>
-              </View>
-            )}
-            <Text style={styles.bannerTitle}>{item.title}</Text>
-            <Text style={styles.bannerSubtitle} numberOfLines={3}>
-              {item.subtitle}
-            </Text>
-            <TouchableOpacity
-              style={[styles.bannerBtn, { backgroundColor: item.accentColor }]}
-              onPress={() => router.push("/menu")}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.bannerBtnText}>Order Now</Text>
-            </TouchableOpacity>
-          </View>
-          <Image
-            source={getImage(item.image)}
-            style={styles.bannerImg}
-            resizeMode="cover"
-          />
-        </View>
-      </View>
-    ),
-    [screenWidth, router]
-  );
+  const handleOrderNow = useCallback(() => {
+    router.push("/menu");
+  }, [router]);
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       {/* ─── Header ─── */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Image
-            source={IMAGES.logo}
-            style={styles.headerLogo}
-            resizeMode="contain"
-          />
-          <Text style={styles.headerTitle}>SIZZLING HUB</Text>
+          <Image source={{ uri: LOGO_URL }} style={styles.headerLogo} resizeMode="contain" />
+          <Text style={styles.headerTitle}>BEN'S TAPSIHAN</Text>
         </View>
         <TouchableOpacity
           style={styles.profileBtn}
@@ -252,69 +271,14 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* ─── Scrollable Content ─── */}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* ─── Swipeable Banner Carousel ─── */}
-        <View style={styles.bannerSection}>
-          <FlatList
-            ref={bannerRef}
-            data={BANNERS}
-            horizontal
-            snapToInterval={screenWidth}
-            snapToAlignment="center"
-            decelerationRate="fast"
-            disableIntervalMomentum
-            showsHorizontalScrollIndicator={false}
-            keyExtractor={(b) => b.id}
-            renderItem={renderBannerItem}
-            onScroll={onBannerScroll}
-            scrollEventThrottle={16}
-          />
-          <Dots total={BANNERS.length} active={activeBanner} />
-        </View>
-
-        {/* ─── Quick Categories ─── */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Categories</Text>
-          <View style={styles.categoryRow}>
-            {(
-              [
-                { icon: "🍳", label: "Silog", route: "/menu" as const },
-                { icon: "🥤", label: "Drinks", route: "/menu" as const },
-                { icon: "🍚", label: "Add-ons", route: "/menu" as const }
-              ] as const
-            ).map((cat) => (
-              <TouchableOpacity
-                key={cat.label}
-                style={styles.categoryBtn}
-                activeOpacity={0.7}
-                onPress={() => router.push(cat.route)}
-              >
-                <View style={styles.categoryIconWrap}>
-                  <Text style={styles.categoryIcon}>{cat.icon}</Text>
-                </View>
-                <Text style={styles.categoryLabel}>{cat.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* ─── Most Ordered Grid ─── */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitleNoPad}>Most Ordered</Text>
-            <TouchableOpacity onPress={() => router.push("/menu")}>
-              <Text style={styles.seeAll}>See All →</Text>
-            </TouchableOpacity>
-          </View>
-          <ItemGrid />
-        </View>
-
-        {/* ─── Bottom Spacer for Footer ─── */}
+        {banners.length > 0 && <BannerCarousel banners={banners} onOrderNow={handleOrderNow} />}
+        <TopOrdered onOrderNow={handleOrderNow} />
+        <OurStory />
         <View style={{ height: 100 }} />
       </ScrollView>
 
@@ -325,18 +289,12 @@ export default function HomeScreen() {
           <Text style={styles.footerLabelActive}>Home</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.footerBtn}
-          onPress={() => router.push("/menu")}
-        >
+        <TouchableOpacity style={styles.footerBtn} onPress={() => router.push("/menu")}>
           <Text style={styles.footerIcon}>🍽️</Text>
           <Text style={styles.footerLabel}>Menu</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.footerBtn}
-          onPress={() => router.push("/cart")}
-        >
+        <TouchableOpacity style={styles.footerBtn} onPress={() => router.push("/cart")}>
           <View>
             <Text style={styles.footerIcon}>🛒</Text>
             {itemCount > 0 && (
@@ -348,365 +306,140 @@ export default function HomeScreen() {
           <Text style={styles.footerLabel}>Cart</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.footerBtn}
-          onPress={() => router.push("/orders")}
-        >
+        <TouchableOpacity style={styles.footerBtn} onPress={() => router.push("/orders")}>
           <Text style={styles.footerIcon}>📋</Text>
           <Text style={styles.footerLabel}>Orders</Text>
         </TouchableOpacity>
-
       </View>
     </SafeAreaView>
   );
 }
 
-// ─── Styles ─────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+//  Styles
+// ═══════════════════════════════════════════════════════════════
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f5f5f5",
-  },
+  container: { flex: 1, backgroundColor: "#fafafa" },
 
-  // ─── Header ───
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 14, paddingVertical: 12,
+    backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#e5e7eb",
   },
-  headerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  headerLogo: {
-    width: 34,
-    height: 34,
-    borderRadius: 8,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: PRIMARY,
-    letterSpacing: -0.5,
-  },
-  profileBtn: {
-    padding: 2,
-  },
+  headerLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
+  headerLogo: { width: 34, height: 34, borderRadius: 8 },
+  headerTitle: { fontSize: 18, fontWeight: "800", color: PRIMARY, letterSpacing: -0.5 },
+  profileBtn: { padding: 2 },
   avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: PRIMARY,
-    alignItems: "center",
-    justifyContent: "center",
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: PRIMARY, alignItems: "center", justifyContent: "center",
   },
-  avatarText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
-  },
+  avatarText: { color: "#fff", fontSize: 16, fontWeight: "700" },
 
-  // ─── Scroll ───
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingTop: 4,
-  },
+  scroll: { flex: 1 },
+  scrollContent: { paddingTop: 4 },
 
-  // ─── Banner Carousel ───
-  bannerSection: {
-    paddingTop: 10,
-    paddingBottom: 6,
-  },
+  // Banner
+  bannerSection: { paddingTop: 10, paddingBottom: 6 },
   bannerCard: {
-    flex: 1,
-    flexDirection: "row",
-    borderRadius: 18,
-    padding: 18,
-    overflow: "hidden",
-    gap: 12,
-    alignItems: "center",
+    flexDirection: "row", borderRadius: 18, padding: 18,
+    overflow: "hidden", gap: 12, alignItems: "center",
   },
-  bannerText: {
-    flex: 1,
-    gap: 8,
-  },
+  bannerText: { flex: 1, gap: 8 },
   bannerTag: {
-    alignSelf: "flex-start",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+    alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 6, backgroundColor: "rgba(255,255,255,0.25)",
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.2)",
   },
-  bannerTagText: {
-    color: "#fff",
-    fontSize: 9,
-    fontWeight: "800",
-    letterSpacing: 0.5,
-  },
-  bannerTitle: {
-    fontSize: 20,
-    fontWeight: "900",
-    color: "#1f2937",
-    letterSpacing: -0.5,
-  },
-  bannerSubtitle: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: "#4b5563",
-    lineHeight: 18,
-  },
+  bannerTagText: { color: "#fff", fontSize: 9, fontWeight: "800", letterSpacing: 1, textTransform: "uppercase" },
+  bannerTitle: { fontSize: 22, fontWeight: "900", color: "#fff", letterSpacing: -0.5 },
+  bannerSubtitle: { fontSize: 13, fontWeight: "500", color: "rgba(255,255,255,0.85)", lineHeight: 18 },
   bannerBtn: {
-    alignSelf: "flex-start",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 10,
-    marginTop: 4,
+    alignSelf: "flex-start", paddingHorizontal: 18, paddingVertical: 10,
+    borderRadius: 12, backgroundColor: "#fff", marginTop: 4,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 6, elevation: 4,
   },
-  bannerBtnText: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  bannerImg: {
-    width: 90,
-    height: 90,
-    borderRadius: 14,
-    backgroundColor: "#e5e7eb",
-  },
-  dotsRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 6,
-    paddingTop: 10,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  dotActive: {
-    backgroundColor: PRIMARY,
-    width: 20,
-  },
-  dotInactive: {
-    backgroundColor: "#d1d5db",
-  },
+  bannerBtnText: { fontSize: 13, fontWeight: "700" },
+  bannerImg: { width: 100, height: 100, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.15)" },
+  dotsRow: { flexDirection: "row", justifyContent: "center", gap: 6, paddingTop: 12 },
+  dot: { borderRadius: 5 },
 
-  // ─── Section ───
-  section: {
-    paddingTop: 20,
-    paddingBottom: 8,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 17,
-    fontWeight: "800",
-    color: "#1f2937",
-    paddingHorizontal: 16,
-    marginBottom: 12,
-  },
-  sectionTitleNoPad: {
-    fontSize: 17,
-    fontWeight: "800",
-    color: "#1f2937",
-  },
-  seeAll: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: PRIMARY,
-  },
+  // Sections
+  sectionWrap: { paddingTop: 8, paddingBottom: 8 },
+  sectionHeader: { alignItems: "center", paddingVertical: 16 },
+  sectionTitle: { fontSize: 20, fontWeight: "800", color: "#1f2937", letterSpacing: -0.5 },
+  titleBar: { width: 48, height: 3, borderRadius: 2, backgroundColor: PRIMARY, marginTop: 8 },
 
-  // ─── Categories ───
-  categoryRow: {
-    flexDirection: "row",
-    paddingHorizontal: 12,
-    gap: 10,
+  // Top Ordered
+  topCard: {
+    marginHorizontal: 16, borderRadius: 18, overflow: "hidden",
+    backgroundColor: PRIMARY, shadowColor: "#000", shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2, shadowRadius: 12, elevation: 6,
   },
-  categoryBtn: {
-    flex: 1,
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#fff",
-    paddingVertical: 14,
-    borderRadius: 14,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
+  topCardInner: { flexDirection: "column", padding: 24, gap: 16 },
+  trophyWrap: { alignItems: "center" },
+  trophyCircle: {
+    width: 80, height: 80, borderRadius: 40, alignItems: "center", justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.12)", borderWidth: 2, borderColor: "rgba(255,255,255,0.3)",
   },
-  categoryIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#fef2f2",
-    alignItems: "center",
-    justifyContent: "center",
+  trophyEmoji: { fontSize: 32 },
+  trophyLabel: { color: "#fff", fontSize: 11, fontWeight: "800", marginTop: 2, letterSpacing: 1 },
+  topCardContent: { alignItems: "center", gap: 10 },
+  topTag: {
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8,
+    backgroundColor: "rgba(250,204,21,0.2)", borderWidth: 1, borderColor: "rgba(250,204,21,0.3)",
   },
-  categoryIcon: {
-    fontSize: 20,
+  topTagText: { color: "#fde047", fontSize: 10, fontWeight: "800", letterSpacing: 1 },
+  topTitle: { fontSize: 32, fontWeight: "900", color: "#fff", letterSpacing: -1 },
+  topSubtitle: { fontSize: 14, fontWeight: "500", color: "rgba(255,255,255,0.85)", textAlign: "center", lineHeight: 20 },
+  topPriceRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
+  topPrice: { fontSize: 24, fontWeight: "900", color: "#fff" },
+  topPriceOld: { fontSize: 14, color: "rgba(255,255,255,0.5)", textDecorationLine: "line-through" },
+  topSaveBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: "rgba(250,204,21,0.9)" },
+  topSaveText: { fontSize: 10, fontWeight: "800", color: "#0a0a0a" },
+  topBtn: {
+    paddingHorizontal: 28, paddingVertical: 12, borderRadius: 12,
+    backgroundColor: "#fff", marginTop: 6,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 6, elevation: 4,
   },
-  categoryLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#374151",
-  },
+  topBtnText: { fontSize: 14, fontWeight: "700", color: PRIMARY },
 
-  // ─── Item Card ───
-  itemCard: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
+  // Our Story
+  storyCard: {
+    marginHorizontal: 16, borderRadius: 18, overflow: "hidden",
+    backgroundColor: "#fff", borderWidth: 1, borderColor: "#e5e7eb",
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3,
   },
-  itemCardImg: {
-    backgroundColor: "#f3f4f6",
+  storyImgWrap: { height: 160, backgroundColor: "#f3f4f6" },
+  storyImg: { width: "100%", height: "100%" },
+  storyImgOverlay: {
+    position: "absolute", bottom: 0, left: 0, right: 0,
+    padding: 16, backgroundColor: "rgba(0,0,0,0.4)",
   },
-  itemCardBody: {
-    padding: 10,
-    gap: 5,
-  },
-  itemCardName: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#1f2937",
-    letterSpacing: -0.3,
-  },
-  itemCardRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  itemCardPrice: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: PRIMARY,
-  },
-  itemCardRating: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fef3c7",
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
-    gap: 2,
-  },
-  itemCardStar: {
-    fontSize: 9,
-    color: AMBER,
-  },
-  itemCardRatingNum: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#92400e",
-  },
+  storyImgTitle: { fontSize: 22, fontWeight: "900", color: "#fff" },
+  storyImgSub: { fontSize: 12, fontWeight: "500", color: "rgba(255,255,255,0.8)", marginTop: 2 },
+  storyBody: { padding: 20, gap: 12 },
+  storyText: { fontSize: 14, color: "#4b5563", lineHeight: 22 },
+  storyBold: { fontWeight: "700", color: "#0a0a0a" },
 
-  // ─── Announcement Card ───
-  announceCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: 16,
-    marginTop: 12,
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 16,
-    gap: 14,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  announceIcon: {
-    fontSize: 36,
-  },
-  announceTextWrap: {
-    flex: 1,
-    gap: 2,
-  },
-  announceTitle: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#1f2937",
-  },
-  announceSub: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: "#6b7280",
-    lineHeight: 17,
-  },
-
-  // ─── Floating Footer ───
+  // Footer
   footer: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    alignItems: "center",
-    marginHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: "#fff",
-    borderRadius: 28,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 8,
-    borderWidth: 1,
-    borderColor: "#f3f4f6",
+    flexDirection: "row", justifyContent: "space-around", alignItems: "center",
+    marginHorizontal: 16, paddingVertical: 10,
+    backgroundColor: "#fff", borderRadius: 28,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1, shadowRadius: 12, elevation: 8,
+    borderWidth: 1, borderColor: "#f3f4f6",
   },
-  footerBtn: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: 6,
-    gap: 3,
-  },
-  footerIcon: {
-    fontSize: 20,
-  },
-  footerIconActive: {
-    fontSize: 20,
-  },
-  footerLabel: {
-    fontSize: 10,
-    fontWeight: "600",
-    color: "#6b7280",
-  },
-  footerLabelActive: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: PRIMARY,
-  },
+  footerBtn: { flex: 1, alignItems: "center", paddingVertical: 6, gap: 3 },
+  footerIcon: { fontSize: 20 },
+  footerIconActive: { fontSize: 20 },
+  footerLabel: { fontSize: 10, fontWeight: "600", color: "#6b7280" },
+  footerLabelActive: { fontSize: 10, fontWeight: "700", color: PRIMARY },
   footerBadge: {
-    position: "absolute",
-    top: -4,
-    right: -10,
-    backgroundColor: PRIMARY,
-    borderRadius: 9,
-    minWidth: 18,
-    height: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 4,
+    position: "absolute", top: -4, right: -10,
+    backgroundColor: PRIMARY, borderRadius: 9, minWidth: 18, height: 18,
+    alignItems: "center", justifyContent: "center", paddingHorizontal: 4,
   },
-  footerBadgeText: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "800",
-  },
+  footerBadgeText: { color: "#fff", fontSize: 10, fontWeight: "800" },
 });
