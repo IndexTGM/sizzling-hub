@@ -53,6 +53,7 @@ DO $$ BEGIN
   DROP POLICY IF EXISTS "Anyone can read reviews" ON public.reviews;
   DROP POLICY IF EXISTS "Users can insert their own reviews" ON public.reviews;
   DROP POLICY IF EXISTS "Users can update their own reviews" ON public.reviews;
+  DROP POLICY IF EXISTS "Users can delete their own reviews" ON public.reviews;
 END $$;
 
 -- Anyone can read reviews (public info for menu item pages)
@@ -82,6 +83,12 @@ CREATE POLICY "Users can update their own reviews"
   FOR UPDATE
   USING (auth.uid() = customer_id)
   WITH CHECK (auth.uid() = customer_id);
+
+-- Users can delete their own reviews
+CREATE POLICY "Users can delete their own reviews"
+  ON public.reviews
+  FOR DELETE
+  USING (auth.uid() = customer_id);
 
 -- Function to recalculate the average rating for a single menu item
 CREATE OR REPLACE FUNCTION public.recalc_menu_item_rating(p_menu_item_id uuid)
@@ -132,3 +139,4 @@ BEGIN
   RETURN v_review_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+

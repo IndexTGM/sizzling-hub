@@ -4,17 +4,21 @@ import {
   View,
   TouchableOpacity,
   ScrollView,
+  ActivityIndicator,
+  Alert,
+  Modal,
+  TextInput,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { useMemo } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
+import { supabase } from "@/lib/supabase";
 
 const PRIMARY = "#dc2626";
 const GREEN = "#10b981";
 const AMBER = "#f59e0b";
-const BLUE = "#3b82f6";
 
 // ─── Order Types ────────────────────────────────────────────────
 type OrderStatus =
@@ -22,197 +26,125 @@ type OrderStatus =
   | "confirmed"
   | "preparing"
   | "ready"
-  | "completed"
+  | "out_for_delivery"
+  | "delivered"
   | "cancelled";
-
-type OrderType = "dine_in" | "takeout" | "delivery";
-type PaymentMethod = "cash" | "gcash" | "card";
-type PaymentStatus = "unpaid" | "paid";
+type OrderType = "dine_in" | "takeout" | "delivery" | "pickup";
 
 interface OrderItem {
   name: string;
   quantity: number;
   price: number;
+  note: string;
+  imageName: string;
+  menuItemId: string;
 }
 
 interface Order {
   id: string;
   orderType: OrderType;
   status: OrderStatus;
-  paymentMethod: PaymentMethod;
-  paymentStatus: PaymentStatus;
   subtotal: number;
   deliveryFee: number;
   discount: number;
   total: number;
+  notes: string | null;
   items: OrderItem[];
   placedAt: string;
-  completedAt?: string;
+  completedAt: string | null;
 }
 
-// ─── Constants ──────────────────────────────────────────────────
+// ─── Status Config ──────────────────────────────────────────────
+const STATUS_CONFIG: Record<
+  OrderStatus,
+  { label: string; color: string; bg: string }
+> = {
+  pending: { label: "Pending", color: "#92400e", bg: "#fef3c7" },
+  confirmed: { label: "Confirmed", color: "#1e40af", bg: "#dbeafe" },
+  preparing: { label: "Preparing", color: "#6b21a8", bg: "#f3e8ff" },
+  ready: { label: "Ready", color: "#065f46", bg: "#d1fae5" },
+  out_for_delivery: {
+    label: "Out for Delivery",
+    color: "#c2410c",
+    bg: "#ffedd5",
+  },
+  delivered: { label: "Delivered", color: "#1e3a5f", bg: "#e0f2fe" },
+  cancelled: { label: "Cancelled", color: "#991b1b", bg: "#fee2e2" },
+};
+
 const ORDER_TYPE_ICON: Record<OrderType, string> = {
   dine_in: "🍽️",
   takeout: "🛍️",
   delivery: "🛵",
+  pickup: "🛍️",
 };
 
 const ORDER_TYPE_LABEL: Record<OrderType, string> = {
   dine_in: "Dine In",
   takeout: "Takeout",
   delivery: "Delivery",
+  pickup: "Pickup",
 };
 
-// ─── Status Stepper ─────────────────────────────────────────────
-const STEPS: { key: OrderStatus | "placed"; label: string; icon: string }[] = [
+/* ─── Progress tracker steps ─── */
+const DELIVERY_STEPS = [
   { key: "placed", label: "Order Placed", icon: "📝" },
   { key: "confirmed", label: "Confirmed", icon: "✅" },
   { key: "preparing", label: "Preparing", icon: "👨‍🍳" },
-  { key: "ready", label: "Ready", icon: "📦" },
-  { key: "completed", label: "Completed", icon: "✨" },
+  { key: "out_for_delivery", label: "Out for Delivery", icon: "🛵" },
+  { key: "delivered", label: "Delivered", icon: "🏠" },
 ];
 
-const DELIVERY_STEPS: {
-  key: OrderStatus | "placed" | "driver_assigned" | "on_the_way";
-  label: string;
-  icon: string;
-}[] = [
+const PICKUP_STEPS = [
   { key: "placed", label: "Order Placed", icon: "📝" },
   { key: "confirmed", label: "Confirmed", icon: "✅" },
   { key: "preparing", label: "Preparing", icon: "👨‍🍳" },
-  { key: "ready", label: "Ready", icon: "📦" },
-  { key: "driver_assigned", label: "Driver Assigned", icon: "🛵" },
-  { key: "on_the_way", label: "On the Way", icon: "📍" },
-  { key: "completed", label: "Delivered", icon: "🏠" },
+  { key: "ready", label: "Ready for Pickup", icon: "📦" },
+  { key: "delivered", label: "Picked Up", icon: "✅" },
 ];
 
-const STATUS_INDEX: Record<string, number> = {
-  placed: 0,
-  pending: 0,
-  confirmed: 1,
-  preparing: 2,
-  ready: 3,
-  driver_assigned: 4,
-  on_the_way: 5,
-  completed: 6,
-};
-
-// ─── Mock Orders (same as orders.tsx) ───────────────────────────
-const MOCK_ORDERS: Order[] = [
-  {
-    id: "ORD-1001",
-    orderType: "dine_in",
-    status: "completed",
-    paymentMethod: "cash",
-    paymentStatus: "paid",
-    subtotal: 245,
-    deliveryFee: 0,
-    discount: 0,
-    total: 245,
-    items: [
-      { name: "Sisilog", quantity: 1, price: 129 },
-      { name: "Iced Tea", quantity: 2, price: 58 },
-    ],
-    placedAt: "2026-05-25T14:30:00Z",
-    completedAt: "2026-05-25T14:55:00Z",
-  },
-  {
-    id: "ORD-1002",
-    orderType: "delivery",
-    status: "preparing",
-    paymentMethod: "gcash",
-    paymentStatus: "paid",
-    subtotal: 440,
-    deliveryFee: 50,
-    discount: 20,
-    total: 470,
-    items: [
-      { name: "Tapsilog", quantity: 2, price: 119 },
-      { name: "Bangsilog", quantity: 1, price: 139 },
-      { name: "Mango Shake", quantity: 1, price: 63 },
-    ],
-    placedAt: "2026-05-25T15:10:00Z",
-  },
-  {
-    id: "ORD-1003",
-    orderType: "takeout",
-    status: "pending",
-    paymentMethod: "cash",
-    paymentStatus: "unpaid",
-    subtotal: 258,
-    deliveryFee: 0,
-    discount: 0,
-    total: 258,
-    items: [
-      { name: "Adobosilog", quantity: 1, price: 139 },
-      { name: "Chicksilog", quantity: 1, price: 119 },
-    ],
-    placedAt: "2026-05-25T15:45:00Z",
-  },
-  {
-    id: "ORD-1004",
-    orderType: "delivery",
-    status: "ready",
-    paymentMethod: "card",
-    paymentStatus: "paid",
-    subtotal: 376,
-    deliveryFee: 50,
-    discount: 0,
-    total: 426,
-    items: [
-      { name: "Sisilog", quantity: 2, price: 129 },
-      { name: "Porksilog", quantity: 1, price: 118 },
-    ],
-    placedAt: "2026-05-24T18:20:00Z",
-  },
-  {
-    id: "ORD-1005",
-    orderType: "dine_in",
-    status: "cancelled",
-    paymentMethod: "cash",
-    paymentStatus: "unpaid",
-    subtotal: 129,
-    deliveryFee: 0,
-    discount: 0,
-    total: 129,
-    items: [{ name: "Sisilog", quantity: 1, price: 129 }],
-    placedAt: "2026-05-24T12:00:00Z",
-  },
-  {
-    id: "ORD-1006",
-    orderType: "takeout",
-    status: "confirmed",
-    paymentMethod: "gcash",
-    paymentStatus: "paid",
-    subtotal: 237,
-    deliveryFee: 0,
-    discount: 0,
-    total: 237,
-    items: [
-      { name: "Tapsilog", quantity: 1, price: 119 },
-      { name: "Iced Tea", quantity: 1, price: 58 },
-      { name: "Extra Rice", quantity: 2, price: 30 },
-    ],
-    placedAt: "2026-05-24T19:05:00Z",
-  },
+const STEP_ORDER_DELIVERY = [
+  "placed",
+  "confirmed",
+  "preparing",
+  "out_for_delivery",
+  "delivered",
+];
+const STEP_ORDER_PICKUP = [
+  "placed",
+  "confirmed",
+  "preparing",
+  "ready",
+  "delivered",
 ];
 
-// ─── Status Config ──────────────────────────────────────────────
-const STATUS_CONFIG: Record<string, { color: string; bg: string }> = {
-  pending: { color: "#92400e", bg: "#fef3c7" },
-  confirmed: { color: "#1e40af", bg: "#dbeafe" },
-  preparing: { color: "#6b21a8", bg: "#f3e8ff" },
-  ready: { color: "#065f46", bg: "#d1fae5" },
-  completed: { color: "#1e3a5f", bg: "#e0f2fe" },
-  cancelled: { color: "#991b1b", bg: "#fee2e2" },
-};
+function getStepIndex(
+  status: OrderStatus,
+  orderType?: OrderType
+): number {
+  if (status === "cancelled") return -1;
+  const key = status === "pending" ? "placed" : status;
+  const steps =
+    orderType === "pickup" ? STEP_ORDER_PICKUP : STEP_ORDER_DELIVERY;
+  return steps.indexOf(key);
+}
 
 // ─── Format Helpers ─────────────────────────────────────────────
 function formatDateTime(iso: string): string {
   const d = new Date(iso);
   const months = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
   ];
   const hours = d.getHours();
   const mins = d.getMinutes().toString().padStart(2, "0");
@@ -221,35 +153,7 @@ function formatDateTime(iso: string): string {
   return `${months[d.getMonth()]} ${d.getDate()}, ${h12}:${mins} ${ampm}`;
 }
 
-function getETA(status: OrderStatus): string {
-  switch (status) {
-    case "pending":
-      return "~20-30 mins";
-    case "confirmed":
-      return "~15-25 mins";
-    case "preparing":
-      return "~10-15 mins";
-    case "ready":
-      return "Almost ready!";
-    case "completed":
-      return "Delivered";
-    default:
-      return "";
-  }
-}
-
-function getStepKey(status: OrderStatus, orderType: OrderType): string {
-  if (status === "cancelled") return "placed";
-  if (status === "pending") return "placed";
-  if (orderType === "delivery" && (status === "ready" || status === "completed")) {
-    // For delivery orders that are ready or completed, show driver steps
-    if (status === "completed") return "completed";
-    return "on_the_way"; // ready = on the way for delivery
-  }
-  return status;
-}
-
-// ─── Step Icon ───────────────────────────────────────────────────
+// ─── Step Icon Component ────────────────────────────────────────
 function StepIcon({
   completed,
   active,
@@ -283,10 +187,214 @@ export default function OrderDetailScreen() {
   const { itemCount } = useCart();
   const { id } = useLocalSearchParams<{ id: string }>();
 
-  const order = useMemo(
-    () => MOCK_ORDERS.find((o) => o.id === id),
-    [id]
+  const [order, setOrder] = useState<Order | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const hasLoadedRef = useRef(false);
+
+  // Review states
+  const [reviewVisible, setReviewVisible] = useState(false);
+  const [reviewItem, setReviewItem] = useState<OrderItem | null>(null);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewError, setReviewError] = useState("");
+  const [reviewSuccess, setReviewSuccess] = useState(false);
+  const [existingReviews, setExistingReviews] = useState<Set<string>>(new Set());
+
+  const fetchOrder = useCallback(
+    async (silent = false) => {
+      if (!id || !user) {
+        setLoading(false);
+        return;
+      }
+      if (!hasLoadedRef.current && !silent) setLoading(true);
+
+      const { data: row } = await supabase
+        .from("orders")
+        .select(
+          "id, order_type, status, subtotal, delivery_fee, discount, total, notes, placed_at, completed_at"
+        )
+        .eq("id", id)
+        .eq("customer_id", user.id)
+        .maybeSingle();
+
+      if (!row) {
+        setOrder(null);
+        setLoading(false);
+        return;
+      }
+
+      const { data: items } = await supabase
+        .from("order_items")
+        .select(
+          "quantity, unit_price, note, menu_item_id, menu_item:menu_items(name, image_url)"
+        )
+        .eq("order_id", id);
+
+      // Fetch existing reviews
+      const { data: reviews } = await supabase
+        .from("reviews")
+        .select("menu_item_id")
+        .eq("order_id", id)
+        .eq("customer_id", user.id);
+
+      if (reviews) {
+        setExistingReviews(
+          new Set(reviews.map((r: any) => r.menu_item_id))
+        );
+      }
+
+      setOrder({
+        id: row.id,
+        orderType: row.order_type as OrderType,
+        status: row.status as OrderStatus,
+        subtotal: row.subtotal,
+        deliveryFee: row.delivery_fee,
+        discount: row.discount,
+        total: row.total,
+        notes: row.notes,
+        items: (items || []).map((it: any) => ({
+          name: it.menu_item?.name || "Unknown",
+          quantity: it.quantity,
+          price: it.unit_price,
+          note: it.note ?? "",
+          imageName: it.menu_item?.image_url || "",
+          menuItemId: it.menu_item_id || "",
+        })),
+        placedAt: row.placed_at,
+        completedAt: row.completed_at,
+      });
+      setLoading(false);
+      hasLoadedRef.current = true;
+    },
+    [id, user]
   );
+
+  // Initial fetch + silent refresh every second
+  useEffect(() => {
+    fetchOrder();
+    const interval = setInterval(() => fetchOrder(true), 1000);
+    return () => clearInterval(interval);
+  }, [fetchOrder]);
+
+  // ─── Cancel Order ───────────────────────────────────────────
+  const handleCancelOrder = useCallback(async () => {
+    Alert.alert(
+      "Cancel Order",
+      "Are you sure you want to cancel this order?",
+      [
+        { text: "No", style: "cancel" },
+        {
+          text: "Yes, Cancel",
+          style: "destructive",
+          onPress: async () => {
+            setCancelLoading(true);
+
+            const { data: current } = await supabase
+              .from("orders")
+              .select("status")
+              .eq("id", id)
+              .single();
+            if (!current || current.status !== "pending") {
+              setCancelLoading(false);
+              Alert.alert(
+                "Cannot Cancel",
+                "This order can no longer be cancelled."
+              );
+              await fetchOrder();
+              return;
+            }
+
+            const { data: items } = await supabase
+              .from("order_items")
+              .select("menu_item_id, quantity")
+              .eq("order_id", id);
+            if (items) {
+              for (const it of items) {
+                await supabase.rpc("restore_stock", {
+                  p_menu_item_id: it.menu_item_id,
+                  p_quantity: it.quantity,
+                });
+              }
+            }
+
+            await supabase
+              .from("orders")
+              .update({ status: "cancelled" })
+              .eq("id", id);
+
+            setCancelLoading(false);
+            await fetchOrder();
+          },
+        },
+      ]
+    );
+  }, [id, fetchOrder]);
+
+  // ─── Review ─────────────────────────────────────────────────
+  function openReview(item: OrderItem) {
+    setReviewItem(item);
+    setReviewRating(5);
+    setReviewComment("");
+    setReviewError("");
+    setReviewSuccess(false);
+    setReviewVisible(true);
+  }
+
+  async function handleSubmitReview() {
+    if (!user || !order || !reviewItem) return;
+    setReviewSubmitting(true);
+    setReviewError("");
+    setReviewSuccess(false);
+    try {
+      const { error } = await supabase.rpc("insert_review", {
+        p_customer_id: user.id,
+        p_order_id: order.id,
+        p_menu_item_id: reviewItem.menuItemId,
+        p_rating: reviewRating,
+        p_comment: reviewComment.trim() || null,
+      });
+      if (error) {
+        setReviewError(error.message);
+      } else {
+        setReviewSuccess(true);
+        setExistingReviews((prev) =>
+          new Set(prev).add(reviewItem.menuItemId)
+        );
+        setTimeout(() => {
+          setReviewVisible(false);
+          setReviewSuccess(false);
+          setReviewComment("");
+          setReviewRating(5);
+        }, 1500);
+      }
+    } catch (err: any) {
+      setReviewError(err.message || "Failed to submit review.");
+    }
+    setReviewSubmitting(false);
+  }
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => router.back()}
+          >
+            <Text style={styles.backIcon}>←</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Order Detail</Text>
+          <View style={styles.headerSpacer} />
+        </View>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="large" color={PRIMARY} />
+          <Text style={styles.loadingText}>Loading receipt…</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (!order) {
     return (
@@ -301,56 +409,21 @@ export default function OrderDetailScreen() {
           <Text style={styles.headerTitle}>Order Not Found</Text>
           <View style={styles.headerSpacer} />
         </View>
-        <View style={styles.emptyWrap}>
+        <View style={styles.loadingWrap}>
           <Text style={styles.emptyText}>This order could not be found.</Text>
-        </View>
-        <View style={styles.footer}>
-          <TouchableOpacity
-            style={styles.footerBtn}
-            onPress={() => router.replace("/home")}
-          >
-            <Text style={styles.footerIcon}>🏠</Text>
-            <Text style={styles.footerLabel}>Home</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.footerBtn}
-            onPress={() => router.replace("/menu")}
-          >
-            <Text style={styles.footerIcon}>🍽️</Text>
-            <Text style={styles.footerLabel}>Menu</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.footerBtn}
-            onPress={() => router.replace("/cart")}
-          >
-            <View>
-              <Text style={styles.footerIcon}>🛒</Text>
-              {itemCount > 0 && (
-                <View style={styles.footerBadge}>
-                  <Text style={styles.footerBadgeText}>{itemCount}</Text>
-                </View>
-              )}
-            </View>
-            <Text style={styles.footerLabel}>Cart</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.footerBtn}
-            onPress={() => router.replace("/orders")}
-          >
-            <Text style={styles.footerIconActive}>📋</Text>
-            <Text style={styles.footerLabelActive}>Orders</Text>
-          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
   }
 
-  const isDelivery = order.orderType === "delivery";
-  const isCancelled = order.status === "cancelled";
-  const steps = isDelivery ? DELIVERY_STEPS : STEPS;
-  const currentStepKey = isCancelled ? "placed" : getStepKey(order.status, order.orderType);
-  const currentStepIdx = STATUS_INDEX[currentStepKey] ?? 0;
   const statusCfg = STATUS_CONFIG[order.status];
+  const isCancelled = order.status === "cancelled";
+  const isFinal =
+    order.status === "delivered" || order.status === "cancelled";
+  const isProcessing = !isFinal;
+  const isPickup = order.orderType === "pickup";
+  const steps = isPickup ? PICKUP_STEPS : DELIVERY_STEPS;
+  const stepIdx = getStepIndex(order.status, order.orderType);
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
@@ -363,7 +436,9 @@ export default function OrderDetailScreen() {
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>{order.id}</Text>
+          <Text style={styles.headerTitle}>
+            {order.id.slice(0, 8).toUpperCase()}
+          </Text>
           <View style={styles.headerTypeRow}>
             <Text style={styles.headerTypeIcon}>
               {ORDER_TYPE_ICON[order.orderType]}
@@ -381,99 +456,145 @@ export default function OrderDetailScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* ─── Status Badge + ETA ─── */}
-        {!isCancelled && (
-          <View style={styles.etaCard}>
-            <View style={styles.etaLeft}>
-              <Text style={styles.etaLabel}>Estimated Delivery</Text>
-              <Text style={styles.etaTime}>
-                {isDelivery ? getETA(order.status) : getETA(order.status)}
+        {/* ─── Status Badge ─── */}
+        <View style={styles.statusCard}>
+          <View style={styles.statusLeft}>
+            <Text style={styles.statusLabel}>Status</Text>
+            <Text style={styles.statusValue}>
+              {isCancelled
+                ? "Order Cancelled"
+                : isProcessing
+                  ? "Processing"
+                  : "Completed"}
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.statusBadge,
+              { backgroundColor: statusCfg.bg },
+            ]}
+          >
+            <Text style={[styles.statusBadgeText, { color: statusCfg.color }]}>
+              {statusCfg.label}
+            </Text>
+          </View>
+        </View>
+
+        {/* ─── Processing Indicator ─── */}
+        {isProcessing && (
+          <View style={styles.processingCard}>
+            <Text style={styles.processingIcon}>
+              {order.status === "pending"
+                ? "⏳"
+                : order.status === "confirmed"
+                  ? "✅"
+                  : order.status === "preparing"
+                    ? "👨‍🍳"
+                    : order.status === "out_for_delivery"
+                      ? "🛵"
+                      : order.status === "ready"
+                        ? "📦"
+                        : "⏳"}
+            </Text>
+            <View style={styles.processingInfo}>
+              <Text style={styles.processingTitle}>
+                {order.status === "pending"
+                  ? "Order Received"
+                  : order.status === "confirmed"
+                    ? "Order Confirmed"
+                    : order.status === "preparing"
+                      ? "Preparing Your Order"
+                      : order.status === "out_for_delivery"
+                        ? "Out for Delivery"
+                        : order.status === "ready"
+                          ? "Ready for Pickup"
+                          : "Processing"}
               </Text>
-            </View>
-            <View
-              style={[styles.etaBadge, { backgroundColor: statusCfg.bg }]}
-            >
-              <Text style={[styles.etaBadgeText, { color: statusCfg.color }]}>
-                {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+              <Text style={styles.processingSub}>
+                {order.status === "pending" &&
+                  "Hang tight — the restaurant will confirm your order soon."}
+                {order.status === "confirmed" &&
+                  "The kitchen is getting ready to prepare your food."}
+                {order.status === "preparing" &&
+                  "Our chefs are cooking your meal with care."}
+                {order.status === "out_for_delivery" &&
+                  "Your order is on the way. Almost there!"}
+                {order.status === "ready" &&
+                  "Your order is ready! Come pick it up at the counter."}
               </Text>
             </View>
           </View>
         )}
 
+        {/* Cancelled message */}
         {isCancelled && (
-          <View style={styles.etaCard}>
-            <View style={styles.etaLeft}>
-              <Text style={styles.etaLabel}>Order Status</Text>
-              <Text style={[styles.etaTime, { color: "#991b1b" }]}>
-                This order was cancelled
-              </Text>
-            </View>
-            <View
-              style={[styles.etaBadge, { backgroundColor: statusCfg.bg }]}
-            >
-              <Text style={[styles.etaBadgeText, { color: statusCfg.color }]}>
-                Cancelled
-              </Text>
-            </View>
+          <View style={styles.cancelledCard}>
+            <Text style={styles.cancelledTitle}>
+              This order was cancelled
+            </Text>
+            <Text style={styles.cancelledSub}>
+              If you have questions, please contact us.
+            </Text>
           </View>
         )}
 
         {/* ─── Status Timeline ─── */}
-        <View style={styles.timelineCard}>
-          <Text style={styles.sectionTitle}>Order Progress</Text>
-          <View style={styles.timeline}>
-            {steps.map((step, idx) => {
-              const isCompleted = idx <= currentStepIdx && !isCancelled;
-              const isActive = idx === currentStepIdx && !isCancelled;
-              const isLast = idx === steps.length - 1;
+        {!isCancelled && (
+          <View style={styles.timelineCard}>
+            <Text style={styles.sectionTitle}>Order Progress</Text>
+            <View style={styles.timeline}>
+              {steps.map((step, idx) => {
+                const isCompleted = idx <= stepIdx;
+                const isActive = idx === stepIdx;
+                const isLast = idx === steps.length - 1;
 
-              return (
-                <View key={step.key} style={styles.timelineRow}>
-                  {/* Connector line + icon */}
-                  <View style={styles.timelineLeft}>
-                    {!isLast && (
-                      <View
-                        style={[
-                          styles.timelineLine,
-                          isCompleted && styles.timelineLineCompleted,
-                        ]}
+                return (
+                  <View key={step.key} style={styles.timelineRow}>
+                    <View style={styles.timelineLeft}>
+                      {!isLast && (
+                        <View
+                          style={[
+                            styles.timelineLine,
+                            isCompleted && styles.timelineLineCompleted,
+                          ]}
+                        />
+                      )}
+                      <StepIcon
+                        completed={isCompleted}
+                        active={isActive}
+                        icon={step.icon}
                       />
-                    )}
-                    <StepIcon
-                      completed={isCompleted}
-                      active={isActive}
-                      icon={step.icon}
-                    />
-                    {idx !== 0 && (
-                      <View
+                      {idx !== 0 && (
+                        <View
+                          style={[
+                            styles.timelineLineTop,
+                            isCompleted && styles.timelineLineCompleted,
+                          ]}
+                        />
+                      )}
+                    </View>
+                    <View style={styles.timelineRight}>
+                      <Text
                         style={[
-                          styles.timelineLineTop,
-                          isCompleted && styles.timelineLineCompleted,
+                          styles.timelineLabel,
+                          isActive && styles.timelineLabelActive,
+                          isCompleted &&
+                            !isActive &&
+                            styles.timelineLabelDone,
                         ]}
-                      />
-                    )}
+                      >
+                        {step.label}
+                      </Text>
+                      {isActive && (
+                        <Text style={styles.timelineSub}>Current step</Text>
+                      )}
+                    </View>
                   </View>
-
-                  {/* Label + subtext */}
-                  <View style={styles.timelineRight}>
-                    <Text
-                      style={[
-                        styles.timelineLabel,
-                        isActive && styles.timelineLabelActive,
-                        isCompleted && !isActive && styles.timelineLabelDone,
-                      ]}
-                    >
-                      {step.label}
-                    </Text>
-                    {isActive && !isCancelled && (
-                      <Text style={styles.timelineSub}>Current step</Text>
-                    )}
-                  </View>
-                </View>
-              );
-            })}
+                );
+              })}
+            </View>
           </View>
-        </View>
+        )}
 
         {/* ─── Order Items ─── */}
         <View style={styles.itemsCard}>
@@ -482,7 +603,12 @@ export default function OrderDetailScreen() {
             <View key={idx} style={styles.itemRow}>
               <View style={styles.itemLeft}>
                 <Text style={styles.itemQty}>x{item.quantity}</Text>
-                <Text style={styles.itemName}>{item.name}</Text>
+                <View style={styles.itemInfo}>
+                  <Text style={styles.itemName}>{item.name}</Text>
+                  {item.note ? (
+                    <Text style={styles.itemNote}>"{item.note}"</Text>
+                  ) : null}
+                </View>
               </View>
               <Text style={styles.itemPrice}>
                 ₱{item.price * item.quantity}
@@ -501,7 +627,9 @@ export default function OrderDetailScreen() {
           {order.deliveryFee > 0 && (
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Delivery Fee</Text>
-              <Text style={styles.summaryValue}>₱{order.deliveryFee}</Text>
+              <Text style={styles.summaryValue}>
+                ₱{order.deliveryFee}
+              </Text>
             </View>
           )}
           {order.discount > 0 && (
@@ -519,25 +647,12 @@ export default function OrderDetailScreen() {
             <Text style={styles.summaryLabelBold}>Total</Text>
             <Text style={styles.summaryTotal}>₱{order.total}</Text>
           </View>
-          <View style={styles.paymentRow}>
-            <View
-              style={[
-                styles.paymentDot,
-                {
-                  backgroundColor:
-                    order.paymentStatus === "paid" ? GREEN : "#9ca3af",
-                },
-              ]}
-            />
-            <Text style={styles.paymentMethod}>
-              {order.paymentStatus === "paid" ? "Paid" : "Unpaid"} via{" "}
-              {order.paymentMethod === "cash"
-                ? "Cash"
-                : order.paymentMethod === "gcash"
-                  ? "GCash"
-                  : "Card"}
-            </Text>
-          </View>
+          {order.notes && (
+            <View style={styles.notesRow}>
+              <Text style={styles.notesLabel}>Notes</Text>
+              <Text style={styles.notesValue}>{order.notes}</Text>
+            </View>
+          )}
         </View>
 
         {/* ─── Timestamps ─── */}
@@ -558,8 +673,173 @@ export default function OrderDetailScreen() {
           )}
         </View>
 
+        {/* ─── Cancel Button ─── */}
+        {order.status === "pending" && (
+          <TouchableOpacity
+            style={styles.cancelOrderBtn}
+            onPress={handleCancelOrder}
+            disabled={cancelLoading}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.cancelOrderBtnText}>
+              {cancelLoading ? "Cancelling…" : "Cancel Order"}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {/* ─── Review Section (delivered orders) ─── */}
+        {order.status === "delivered" &&
+          order.items.some((it) => it.menuItemId) && (
+            <View style={styles.reviewCard}>
+              <Text style={styles.sectionTitle}>Review Your Items</Text>
+              {order.items.map((item, idx) => {
+                const hasReviewed = existingReviews.has(item.menuItemId);
+                if (!item.menuItemId) return null;
+                return (
+                  <View key={idx} style={styles.reviewItemRow}>
+                    <View style={styles.reviewItemInfo}>
+                      <Text style={styles.reviewItemName}>{item.name}</Text>
+                      <Text style={styles.reviewItemQty}>
+                        x{item.quantity}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={[
+                        styles.reviewBtn,
+                        hasReviewed && styles.reviewBtnDone,
+                      ]}
+                      onPress={() => openReview(item)}
+                      disabled={hasReviewed}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.reviewBtnText,
+                          hasReviewed && styles.reviewBtnTextDone,
+                        ]}
+                      >
+                        {hasReviewed ? "Reviewed ✓" : "Rate"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+
         <View style={{ height: 100 }} />
       </ScrollView>
+
+      {/* ─── Review Modal ─── */}
+      <Modal
+        visible={reviewVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !reviewSubmitting && setReviewVisible(false)}
+      >
+        <View
+          style={styles.reviewOverlay}
+          // onPress={() => !reviewSubmitting && setReviewVisible(false)}
+        >
+          <View style={styles.reviewSheet}>
+            <View style={styles.reviewHeader}>
+              <Text style={styles.reviewTitle}>Review</Text>
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                onPress={() => setReviewVisible(false)}
+                disabled={reviewSubmitting}
+              >
+                <Text style={styles.modalCloseIcon}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {reviewItem && (
+              <>
+                <Text style={styles.reviewItemTitle}>
+                  {reviewItem.name}
+                </Text>
+
+                {/* Star selector */}
+                <View style={styles.starRow}>
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <TouchableOpacity
+                      key={star}
+                      onPress={() => setReviewRating(star)}
+                      style={styles.starBtn}
+                    >
+                      <Text
+                        style={[
+                          styles.starIcon,
+                          {
+                            color:
+                              star <= reviewRating ? AMBER : "#d1d5db",
+                          },
+                        ]}
+                      >
+                        ★
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <Text style={styles.ratingLabel}>
+                  {reviewRating === 1
+                    ? "Poor"
+                    : reviewRating === 2
+                      ? "Fair"
+                      : reviewRating === 3
+                        ? "Good"
+                        : reviewRating === 4
+                          ? "Very Good"
+                          : "Excellent!"}
+                </Text>
+
+                <TextInput
+                  style={styles.reviewInput}
+                  value={reviewComment}
+                  onChangeText={(t) => setReviewComment(t.slice(0, 300))}
+                  placeholder="Share your thoughts (optional)..."
+                  placeholderTextColor="#9ca3af"
+                  multiline
+                  maxLength={300}
+                  textAlignVertical="top"
+                />
+                <Text style={styles.charCount}>
+                  {reviewComment.length}/300
+                </Text>
+
+                {reviewError ? (
+                  <Text style={styles.reviewErrorText}>
+                    {reviewError}
+                  </Text>
+                ) : null}
+                {reviewSuccess ? (
+                  <Text style={styles.reviewSuccessText}>
+                    Review submitted! 🎉
+                  </Text>
+                ) : null}
+
+                <TouchableOpacity
+                  style={[
+                    styles.submitReviewBtn,
+                    reviewSuccess && { backgroundColor: "#16a34a" },
+                  ]}
+                  onPress={handleSubmitReview}
+                  disabled={reviewSubmitting || reviewSuccess}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.submitReviewBtnText}>
+                    {reviewSubmitting
+                      ? "Submitting…"
+                      : reviewSuccess
+                        ? "Submitted!"
+                        : "Submit Review"}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       {/* ─── Floating Footer ─── */}
       <View style={styles.footer}>
@@ -570,7 +850,6 @@ export default function OrderDetailScreen() {
           <Text style={styles.footerIcon}>🏠</Text>
           <Text style={styles.footerLabel}>Home</Text>
         </TouchableOpacity>
-
         <TouchableOpacity
           style={styles.footerBtn}
           onPress={() => router.replace("/menu")}
@@ -578,7 +857,6 @@ export default function OrderDetailScreen() {
           <Text style={styles.footerIcon}>🍽️</Text>
           <Text style={styles.footerLabel}>Menu</Text>
         </TouchableOpacity>
-
         <TouchableOpacity
           style={styles.footerBtn}
           onPress={() => router.replace("/cart")}
@@ -593,12 +871,10 @@ export default function OrderDetailScreen() {
           </View>
           <Text style={styles.footerLabel}>Cart</Text>
         </TouchableOpacity>
-
         <TouchableOpacity style={styles.footerBtn}>
           <Text style={styles.footerIconActive}>📋</Text>
           <Text style={styles.footerLabelActive}>Orders</Text>
         </TouchableOpacity>
-
       </View>
     </SafeAreaView>
   );
@@ -662,6 +938,24 @@ const styles = StyleSheet.create({
     width: 36,
   },
 
+  // ─── Loading ───
+  loadingWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#9ca3af",
+  },
+  emptyText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#9ca3af",
+  },
+
   // ─── Scroll ───
   scroll: {
     flex: 1,
@@ -671,20 +965,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
 
-  // ─── Empty State ───
-  emptyWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  emptyText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#9ca3af",
-  },
-
-  // ─── ETA Card ───
-  etaCard: {
+  // ─── Status Card ───
+  statusCard: {
     backgroundColor: "#fff",
     borderRadius: 16,
     padding: 16,
@@ -697,30 +979,89 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  etaLeft: {
+  statusLeft: {
     gap: 4,
   },
-  etaLabel: {
+  statusLabel: {
     fontSize: 12,
     fontWeight: "600",
     color: "#9ca3af",
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
-  etaTime: {
+  statusValue: {
     fontSize: 20,
     fontWeight: "800",
     color: "#1f2937",
   },
-  etaBadge: {
+  statusBadge: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 10,
   },
-  etaBadgeText: {
+  statusBadgeText: {
     fontSize: 12,
     fontWeight: "800",
     letterSpacing: 0.3,
+  },
+
+  // ─── Processing Card ───
+  processingCard: {
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    borderWidth: 1,
+    borderColor: "#fde68a",
+    backgroundColor: "#fef3c7",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  processingIcon: {
+    fontSize: 28,
+  },
+  processingInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  processingTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#b45309",
+  },
+  processingSub: {
+    fontSize: 12,
+    color: "#92400e",
+    fontWeight: "500",
+  },
+
+  // ─── Cancelled Card ───
+  cancelledCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 16,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#fee2e2",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  cancelledTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#991b1b",
+  },
+  cancelledSub: {
+    fontSize: 13,
+    color: "#6b7280",
+    marginTop: 4,
   },
 
   // ─── Timeline Card ───
@@ -822,61 +1163,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // ─── Driver Card ───
-  driverCard: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  driverRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  driverAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: PRIMARY,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  driverAvatarText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "700",
-  },
-  driverInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  driverName: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#1f2937",
-  },
-  driverVehicle: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: "#6b7280",
-  },
-  callBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#ecfdf5",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  callIcon: {
-    fontSize: 18,
-  },
-
   // ─── Items Card ───
   itemsCard: {
     backgroundColor: "#fff",
@@ -891,12 +1177,12 @@ const styles = StyleSheet.create({
   itemRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     paddingVertical: 6,
   },
   itemLeft: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 8,
     flex: 1,
   },
@@ -906,11 +1192,19 @@ const styles = StyleSheet.create({
     color: "#9ca3af",
     width: 28,
   },
+  itemInfo: {
+    flex: 1,
+    gap: 2,
+  },
   itemName: {
     fontSize: 14,
     fontWeight: "600",
     color: "#1f2937",
-    flex: 1,
+  },
+  itemNote: {
+    fontSize: 11,
+    color: "#9ca3af",
+    fontStyle: "italic",
   },
   itemPrice: {
     fontSize: 14,
@@ -960,24 +1254,27 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: PRIMARY,
   },
-  paymentRow: {
+  notesRow: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 10,
+    justifyContent: "space-between",
+    alignItems: "flex-start",
     paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: "#f3f4f6",
+    marginTop: 8,
+    gap: 12,
   },
-  paymentDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  paymentMethod: {
+  notesLabel: {
     fontSize: 12,
     fontWeight: "600",
+    color: "#9ca3af",
+  },
+  notesValue: {
+    fontSize: 12,
     color: "#6b7280",
+    flex: 1,
+    textAlign: "right",
+    fontStyle: "italic",
   },
 
   // ─── Timestamp Card ───
@@ -1000,12 +1297,190 @@ const styles = StyleSheet.create({
   timestampLabel: {
     fontSize: 13,
     fontWeight: "600",
-    color: "#9ca3af",
+    color: "#6b7280",
   },
   timestampValue: {
     fontSize: 13,
+    fontWeight: "700",
+    color: "#1f2937",
+  },
+
+  // ─── Cancel Order Button ───
+  cancelOrderBtn: {
+    backgroundColor: "#fef2f2",
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#fecaca",
+  },
+  cancelOrderBtnText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#dc2626",
+  },
+
+  // ─── Review Section ───
+  reviewCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+    gap: 8,
+  },
+  reviewItemRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: "#f9fafb",
+    borderRadius: 12,
+  },
+  reviewItemInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  reviewItemName: {
+    fontSize: 14,
     fontWeight: "600",
-    color: "#374151",
+    color: "#1f2937",
+  },
+  reviewItemQty: {
+    fontSize: 12,
+    color: "#9ca3af",
+  },
+  reviewBtn: {
+    backgroundColor: PRIMARY,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  reviewBtnDone: {
+    backgroundColor: "#ecfdf5",
+  },
+  reviewBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#fff",
+  },
+  reviewBtnTextDone: {
+    color: "#065f46",
+  },
+
+  // ─── Review Modal ───
+  reviewOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  reviewSheet: {
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    width: "100%",
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  reviewHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  reviewTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#1f2937",
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#f3f4f6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalCloseIcon: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#6b7280",
+  },
+  reviewItemTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#0a0a0a",
+    marginBottom: 12,
+  },
+  starRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 6,
+    marginBottom: 8,
+  },
+  starBtn: {
+    padding: 4,
+  },
+  starIcon: {
+    fontSize: 34,
+  },
+  ratingLabel: {
+    textAlign: "center",
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#9ca3af",
+    marginBottom: 14,
+  },
+  reviewInput: {
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: "#1f2937",
+    backgroundColor: "#f9fafb",
+    minHeight: 80,
+  },
+  charCount: {
+    fontSize: 11,
+    color: "#9ca3af",
+    textAlign: "right",
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  reviewErrorText: {
+    fontSize: 12,
+    color: PRIMARY,
+    fontWeight: "500",
+    marginBottom: 8,
+  },
+  reviewSuccessText: {
+    fontSize: 12,
+    color: "#16a34a",
+    fontWeight: "500",
+    marginBottom: 8,
+  },
+  submitReviewBtn: {
+    backgroundColor: PRIMARY,
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: "center",
+    marginTop: 4,
+  },
+  submitReviewBtnText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "800",
   },
 
   // ─── Floating Footer ───
@@ -1032,10 +1507,10 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   footerIcon: {
-    fontSize: 16,
+    fontSize: 20,
   },
   footerIconActive: {
-    fontSize: 16,
+    fontSize: 20,
   },
   footerLabel: {
     fontSize: 10,

@@ -4,12 +4,15 @@ import {
   View,
   TouchableOpacity,
   FlatList,
+  ActivityIndicator,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
+import { supabase } from "@/lib/supabase";
 
 const PRIMARY = "#dc2626";
 const GREEN = "#10b981";
@@ -20,24 +23,22 @@ type OrderStatus =
   | "confirmed"
   | "preparing"
   | "ready"
-  | "completed"
+  | "out_for_delivery"
+  | "delivered"
   | "cancelled";
-type OrderType = "dine_in" | "takeout" | "delivery";
-type PaymentMethod = "cash" | "gcash" | "card";
-type PaymentStatus = "unpaid" | "paid";
+type OrderType = "dine_in" | "takeout" | "delivery" | "pickup";
 
 interface OrderItem {
   name: string;
   quantity: number;
   price: number;
+  note: string;
 }
 
 interface Order {
   id: string;
   orderType: OrderType;
   status: OrderStatus;
-  paymentMethod: PaymentMethod;
-  paymentStatus: PaymentStatus;
   subtotal: number;
   deliveryFee: number;
   discount: number;
@@ -56,121 +57,24 @@ const STATUS_CONFIG: Record<
   confirmed: { label: "Confirmed", color: "#1e40af", bg: "#dbeafe" },
   preparing: { label: "Preparing", color: "#6b21a8", bg: "#f3e8ff" },
   ready: { label: "Ready", color: "#065f46", bg: "#d1fae5" },
-  completed: { label: "Completed", color: "#1e3a5f", bg: "#e0f2fe" },
+  out_for_delivery: { label: "Out for Delivery", color: "#c2410c", bg: "#ffedd5" },
+  delivered: { label: "Delivered", color: "#1e3a5f", bg: "#e0f2fe" },
   cancelled: { label: "Cancelled", color: "#991b1b", bg: "#fee2e2" },
-};
-
-const ORDER_TYPE_LABEL: Record<OrderType, string> = {
-  dine_in: "Dine In",
-  takeout: "Takeout",
-  delivery: "Delivery",
 };
 
 const ORDER_TYPE_ICON: Record<OrderType, string> = {
   dine_in: "🍽️",
   takeout: "🛍️",
   delivery: "🛵",
+  pickup: "🛍️",
 };
 
-// ─── Mock Orders ────────────────────────────────────────────────
-const MOCK_ORDERS: Order[] = [
-  {
-    id: "ORD-1001",
-    orderType: "dine_in",
-    status: "completed",
-    paymentMethod: "cash",
-    paymentStatus: "paid",
-    subtotal: 245,
-    deliveryFee: 0,
-    discount: 0,
-    total: 245,
-    items: [
-      { name: "Sisilog", quantity: 1, price: 129 },
-      { name: "Iced Tea", quantity: 2, price: 58 },
-    ],
-    placedAt: "2026-05-25T14:30:00Z",
-    completedAt: "2026-05-25T14:55:00Z",
-  },
-  {
-    id: "ORD-1002",
-    orderType: "delivery",
-    status: "preparing",
-    paymentMethod: "gcash",
-    paymentStatus: "paid",
-    subtotal: 440,
-    deliveryFee: 50,
-    discount: 20,
-    total: 470,
-    items: [
-      { name: "Tapsilog", quantity: 2, price: 119 },
-      { name: "Bangsilog", quantity: 1, price: 139 },
-      { name: "Mango Shake", quantity: 1, price: 63 },
-    ],
-    placedAt: "2026-05-25T15:10:00Z",
-  },
-  {
-    id: "ORD-1003",
-    orderType: "takeout",
-    status: "pending",
-    paymentMethod: "cash",
-    paymentStatus: "unpaid",
-    subtotal: 258,
-    deliveryFee: 0,
-    discount: 0,
-    total: 258,
-    items: [
-      { name: "Adobosilog", quantity: 1, price: 139 },
-      { name: "Chicksilog", quantity: 1, price: 119 },
-    ],
-    placedAt: "2026-05-25T15:45:00Z",
-  },
-  {
-    id: "ORD-1004",
-    orderType: "delivery",
-    status: "ready",
-    paymentMethod: "card",
-    paymentStatus: "paid",
-    subtotal: 376,
-    deliveryFee: 50,
-    discount: 0,
-    total: 426,
-    items: [
-      { name: "Sisilog", quantity: 2, price: 129 },
-      { name: "Porksilog", quantity: 1, price: 118 },
-    ],
-    placedAt: "2026-05-24T18:20:00Z",
-  },
-  {
-    id: "ORD-1005",
-    orderType: "dine_in",
-    status: "cancelled",
-    paymentMethod: "cash",
-    paymentStatus: "unpaid",
-    subtotal: 129,
-    deliveryFee: 0,
-    discount: 0,
-    total: 129,
-    items: [{ name: "Sisilog", quantity: 1, price: 129 }],
-    placedAt: "2026-05-24T12:00:00Z",
-  },
-  {
-    id: "ORD-1006",
-    orderType: "takeout",
-    status: "confirmed",
-    paymentMethod: "gcash",
-    paymentStatus: "paid",
-    subtotal: 237,
-    deliveryFee: 0,
-    discount: 0,
-    total: 237,
-    items: [
-      { name: "Tapsilog", quantity: 1, price: 119 },
-      { name: "Iced Tea", quantity: 1, price: 58 },
-      { name: "Extra Rice", quantity: 2, price: 30 },
-    ],
-    placedAt: "2026-05-24T19:05:00Z",
-  },
-];
+const ORDER_TYPE_LABEL: Record<OrderType, string> = {
+  dine_in: "Dine In",
+  takeout: "Takeout",
+  delivery: "Delivery",
+  pickup: "Pickup",
+};
 
 // ─── Filter Tabs ────────────────────────────────────────────────
 type FilterTab = "all" | OrderStatus;
@@ -180,7 +84,8 @@ const FILTER_TABS: { key: FilterTab; label: string }[] = [
   { key: "confirmed", label: "Confirmed" },
   { key: "preparing", label: "Preparing" },
   { key: "ready", label: "Ready" },
-  { key: "completed", label: "Completed" },
+  { key: "out_for_delivery", label: "Out for Delivery" },
+  { key: "delivered", label: "Delivered" },
   { key: "cancelled", label: "Cancelled" },
 ];
 
@@ -206,22 +111,36 @@ function formatDate(iso: string): string {
 }
 
 // ─── Order Card ─────────────────────────────────────────────────
-function OrderCard({ order }: { order: Order }) {
+function OrderCard({
+  order,
+  onCancel,
+  cancelLoading,
+}: {
+  order: Order;
+  onCancel: (id: string) => void;
+  cancelLoading: boolean;
+}) {
   const router = useRouter();
   const statusCfg = STATUS_CONFIG[order.status];
+  const canCancel = order.status === "pending";
 
   return (
     <TouchableOpacity
       style={styles.orderCard}
       activeOpacity={0.85}
       onPress={() =>
-        router.push({ pathname: "/order-detail", params: { id: order.id } })
+        router.push({
+          pathname: "/order-detail",
+          params: { id: order.id },
+        })
       }
     >
       {/* Card Header */}
       <View style={styles.orderCardHeader}>
         <View style={styles.orderCardHeaderLeft}>
-          <Text style={styles.orderId}>{order.id}</Text>
+          <Text style={styles.orderId}>
+            {order.id.slice(0, 8).toUpperCase()}…
+          </Text>
           <View style={styles.orderTypeRow}>
             <Text style={styles.orderTypeIcon}>
               {ORDER_TYPE_ICON[order.orderType]}
@@ -231,7 +150,9 @@ function OrderCard({ order }: { order: Order }) {
             </Text>
           </View>
         </View>
-        <View style={[styles.statusBadge, { backgroundColor: statusCfg.bg }]}>
+        <View
+          style={[styles.statusBadge, { backgroundColor: statusCfg.bg }]}
+        >
           <Text style={[styles.statusText, { color: statusCfg.color }]}>
             {statusCfg.label}
           </Text>
@@ -241,12 +162,19 @@ function OrderCard({ order }: { order: Order }) {
       {/* Items */}
       <View style={styles.orderItems}>
         {order.items.map((item, idx) => (
-          <View key={idx} style={styles.orderItemRow}>
-            <Text style={styles.orderItemQty}>x{item.quantity}</Text>
-            <Text style={styles.orderItemName} numberOfLines={1}>
-              {item.name}
-            </Text>
-            <Text style={styles.orderItemPrice}>₱{item.price * item.quantity}</Text>
+          <View key={idx}>
+            <View style={styles.orderItemRow}>
+              <Text style={styles.orderItemQty}>x{item.quantity}</Text>
+              <Text style={styles.orderItemName} numberOfLines={1}>
+                {item.name}
+              </Text>
+              <Text style={styles.orderItemPrice}>
+                ₱{item.price * item.quantity}
+              </Text>
+            </View>
+            {item.note ? (
+              <Text style={styles.orderItemNote}>"{item.note}"</Text>
+            ) : null}
           </View>
         ))}
       </View>
@@ -254,28 +182,7 @@ function OrderCard({ order }: { order: Order }) {
       {/* Footer */}
       <View style={styles.orderCardFooter}>
         <View style={styles.orderFooterLeft}>
-          <Text style={styles.orderDate}>
-            {formatDate(order.placedAt)}
-          </Text>
-          <View style={styles.orderPaymentRow}>
-            <View
-              style={[
-                styles.paymentDot,
-                {
-                  backgroundColor:
-                    order.paymentStatus === "paid" ? GREEN : "#9ca3af",
-                },
-              ]}
-            />
-            <Text style={styles.orderPaymentText}>
-              {order.paymentStatus === "paid" ? "Paid" : "Unpaid"} ·{" "}
-              {order.paymentMethod === "cash"
-                ? "Cash"
-                : order.paymentMethod === "gcash"
-                  ? "GCash"
-                  : "Card"}
-            </Text>
-          </View>
+          <Text style={styles.orderDate}>{formatDate(order.placedAt)}</Text>
         </View>
         <View style={styles.orderFooterRight}>
           {order.discount > 0 && (
@@ -284,6 +191,25 @@ function OrderCard({ order }: { order: Order }) {
           <Text style={styles.orderTotal}>₱{order.total}</Text>
         </View>
       </View>
+
+      {/* Cancel button */}
+      {canCancel && (
+        <View style={styles.cancelRow}>
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={(e) => {
+              e.stopPropagation?.();
+              onCancel(order.id);
+            }}
+            disabled={cancelLoading}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.cancelBtnText}>
+              {cancelLoading ? "Cancelling…" : "Cancel Order"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </TouchableOpacity>
   );
 }
@@ -293,15 +219,151 @@ export default function OrdersScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { itemCount } = useCart();
+
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [cancelLoading, setCancelLoading] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterTab>("all");
+  const hasLoadedRef = useRef(false);
+
+  const fetchOrders = useCallback(
+    async (silent = false) => {
+      if (!user) {
+        setOrders([]);
+        setLoading(false);
+        return;
+      }
+      if (!hasLoadedRef.current && !silent) setLoading(true);
+
+      const { data: orderRows } = await supabase
+        .from("orders")
+        .select(
+          "id, order_type, status, subtotal, delivery_fee, discount, total, placed_at, completed_at"
+        )
+        .eq("customer_id", user.id)
+        .order("placed_at", { ascending: false });
+
+      if (!orderRows) {
+        setOrders([]);
+        setLoading(false);
+        return;
+      }
+
+      const orderIds = orderRows.map((o) => o.id);
+      const { data: itemRows } = await supabase
+        .from("order_items")
+        .select("order_id, quantity, unit_price, note, menu_item:menu_items(name)")
+        .in("order_id", orderIds);
+
+      const itemsByOrder = new Map<string, OrderItem[]>();
+      if (itemRows) {
+        for (const row of itemRows) {
+          const arr = itemsByOrder.get(row.order_id) || [];
+          arr.push({
+            name: (row.menu_item as any)?.name || "Unknown",
+            quantity: row.quantity,
+            price: row.unit_price,
+            note: row.note ?? "",
+          });
+          itemsByOrder.set(row.order_id, arr);
+        }
+      }
+
+      setOrders(
+        orderRows.map((o) => ({
+          id: o.id,
+          orderType: o.order_type as OrderType,
+          status: o.status as OrderStatus,
+          subtotal: o.subtotal,
+          deliveryFee: o.delivery_fee,
+          discount: o.discount,
+          total: o.total,
+          items: itemsByOrder.get(o.id) || [],
+          placedAt: o.placed_at,
+          completedAt: o.completed_at ?? undefined,
+        }))
+      );
+      setLoading(false);
+      hasLoadedRef.current = true;
+    },
+    [user]
+  );
+
+  // Initial fetch + silent refresh every second
+  useEffect(() => {
+    fetchOrders();
+    const interval = setInterval(() => fetchOrders(true), 1000);
+    return () => clearInterval(interval);
+  }, [fetchOrders]);
+
+  const handleCancelOrder = useCallback(
+    async (orderId: string) => {
+      Alert.alert("Cancel Order", "Are you sure you want to cancel this order?", [
+        { text: "No", style: "cancel" },
+        {
+          text: "Yes, Cancel",
+          style: "destructive",
+          onPress: async () => {
+            setCancelLoading(true);
+
+            // Check if still pending
+            const { data: current } = await supabase
+              .from("orders")
+              .select("status")
+              .eq("id", orderId)
+              .single();
+            if (!current || current.status !== "pending") {
+              setCancelLoading(false);
+              Alert.alert(
+                "Cannot Cancel",
+                "This order can no longer be cancelled. It has already been processed by the restaurant."
+              );
+              await fetchOrders();
+              return;
+            }
+
+            // Restore stock
+            const { data: items } = await supabase
+              .from("order_items")
+              .select("menu_item_id, quantity")
+              .eq("order_id", orderId);
+            if (items) {
+              for (const it of items) {
+                await supabase.rpc("restore_stock", {
+                  p_menu_item_id: it.menu_item_id,
+                  p_quantity: it.quantity,
+                });
+              }
+            }
+
+            await supabase
+              .from("orders")
+              .update({ status: "cancelled" })
+              .eq("id", orderId);
+
+            setCancelLoading(false);
+            await fetchOrders();
+          },
+        },
+      ]);
+    },
+    [fetchOrders]
+  );
+
   const filteredOrders = useMemo(() => {
-    if (activeFilter === "all") return MOCK_ORDERS;
-    return MOCK_ORDERS.filter((o) => o.status === activeFilter);
-  }, [activeFilter]);
+    if (activeFilter === "all") return orders;
+    return orders.filter((o) => o.status === activeFilter);
+  }, [orders, activeFilter]);
 
   const renderOrder = useCallback(
-    ({ item }: { item: Order }) => <OrderCard order={item} />,
-    []
+    ({ item }: { item: Order }) => (
+      <OrderCard
+        order={item}
+        onCancel={handleCancelOrder}
+        cancelLoading={cancelLoading}
+      />
+    ),
+    [handleCancelOrder, cancelLoading]
   );
 
   const renderFilterTab = useCallback(
@@ -309,10 +371,7 @@ export default function OrdersScreen() {
       const isActive = activeFilter === item.key;
       return (
         <TouchableOpacity
-          style={[
-            styles.filterTab,
-            isActive && styles.filterTabActive,
-          ]}
+          style={[styles.filterTab, isActive && styles.filterTabActive]}
           onPress={() => setActiveFilter(item.key)}
           activeOpacity={0.7}
         >
@@ -357,7 +416,12 @@ export default function OrdersScreen() {
       </View>
 
       {/* ─── Order List ─── */}
-      {filteredOrders.length === 0 ? (
+      {loading ? (
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="large" color={PRIMARY} />
+          <Text style={styles.loadingText}>Loading orders…</Text>
+        </View>
+      ) : filteredOrders.length === 0 ? (
         <View style={styles.emptyWrap}>
           <Text style={styles.emptyIcon}>📋</Text>
           <Text style={styles.emptyText}>No orders found</Text>
@@ -420,7 +484,6 @@ export default function OrdersScreen() {
           <Text style={styles.footerIconActive}>📋</Text>
           <Text style={styles.footerLabelActive}>Orders</Text>
         </TouchableOpacity>
-
       </View>
     </SafeAreaView>
   );
@@ -465,6 +528,19 @@ const styles = StyleSheet.create({
   },
   headerSpacer: {
     width: 36,
+  },
+
+  // ─── Loading ───
+  loadingWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#9ca3af",
   },
 
   // ─── Filter Tabs ───
@@ -617,6 +693,13 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#374151",
   },
+  orderItemNote: {
+    fontSize: 11,
+    color: "#9ca3af",
+    fontStyle: "italic",
+    marginLeft: 36,
+    marginTop: 2,
+  },
 
   // ─── Order Card Footer ───
   orderCardFooter: {
@@ -635,21 +718,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#9ca3af",
   },
-  orderPaymentRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  paymentDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  orderPaymentText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#6b7280",
-  },
   orderFooterRight: {
     alignItems: "flex-end",
     gap: 2,
@@ -663,6 +731,24 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "800",
     color: PRIMARY,
+  },
+
+  // ─── Cancel ───
+  cancelRow: {
+    borderTopWidth: 1,
+    borderTopColor: "#f3f4f6",
+    paddingTop: 10,
+  },
+  cancelBtn: {
+    backgroundColor: "#fef2f2",
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  cancelBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#dc2626",
   },
 
   // ─── Floating Footer ───

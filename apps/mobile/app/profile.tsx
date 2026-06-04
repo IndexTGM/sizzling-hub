@@ -43,24 +43,24 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     if (!user) return;
-    (async () => {
-      setReviewsLoading(true);
-      const { data } = await supabase
-        .from("reviews")
-        .select("id, rating, comment, created_at, menu_item_id, menu_item:menu_items(name)")
-        .eq("customer_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(50);
-      if (data) setReviews(data.map((r: any) => ({
-        id: r.id,
-        rating: r.rating,
-        comment: r.comment,
-        createdAt: r.created_at,
-        menuItemId: r.menu_item_id,
-        menuItemName: r.menu_item?.name || "Unknown Item",
-      })));
-      setReviewsLoading(false);
-    })();
+    setReviewsLoading(true);
+    supabase
+      .from("reviews")
+      .select("id, rating, comment, created_at, menu_item_id, menu_item:menu_items(name)")
+      .eq("customer_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(50)
+      .then(({ data }) => {
+        setReviews((data || []).map((r: any) => ({
+          id: r.id,
+          rating: r.rating,
+          comment: r.comment,
+          createdAt: r.created_at,
+          menuItemId: r.menu_item_id,
+          menuItemName: r.menu_item?.name || "Unknown Item",
+        })));
+        setReviewsLoading(false);
+      });
   }, [user]);
 
   const hasChanges =
@@ -80,11 +80,16 @@ export default function ProfileScreen() {
     }
   }
 
-  async function handleDeleteReview(reviewId: string) {
+  async function handleDeleteReview(reviewId: string, menuItemId: string) {
+    if (!user) return;
     setDeletingId(reviewId);
     await supabase.from("reviews").delete().eq("id", reviewId);
     setReviews((prev) => prev.filter((r) => r.id !== reviewId));
     setDeletingId(null);
+    // Recalculate the menu item rating
+    if (menuItemId) {
+      try { await supabase.rpc("recalc_menu_item_rating", { p_menu_item_id: menuItemId }); } catch { /* ignore */ }
+    }
   }
 
   return (
@@ -185,7 +190,7 @@ export default function ProfileScreen() {
                     <TouchableOpacity
                       style={[styles.deleteBtn, deletingId === r.id && { opacity: 0.5 }]}
                       disabled={deletingId === r.id}
-                      onPress={() => handleDeleteReview(r.id)}
+                      onPress={() => handleDeleteReview(r.id, r.menuItemId)}
                     >
                       <Text style={styles.deleteBtnText}>{deletingId === r.id ? "…" : "✕"}</Text>
                     </TouchableOpacity>

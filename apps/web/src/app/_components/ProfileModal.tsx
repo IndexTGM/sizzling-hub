@@ -50,9 +50,15 @@ export default function ProfileModal({
   }, [reviewsModalOpen, user]);
 
   async function handleDeleteReview(reviewId: string, menuItemId: string) {
+    if (!user) return;
     setDeletingId(reviewId);
     const sb = createClient();
-    await sb.from("reviews").delete().eq("id", reviewId);
+    const { error } = await sb.from("reviews").delete().eq("id", reviewId);
+    if (error) {
+      console.error("Failed to delete review:", error.message);
+      setDeletingId(null);
+      return;
+    }
     setReviews((prev) => prev.filter((r) => r.id !== reviewId));
     setDeletingId(null);
     // Recalculate the menu item rating
