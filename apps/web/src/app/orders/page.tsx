@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
 import { createClient } from "@/lib/supabase/client";
@@ -186,8 +187,16 @@ function OrderCard({ order, onCancel, cancelLoading }: { order: Order; onCancel:
 }
 
 export default function OrdersPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { cart } = useCart();
+  const router = useRouter();
+
+  // Redirect to home (login) if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace("/");
+    }
+  }, [authLoading, user, router]);
   const [activeFilter, setActiveFilter] = useState<FilterTab>("all");
   const [cartOpen, setCartOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);

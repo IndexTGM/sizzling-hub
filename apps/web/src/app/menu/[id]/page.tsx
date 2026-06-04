@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { useMenu } from "@/lib/menu-context";
@@ -43,8 +43,18 @@ function Stars({ rating }: { rating: number }) {
 
 export default function MenuItemPage() {
   const { id } = useParams<{ id: string }>();
+  const { user, loading: authLoading } = useAuth();
   const { menuItems } = useMenu();
   const { cart, addToCart } = useCart();
+  const router = useRouter();
+
+  // Redirect to home (login) if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace("/");
+    }
+  }, [authLoading, user, router]);
+
   const [cartOpen, setCartOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [imgError, setImgError] = useState(false);

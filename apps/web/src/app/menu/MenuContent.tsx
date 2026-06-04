@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState, useMemo, useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { useMenu } from "@/lib/menu-context";
@@ -27,9 +27,17 @@ const CATEGORIES: CategoryFilter[] = [
 ];
 
 export default function MenuContent() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { menuItems, categories, loading: menuLoading } = useMenu();
   const { cart, addToCart } = useCart();
+  const router = useRouter();
+
+  // Redirect to home (login) if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace("/");
+    }
+  }, [authLoading, user, router]);
 
   const searchParams = useSearchParams();
   const [activeCategory, setActiveCategory] = useState(() => searchParams.get("category") || "all");
