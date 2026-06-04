@@ -28,7 +28,10 @@ export function MenuProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const fetchAll = useCallback(async () => {
-    const { data: items } = await supabase.from("menu_items").select("id, name, price, image_url, stock, description, category_id, categories(name)").order("name");
+    const { data: items } = await supabase
+      .from("menu_items")
+      .select("id, name, price, image_url, stock, rating, description, category_id, categories(name)")
+      .order("name");
     const { data: cats } = await supabase.from("categories").select("id, name").order("sort_order");
 
     if (items) {
@@ -41,7 +44,7 @@ export function MenuProvider({ children }: { children: ReactNode }) {
         description: r.description || "",
         category: r.categories?.name || "Uncategorized",
         categoryId: r.category_id,
-        rating: 4.5, // default — will be fetched per-item in detail
+        rating: r.rating ?? 0,
       })));
     }
     if (cats) setCategories(cats);
