@@ -65,10 +65,24 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
         if (rows) {
           const menuIds = [...new Set(rows.map((r: any) => r.menu_item_id))];
-          const { data: menuRows } = await sb
-            .from("menu_items")
-            .select("id, name, price, image_url, stock, rating, categories(name)")
-            .in("id", menuIds);
+          const [ { data: menuRows }, { data: junctionRows } ] = await Promise.all([
+            sb.from("menu_items").select("id, name, price, image_url, stock, rating").in("id", menuIds),
+            sb.from("menu_item_categories").select("menu_item_id, category_id, categories!inner(name)").in("menu_item_id", menuIds),
+          ]);
+
+          // Build junction map: menu_item_id → category names
+          const junctionMap = new Map<string, string[]>();
+          if (junctionRows) {
+            for (const j of junctionRows as any[]) {
+              const catName = j.categories?.name || "Uncategorized";
+              const existing = junctionMap.get(j.menu_item_id);
+              if (existing) {
+                if (!existing.includes(catName)) existing.push(catName);
+              } else {
+                junctionMap.set(j.menu_item_id, [catName]);
+              }
+            }
+          }
 
           const menuMap = new Map<string, MenuItem>();
           if (menuRows) {
@@ -76,7 +90,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
               menuMap.set(mr.id, {
                 id: mr.id, name: mr.name, price: mr.price,
                 imageName: mr.image_url || "", stock: mr.stock ?? 0, rating: mr.rating ?? 0,
-                category: (mr as any).categories?.name || "Uncategorized",
+                categories: junctionMap.get(mr.id) || ["Uncategorized"],
               });
             }
           }

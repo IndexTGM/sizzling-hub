@@ -38,12 +38,28 @@ async function fetchMenuData(): Promise<{ menuItems: MenuItem[]; categories: Cat
   try {
     const sb = getSupabase();
 
-    const [catsRes, itemsRes] = await Promise.all([
+    const [catsRes, itemsRes, junctionsRes] = await Promise.all([
       sb.from("categories").select("id, name, slug").eq("is_active", true).order("sort_order"),
-      sb.from("menu_items").select("id, name, price, image_url, stock, rating, categories!inner(name)").eq("is_available", true).order("name"),
+      sb.from("menu_items").select("id, name, price, image_url, stock, rating").eq("is_available", true).order("name"),
+      sb.from("menu_item_categories").select("menu_item_id, category_id, categories!inner(name)"),
     ]);
 
     const categories = (catsRes.data || []) as Category[];
+
+    // Build junction map: menu_item_id → category names
+    const junctionMap = new Map<string, string[]>();
+    if (junctionsRes.data) {
+      for (const j of junctionsRes.data as any[]) {
+        const catName = j.categories?.name || "Uncategorized";
+        const existing = junctionMap.get(j.menu_item_id);
+        if (existing) {
+          if (!existing.includes(catName)) existing.push(catName);
+        } else {
+          junctionMap.set(j.menu_item_id, [catName]);
+        }
+      }
+    }
+
     const menuItems: MenuItem[] = (itemsRes.data || []).map((row: any) => ({
       id: row.id,
       name: row.name,
@@ -51,7 +67,7 @@ async function fetchMenuData(): Promise<{ menuItems: MenuItem[]; categories: Cat
       imageName: row.image_url || "",
       stock: row.stock ?? 0,
       rating: row.rating ?? 0,
-      category: row.categories?.name || "Uncategorized",
+      categories: junctionMap.get(row.id) || ["Uncategorized"],
     }));
 
     return { menuItems, categories, error: null };

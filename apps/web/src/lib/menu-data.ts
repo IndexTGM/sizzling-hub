@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/client";
 export interface MenuItem {
   id: string;
   name: string;
-  category: string;
+  categories: string[];  // multiple categories via junction table
   price: number;
   imageName: string;
   description?: string;

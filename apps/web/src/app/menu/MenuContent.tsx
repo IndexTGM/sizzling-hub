@@ -63,7 +63,7 @@ export default function MenuContent() {
   const filteredItems = useMemo(() => {
     let items = activeCategory === "all"
       ? menuItems
-      : menuItems.filter((item) => item.category === activeCategory);
+      : menuItems.filter((item) => item.categories.includes(activeCategory));
     if (search.trim()) {
       const q = search.toLowerCase();
       items = items.filter((item) => item.name.toLowerCase().includes(q));
@@ -170,7 +170,7 @@ export default function MenuContent() {
                   </div>
                   <div className="p-4">
                     <h3 className="font-bold text-[#0a0a0a] text-base">{item.name}</h3>
-                    <p className="text-[#6b7280] text-sm">{item.category}</p>
+                    <p className="text-[#6b7280] text-sm">{item.categories.join(", ")}</p>
                     <div className="flex items-center gap-1.5 mt-1 mb-3">
                       <span className="text-xs" style={{ color: AMBER }}>★</span>
                       <span className="text-xs font-bold text-[#92400e]">{item.rating?.toFixed(1)}</span>
