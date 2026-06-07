@@ -56,20 +56,41 @@ export default function DashboardPanel() {
       <div><h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Recent Orders</h3>
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           {stats.recentOrders.length === 0 ? <div className="p-6 text-center"><p className="text-sm text-gray-400">No orders yet.</p></div> : (
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-left text-xs uppercase text-gray-400 tracking-wider"><tr><th className="px-4 py-3 font-semibold">Order</th><th className="px-4 py-3 font-semibold">Customer</th><th className="px-4 py-3 font-semibold">Total</th><th className="px-4 py-3 font-semibold">Status</th><th className="px-4 py-3 font-semibold hidden sm:table-cell">Date</th></tr></thead>
-              <tbody className="divide-y divide-gray-100">
+            <>
+              {/* Desktop table */}
+              <div className="hidden sm:block">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-left text-xs uppercase text-gray-400 tracking-wider"><tr><th className="px-4 py-3 font-semibold">Order</th><th className="px-4 py-3 font-semibold">Customer</th><th className="px-4 py-3 font-semibold">Total</th><th className="px-4 py-3 font-semibold">Status</th><th className="px-4 py-3 font-semibold">Date</th></tr></thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {stats.recentOrders.map((o: any) => (
+                      <tr key={o.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-3 font-mono text-xs font-bold text-gray-400">#{o.id.slice(0, 8).toUpperCase()}</td>
+                        <td className="px-4 py-3 font-semibold text-gray-700">{o.customer}</td>
+                        <td className="px-4 py-3 font-bold text-red-600">₱{o.total}</td>
+                        <td className="px-4 py-3"><span className={`inline-block px-2 py-0.5 rounded-full text-xs font-extrabold ${o.status === "delivered" ? "bg-emerald-50 text-emerald-600" : o.status === "pending" ? "bg-amber-50 text-amber-600" : o.status === "cancelled" ? "bg-red-50 text-red-600" : o.status === "out_for_delivery" ? "bg-orange-50 text-orange-600" : "bg-blue-50 text-blue-600"}`}>{o.status}</span></td>
+                        <td className="px-4 py-3 text-gray-400">{new Date(o.placed_at).toLocaleDateString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {/* Mobile cards */}
+              <div className="sm:hidden divide-y divide-gray-100">
                 {stats.recentOrders.map((o: any) => (
-                  <tr key={o.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 font-mono text-xs font-bold text-gray-400">#{o.id.slice(0, 8).toUpperCase()}</td>
-                    <td className="px-4 py-3 font-semibold text-gray-700">{o.customer}</td>
-                    <td className="px-4 py-3 font-bold text-red-600">₱{o.total}</td>
-                    <td className="px-4 py-3"><span className={`inline-block px-2 py-0.5 rounded-full text-xs font-extrabold ${o.status === "delivered" ? "bg-emerald-50 text-emerald-600" : o.status === "pending" ? "bg-amber-50 text-amber-600" : o.status === "cancelled" ? "bg-red-50 text-red-600" : o.status === "out_for_delivery" ? "bg-orange-50 text-orange-600" : "bg-blue-50 text-blue-600"}`}>{o.status}</span></td>
-                    <td className="px-4 py-3 text-gray-400 hidden sm:table-cell">{new Date(o.placed_at).toLocaleDateString()}</td>
-                  </tr>
+                  <div key={o.id} className="px-4 py-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-gray-400">#{o.id.slice(0, 8).toUpperCase()}</span>
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-extrabold ${o.status === "delivered" ? "bg-emerald-50 text-emerald-600" : o.status === "pending" ? "bg-amber-50 text-amber-600" : o.status === "cancelled" ? "bg-red-50 text-red-600" : o.status === "out_for_delivery" ? "bg-orange-50 text-orange-600" : "bg-blue-50 text-blue-600"}`}>{o.status}</span>
+                      </div>
+                      <p className="text-sm font-semibold text-gray-700 truncate mt-1">{o.customer}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{new Date(o.placed_at).toLocaleDateString()}</p>
+                    </div>
+                    <span className="text-base font-black text-red-600 flex-shrink-0">₱{o.total}</span>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            </>
           )}
         </div>
       </div>

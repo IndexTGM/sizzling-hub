@@ -37,7 +37,9 @@ export default function BannersPanel() {
           <h3 className="font-bold text-sm text-gray-900">{editing ? "Edit" : "New Banner"}</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <input type="text" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Title" className="px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500/30" />
-            <input type="text" value={form.subtitle} onChange={(e) => setForm({ ...form, subtitle: e.target.value })} placeholder="Subtitle" className="px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500/30" />
+            <div className="sm:col-span-2">
+              <textarea value={form.subtitle} onChange={(e) => setForm({ ...form, subtitle: e.target.value })} placeholder="Subtitle / Description" className="w-full px-3 py-2.5 rounded-lg bg-gray-50 border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500/30 resize-none" rows={2} />
+            </div>
             <input type="text" value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="Image filename" className="px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500/30" />
             <input type="text" value={form.tag} onChange={(e) => setForm({ ...form, tag: e.target.value })} placeholder="Tag" className="px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500/30" />
           </div>
@@ -47,17 +49,51 @@ export default function BannersPanel() {
         </div>
       )}
       {banners.length === 0 ? <EmptyState message="No banners." /> : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm">
-          <thead className="bg-gray-50 text-left text-xs uppercase text-gray-400 tracking-wider"><tr><th className="px-4 py-3 font-semibold">Title</th><th className="px-4 py-3 font-semibold">Subtitle</th><th className="px-4 py-3 font-semibold">Image</th><th className="px-4 py-3 font-semibold">Tag</th><th className="px-4 py-3 font-semibold">Order</th><th className="px-4 py-3 font-semibold">Active</th><th className="px-4 py-3 font-semibold">Actions</th></tr></thead>
-          <tbody className="divide-y divide-gray-100">{banners.map((b) => (
-            <tr key={b.id} className="hover:bg-gray-50 transition-colors">
-              <td className="px-4 py-3 font-semibold text-gray-800">{b.title}</td><td className="px-4 py-3 text-gray-500 max-w-xs truncate">{b.subtitle}</td><td className="px-4 py-3 text-gray-400 font-mono text-xs">{b.image}</td>
-              <td className="px-4 py-3"><span className="inline-block px-2 py-0.5 rounded text-xs font-bold bg-red-50 text-red-600">{b.tag || "—"}</span></td><td className="px-4 py-3 text-gray-400">{b.sort_order}</td>
-              <td className="px-4 py-3"><span className={`inline-block w-2 h-2 rounded-full ${b.is_active ? "bg-emerald-500" : "bg-gray-300"}`} /></td>
-              <td className="px-4 py-3"><div className="flex gap-2"><button onClick={() => startEdit(b)} className="px-3 py-1 rounded-md text-xs font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200">Edit</button><button onClick={() => setDeleteId(b.id)} className="px-3 py-1 rounded-md text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100">Delete</button></div></td>
-            </tr>
-          ))}</tbody>
-        </table></div></div>
+        <>
+          {/* Desktop table */}
+          <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm">
+            <thead className="bg-gray-50 text-left text-xs uppercase text-gray-400 tracking-wider"><tr><th className="px-4 py-3 font-semibold">Title</th><th className="px-4 py-3 font-semibold">Subtitle</th><th className="px-4 py-3 font-semibold">Image</th><th className="px-4 py-3 font-semibold">Tag</th><th className="px-4 py-3 font-semibold">Order</th><th className="px-4 py-3 font-semibold">Active</th><th className="px-4 py-3 font-semibold">Actions</th></tr></thead>
+            <tbody className="divide-y divide-gray-100">{banners.map((b) => (
+              <tr key={b.id} className="hover:bg-gray-50 transition-colors">
+                <td className="px-4 py-3 font-semibold text-gray-800">{b.title}</td><td className="px-4 py-3 text-gray-500 max-w-xs truncate">{b.subtitle}</td><td className="px-4 py-3 text-gray-400 font-mono text-xs">{b.image}</td>
+                <td className="px-4 py-3"><span className="inline-block px-2 py-0.5 rounded text-xs font-bold bg-red-50 text-red-600">{b.tag || "—"}</span></td><td className="px-4 py-3 text-gray-400">{b.sort_order}</td>
+                <td className="px-4 py-3"><span className={`inline-block w-2 h-2 rounded-full ${b.is_active ? "bg-emerald-500" : "bg-gray-300"}`} /></td>
+                <td className="px-4 py-3"><div className="flex gap-2"><button onClick={() => startEdit(b)} className="px-3 py-1 rounded-md text-xs font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200">Edit</button><button onClick={() => setDeleteId(b.id)} className="px-3 py-1 rounded-md text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100">Delete</button></div></td>
+              </tr>
+            ))}</tbody>
+          </table></div></div>
+          {/* Mobile cards */}
+          <div className="md:hidden space-y-3">
+            {banners.map((b) => (
+              <div key={b.id} className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-sm text-gray-900 break-words">{b.title}</p>
+                    {b.subtitle && <p className="text-xs text-gray-400 mt-0.5 break-words">{b.subtitle}</p>}
+                  </div>
+                  <div className="flex-shrink-0">
+                    {b.is_active ? (
+                      <span className="inline-block px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-600">Active</span>
+                    ) : (
+                      <span className="inline-block px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-400">Inactive</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap text-xs text-gray-400">
+                  <span className="bg-gray-100 px-2 py-1 rounded text-gray-500 break-all">{b.image}</span>
+                  {b.tag && <span className="inline-block px-2 py-0.5 rounded text-xs font-bold bg-red-50 text-red-600">{b.tag}</span>}
+                </div>
+                <div className="text-xs text-gray-400">
+                  <span>Order: {b.sort_order}</span>
+                </div>
+                <div className="flex gap-2 pt-1 border-t border-gray-100">
+                  <button onClick={() => startEdit(b)} className="flex-1 py-2.5 rounded-lg text-xs font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200 active:bg-gray-200">✏️ Edit</button>
+                  <button onClick={() => setDeleteId(b.id)} className="flex-1 py-2.5 rounded-lg text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100 active:bg-red-100">🗑 Delete</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
       <ConfirmModal
         open={deleteId !== null}

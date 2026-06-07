@@ -125,24 +125,47 @@ export default function AuditLogsPanel() {
         {actionTypes.map((a) => (<button key={a} onClick={() => setActionFilter(a)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${actionFilter === a ? "bg-red-600 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}>{a.replace(/_/g, " ")}</button>))}
       </div>
       {filtered.length === 0 ? <EmptyState message="No audit logs." /> : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm">
-          <thead className="bg-gray-50 text-left text-xs uppercase text-gray-400 tracking-wider"><tr><th className="px-4 py-3 font-semibold">Time</th><th className="px-4 py-3 font-semibold">Source</th><th className="px-4 py-3 font-semibold">Actor</th><th className="px-4 py-3 font-semibold">Action</th><th className="px-4 py-3 font-semibold hidden sm:table-cell">Entity</th><th className="px-4 py-3 font-semibold hidden md:table-cell">Details</th><th className="px-4 py-3 font-semibold w-16"></th></tr></thead>
-          <tbody className="divide-y divide-gray-100">
+        <>
+          {/* Desktop table */}
+          <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm">
+            <thead className="bg-gray-50 text-left text-xs uppercase text-gray-400 tracking-wider"><tr><th className="px-4 py-3 font-semibold">Time</th><th className="px-4 py-3 font-semibold">Source</th><th className="px-4 py-3 font-semibold">Actor</th><th className="px-4 py-3 font-semibold">Action</th><th className="px-4 py-3 font-semibold hidden sm:table-cell">Entity</th><th className="px-4 py-3 font-semibold hidden md:table-cell">Details</th><th className="px-4 py-3 font-semibold w-16"></th></tr></thead>
+            <tbody className="divide-y divide-gray-100">
+              {filtered.map((log) => (
+                <tr key={log.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-400 font-mono">{new Date(log.created_at).toLocaleString()}</td>
+                  <td className="px-4 py-3"><span className={`inline-block px-2 py-0.5 rounded-full text-xs font-extrabold ${log.source === "admin" ? "bg-red-50 text-red-600" : "bg-blue-50 text-blue-600"}`}>{log.source === "admin" ? "Admin" : "Customer"}</span></td>
+                  <td className="px-4 py-3 font-semibold text-gray-600">{log.actor_email || "System"}</td>
+                  <td className="px-4 py-3"><span className="inline-block px-2 py-0.5 rounded text-xs font-bold bg-gray-100 text-gray-700">{log.action.replace(/_/g, " ")}</span></td>
+                  <td className="px-4 py-3 hidden sm:table-cell">{log.entity_type && <span className="text-gray-400 text-xs">{log.entity_type}{log.entity_id && <span className="text-gray-300 font-mono ml-1">{log.entity_id.slice(0, 8)}</span>}</span>}</td>
+                  <td className="px-4 py-3 hidden md:table-cell text-gray-400 text-xs font-mono max-w-[200px] truncate">{log.details ? JSON.stringify(log.details) : "—"}</td>
+                  <td className="px-4 py-3">
+                    <button onClick={() => setConfirmDeleteId(log.id)} className="px-2 py-1 rounded text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100 transition-colors">×</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table></div></div>
+          {/* Mobile cards */}
+          <div className="md:hidden space-y-2">
             {filtered.map((log) => (
-              <tr key={log.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-400 font-mono">{new Date(log.created_at).toLocaleString()}</td>
-                <td className="px-4 py-3"><span className={`inline-block px-2 py-0.5 rounded-full text-xs font-extrabold ${log.source === "admin" ? "bg-red-50 text-red-600" : "bg-blue-50 text-blue-600"}`}>{log.source === "admin" ? "Admin" : "Customer"}</span></td>
-                <td className="px-4 py-3 font-semibold text-gray-600">{log.actor_email || "System"}</td>
-                <td className="px-4 py-3"><span className="inline-block px-2 py-0.5 rounded text-xs font-bold bg-gray-100 text-gray-700">{log.action.replace(/_/g, " ")}</span></td>
-                <td className="px-4 py-3 hidden sm:table-cell">{log.entity_type && <span className="text-gray-400 text-xs">{log.entity_type}{log.entity_id && <span className="text-gray-300 font-mono ml-1">{log.entity_id.slice(0, 8)}</span>}</span>}</td>
-                <td className="px-4 py-3 hidden md:table-cell text-gray-400 text-xs font-mono max-w-[200px] truncate">{log.details ? JSON.stringify(log.details) : "—"}</td>
-                <td className="px-4 py-3">
-                  <button onClick={() => setConfirmDeleteId(log.id)} className="px-2 py-1 rounded text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100 transition-colors">×</button>
-                </td>
-              </tr>
+              <div key={log.id} className="bg-white rounded-xl border border-gray-200 p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-extrabold ${log.source === "admin" ? "bg-red-50 text-red-600" : "bg-blue-50 text-blue-600"}`}>{log.source === "admin" ? "Admin" : "Customer"}</span>
+                    <span className="inline-block px-2 py-0.5 rounded text-xs font-bold bg-gray-100 text-gray-700">{log.action.replace(/_/g, " ")}</span>
+                  </div>
+                  <button onClick={() => setConfirmDeleteId(log.id)} className="px-2 py-1 rounded text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100 flex-shrink-0">×</button>
+                </div>
+                <div className="text-xs text-gray-400 font-mono">{new Date(log.created_at).toLocaleString()}</div>
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <span className="font-semibold">{log.actor_email || "System"}</span>
+                  {log.entity_type && <span className="text-gray-300">· {log.entity_type}{log.entity_id && <span className="font-mono ml-0.5">{log.entity_id.slice(0, 8)}</span>}</span>}
+                </div>
+                {log.details && <div className="text-xs text-gray-400 font-mono bg-gray-50 p-2 rounded-lg break-all">{JSON.stringify(log.details)}</div>}
+              </div>
             ))}
-          </tbody>
-        </table></div></div>
+          </div>
+        </>
       )}
 
       {/* Confirm single delete */}
