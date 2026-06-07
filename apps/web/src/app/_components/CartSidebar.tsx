@@ -11,7 +11,7 @@ import StorageImage from "./StorageImage";
 import AddressModal from "./AddressModal";
 
 type OrderMethod = "delivery" | "pickup";
-type PaymentMethod = "gcash" | null;
+type PaymentMethod = "gcash" | "paymaya" | null;
 
 interface SavedAddress {
   id: string;
@@ -23,8 +23,9 @@ interface SavedAddress {
   is_default: boolean;
 }
 
-const PAYMENT_OPTIONS: { value: NonNullable<PaymentMethod>; label: string; icon: string }[] = [
+const PAYMENT_OPTIONS: { value: NonNullable<PaymentMethod>; label: string; icon: string; disabled?: boolean }[] = [
   { value: "gcash", label: "GCash", icon: "📱" },
+  { value: "paymaya", label: "PayMaya", icon: "💳", disabled: true },
 ];
 
 export default function CartSidebar({
@@ -268,11 +269,14 @@ export default function CartSidebar({
                 {PAYMENT_OPTIONS.map((opt) => (
                   <button
                     key={opt.value}
+                    disabled={opt.disabled ?? false}
                     onClick={() => setPaymentMethod(paymentMethod === opt.value ? null : opt.value)}
                     className={`py-2 px-1 rounded-lg text-xs font-semibold border transition-all duration-200 ${
-                      paymentMethod === opt.value
-                        ? "border-[#dc2626] bg-red-50 text-red-600"
-                        : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                      opt.disabled
+                        ? "border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed"
+                        : paymentMethod === opt.value
+                          ? "border-[#dc2626] bg-red-50 text-red-600"
+                          : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
                     }`}
                   >
                     <span className="block text-lg mb-0.5">{opt.icon}</span>
