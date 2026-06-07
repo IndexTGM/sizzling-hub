@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
+import { useMenu } from "@/lib/menu-context";
 import { createClient } from "@/lib/supabase/client";
 import { logAudit } from "@/lib/audit-log";
 import AppHeader from "@/app/_components/AppHeader";
@@ -40,7 +41,20 @@ interface Order {
   items: OrderItem[];
   placedAt: string;
   completedAt?: string;
+  paymentMethod: string | null;
+  paymentStatus: string | null;
 }
+
+const PAYMENT_ICON_MAP: Record<string, string> = {
+  gcash: "📱 GCash",
+  cod: "💵 Cash on Delivery",
+};
+const PAYMENT_STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
+  paid: { label: "Paid", color: "#059669", bg: "#d1fae5" },
+  unpaid: { label: "Unpaid", color: "#92400e", bg: "#fef3c7" },
+  failed: { label: "Failed", color: "#991b1b", bg: "#fee2e2" },
+  refunded: { label: "Refunded", color: "#4b5563", bg: "#f3f4f6" },
+};
 
 const STATUS_CONFIG: Record<
   OrderStatus,
@@ -170,6 +184,17 @@ function OrderCard({ order, onCancel, cancelLoading }: { order: Order; onCancel:
           </p>
         </div>
       </div>
+      {/* Payment info */}
+      {order.paymentMethod && (
+        <div className="border-t border-[#f3f4f6] pt-2 mt-2 flex items-center gap-2 text-xs">
+          <span className="font-semibold text-gray-600">{PAYMENT_ICON_MAP[order.paymentMethod] || order.paymentMethod}</span>
+          {order.paymentStatus && (
+            <span className="px-1.5 py-0.5 rounded-full text-xs font-semibold" style={{ backgroundColor: PAYMENT_STATUS_MAP[order.paymentStatus]?.bg, color: PAYMENT_STATUS_MAP[order.paymentStatus]?.color }}>
+              {PAYMENT_STATUS_MAP[order.paymentStatus]?.label || order.paymentStatus}
+            </span>
+          )}
+        </div>
+      )}
       {/* Cancel button — only for pending orders */}
       {canCancel && (
         <div className="mt-3 pt-3 border-t border-[#f3f4f6]">
@@ -189,6 +214,7 @@ function OrderCard({ order, onCancel, cancelLoading }: { order: Order; onCancel:
 export default function OrdersPage() {
   const { user, loading: authLoading } = useAuth();
   const { cart } = useCart();
+  const { refreshMenu } = useMenu();
   const router = useRouter();
 
   // Redirect to home (login) if not authenticated
@@ -226,8 +252,21 @@ export default function OrdersPage() {
         await sb.rpc("restore_stock", { p_menu_item_id: it.menu_item_id, p_quantity: it.quantity });
       }
     }
+    // If cancelling a paid online order, refund via PayMongo
+    const { data: order } = await sb.from("orders").select("payment_status, payment_method").eq("id", orderId).maybeSingle();
+    if (order?.payment_status === "paid" && order?.payment_method !== "cod") {
+      try {
+        await fetch("/api/paymongo/refund", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId }),
+        });
+      } catch { /* best-effort */ }
+    }
+
     await sb.from("orders").update({ status: "cancelled" }).eq("id", orderId);
     logAudit({ source: "customer", action: "cancel_order", entity_type: "order", entity_id: orderId });
+    refreshMenu().catch(() => { /* best-effort */ });
     setCancelLoading(false);
     await fetchOrders();
   }
@@ -243,7 +282,7 @@ export default function OrdersPage() {
     const { data: orderRows } = await sb
       .from("orders")
       .select(
-        "id, order_type, status, subtotal, delivery_fee, discount, total, placed_at, completed_at"
+        "id, order_type, status, subtotal, delivery_fee, discount, total, placed_at, completed_at, payment_method, payment_status"
       )
       .eq("customer_id", user.id)
       .order("placed_at", { ascending: false });
@@ -285,6 +324,8 @@ export default function OrdersPage() {
         items: itemsByOrder.get(o.id) || [],
         placedAt: o.placed_at,
         completedAt: o.completed_at ?? undefined,
+        paymentMethod: o.payment_method,
+        paymentStatus: o.payment_status,
       }))
     );
     setLoading(false);

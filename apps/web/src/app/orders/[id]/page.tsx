@@ -46,7 +46,14 @@ interface Order {
   items: OrderItem[];
   placedAt: string;
   completedAt: string | null;
+  paymentMethod: string | null;
+  paymentStatus: string | null;
 }
+
+const PAYMENT_ICON_MAP: Record<string, string> = {
+  gcash: "📱 GCash",
+  cod: "💵 Cash on Delivery",
+};
 
 const STATUS_CONFIG: Record<
   OrderStatus,
@@ -149,7 +156,7 @@ export default function OrderDetailPage() {
     const { data: row } = await sb
       .from("orders")
       .select(
-        "id, order_type, status, subtotal, delivery_fee, discount, total, notes, placed_at, completed_at"
+        "id, order_type, status, subtotal, delivery_fee, discount, total, notes, placed_at, completed_at, payment_method, payment_status"
       )
       .eq("id", id)
       .eq("customer_id", user.id)
@@ -195,6 +202,8 @@ export default function OrderDetailPage() {
       })),
       placedAt: row.placed_at,
       completedAt: row.completed_at,
+      paymentMethod: row.payment_method,
+      paymentStatus: row.payment_status,
     });
     setLoading(false);
     hasLoadedRef.current = true;
@@ -307,6 +316,7 @@ export default function OrderDetailPage() {
                     <div className="flex justify-between text-sm"><span className="text-[#6b7280] font-medium">Order #</span><span className="font-mono font-bold text-[#0a0a0a]">{order.id.slice(0, 8).toUpperCase()}</span></div>
                     <div className="flex justify-between text-sm"><span className="text-[#6b7280] font-medium">Type</span><span className="font-semibold text-[#0a0a0a]">{ORDER_TYPE_ICON[order.orderType]} {ORDER_TYPE_LABEL[order.orderType]}</span></div>
                     <div className="flex justify-between text-sm"><span className="text-[#6b7280] font-medium">Status</span><span className="inline-block px-2 py-0.5 rounded-full text-xs font-extrabold" style={{ backgroundColor: STATUS_CONFIG[order.status].bg, color: STATUS_CONFIG[order.status].color }}>{STATUS_CONFIG[order.status].label}</span></div>
+                    {order.paymentMethod && <div className="flex justify-between text-sm"><span className="text-[#6b7280] font-medium">Payment</span><span className="font-semibold text-[#0a0a0a]">{PAYMENT_ICON_MAP[order.paymentMethod] || order.paymentMethod}{order.paymentStatus && <span className={`ml-2 px-1.5 py-0.5 rounded-full text-xs font-semibold ${order.paymentStatus === "paid" ? "text-emerald-600 bg-emerald-50" : order.paymentStatus === "failed" ? "text-red-600 bg-red-50" : "text-amber-600 bg-amber-50"}`}>{order.paymentStatus}</span>}</span></div>}
                     <div className="flex justify-between text-sm"><span className="text-[#6b7280] font-medium">Placed</span><span className="font-semibold text-[#0a0a0a]">{formatDateTime(order.placedAt)}</span></div>
                     {order.completedAt && <div className="flex justify-between text-sm"><span className="text-[#6b7280] font-medium">Completed</span><span className="font-semibold text-[#0a0a0a]">{formatDateTime(order.completedAt)}</span></div>}
                     {order.notes && <div className="flex justify-between text-sm"><span className="text-[#6b7280] font-medium">Notes</span><span className="font-semibold text-[#0a0a0a] italic max-w-[60%] text-right">{order.notes}</span></div>}

@@ -35,7 +35,25 @@ export interface AdminOrder {
   id: string; customerName: string; customerEmail: string; orderType: OrderType; status: OrderStatus;
   subtotal: number; deliveryFee: number; discount: number; total: number; notes: string | null;
   items: { name: string; quantity: number; price: number }[]; placedAt: string; completedAt: string | null;
+  paymentMethod: string | null; paymentSourceId: string | null; paymentStatus: string | null;
 }
+
+export const PAYMENT_LABEL: Record<string, string> = {
+  gcash: "GCash",
+  cod: "COD",
+};
+
+export const PAYMENT_ICON: Record<string, string> = {
+  gcash: "📱",
+  cod: "💵",
+};
+
+export const PAYMENT_STATUS_BG: Record<string, string> = {
+  paid: "bg-emerald-50 text-emerald-600",
+  unpaid: "bg-amber-50 text-amber-600",
+  failed: "bg-red-50 text-red-600",
+  refunded: "bg-gray-50 text-gray-600",
+};
 
 export function LoadingSkeleton() {
   return (<div className="bg-white rounded-xl border border-gray-200 p-8 space-y-3">{[1, 2, 3, 4].map((i) => (<div key={i} className="flex gap-4"><div className="h-5 w-1/4 rounded bg-gray-100 animate-pulse" /><div className="h-5 w-1/3 rounded bg-gray-100 animate-pulse" /><div className="h-5 w-1/6 rounded bg-gray-100 animate-pulse" /></div>))}</div>);

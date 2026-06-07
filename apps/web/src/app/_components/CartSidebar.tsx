@@ -11,6 +11,7 @@ import StorageImage from "./StorageImage";
 import AddressModal from "./AddressModal";
 
 type OrderMethod = "delivery" | "pickup";
+type PaymentMethod = "gcash" | null;
 
 interface SavedAddress {
   id: string;
@@ -21,6 +22,10 @@ interface SavedAddress {
   zip: string | null;
   is_default: boolean;
 }
+
+const PAYMENT_OPTIONS: { value: NonNullable<PaymentMethod>; label: string; icon: string }[] = [
+  { value: "gcash", label: "GCash", icon: "📱" },
+];
 
 export default function CartSidebar({
   open,
@@ -39,6 +44,7 @@ export default function CartSidebar({
   const [placing, setPlacing] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [orderMethod, setOrderMethod] = useState<OrderMethod>("delivery");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(null);
   const [addressModalOpen, setAddressModalOpen] = useState(false);
   const [defaultAddress, setDefaultAddress] = useState<SavedAddress | null>(null);
   const [addressLoading, setAddressLoading] = useState(false);
@@ -64,7 +70,6 @@ export default function CartSidebar({
         .maybeSingle();
       if (data) {
         setDefaultAddress(data as SavedAddress);
-        // Calculate distance if lat/lng available on the address
         const addrLat = (data as any).lat as number | undefined;
         const addrLng = (data as any).lng as number | undefined;
         if (addrLat && addrLng) {
@@ -84,13 +89,72 @@ export default function CartSidebar({
     })();
   }, [user, orderMethod, addressModalOpen]);
 
+  const hasDeliveryAddress = orderMethod === "delivery" && defaultAddress !== null;
+  const needsAddress = orderMethod === "delivery" && !addressLoading && defaultAddress === null;
+  const outOfRange = orderMethod === "delivery" && hasDeliveryAddress && !withinRange;
+
   async function handleConfirmOrder() {
+    if (!user) return;
     setConfirmOpen(false);
+
+    // If a payment method is selected, create PayMongo source and redirect
+    if (paymentMethod) {
+      setPlacing(true);
+      try {
+        const origin = window.location.origin;
+        const res = await fetch("/api/paymongo/create-source", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            amount: total,
+            type: paymentMethod,
+            successUrl: `${origin}/payment/success`,
+            failedUrl: `${origin}/payment/failed`,
+            billing: user?.fullName
+              ? { name: user.fullName, email: user.email || "", phone: "" }
+              : undefined,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          showToast(data.error || "Failed to initiate payment.", "error");
+          setPlacing(false);
+          return;
+        }
+
+        // Don't create the order yet — store cart + payment info in sessionStorage.
+        // The success page will create the order only after payment is confirmed.
+        const addrWithCoords = defaultAddress
+          ? { ...defaultAddress, addressLat: (defaultAddress as any).lat, addressLng: (defaultAddress as any).lng }
+          : null;
+
+        sessionStorage.setItem(
+          "paymongo_payment",
+          JSON.stringify({
+            sourceId: data.sourceId,
+            orderType: orderMethod,
+            address: addrWithCoords,
+            paymentMethod,
+          }),
+        );
+
+        onClose();
+        // Redirect to GCash checkout
+        window.location.href = data.checkoutUrl;
+      } catch (err: any) {
+        showToast(err?.message || "Payment failed.", "error");
+        setPlacing(false);
+      }
+      return;
+    }
+
+    // No payment method — COD / pay later
     setPlacing(true);
     const addrWithCoords = defaultAddress
       ? { ...defaultAddress, addressLat: (defaultAddress as any).lat, addressLng: (defaultAddress as any).lng }
       : null;
-    const result = await placeOrder(orderMethod, addrWithCoords);
+    const result = await placeOrder(orderMethod, addrWithCoords, null);
     setPlacing(false);
     if (result.success) {
       showToast("Order placed successfully! We're preparing your food now. 🍳", "success");
@@ -99,10 +163,6 @@ export default function CartSidebar({
       showToast(result.error || "Failed to place order.", "error");
     }
   }
-
-  const hasDeliveryAddress = orderMethod === "delivery" && defaultAddress !== null;
-  const needsAddress = orderMethod === "delivery" && !addressLoading && defaultAddress === null;
-  const outOfRange = orderMethod === "delivery" && hasDeliveryAddress && !withinRange;
 
   return (
     <>
@@ -201,6 +261,45 @@ export default function CartSidebar({
               </div>
             )}
 
+            {/* Payment Method Selection */}
+            <div className="space-y-2">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Payment Method</p>
+              <div className="grid grid-cols-3 gap-2">
+                {PAYMENT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setPaymentMethod(paymentMethod === opt.value ? null : opt.value)}
+                    className={`py-2 px-1 rounded-lg text-xs font-semibold border transition-all duration-200 ${
+                      paymentMethod === opt.value
+                        ? "border-[#dc2626] bg-red-50 text-red-600"
+                        : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                    }`}
+                  >
+                    <span className="block text-lg mb-0.5">{opt.icon}</span>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              {paymentMethod && (
+                <p className="text-xs text-gray-400">
+                  You'll be redirected to {PAYMENT_OPTIONS.find((o) => o.value === paymentMethod)?.label} to complete payment.
+                </p>
+              )}
+              {/* COD only for Delivery */}
+              {orderMethod === "delivery" && 
+                <button
+                  onClick={() => setPaymentMethod(null)}
+                  className={`w-full py-2 rounded-lg text-xs font-semibold border transition-all duration-200 ${
+                    paymentMethod === null
+                      ? "border-[#dc2626] bg-red-50 text-red-600"
+                      : "border-gray-200 bg-white text-gray-400 hover:border-gray-300"
+                  }`}
+                >
+                  💵 Cash on Delivery
+                </button>
+              }
+            </div>
+
             <div className="flex items-center justify-between">
               <span className="text-sm text-[#6b7280] font-medium">Total</span>
               <span className="text-xl font-black" style={{ color: "#dc2626" }}>₱{total}</span>
@@ -211,7 +310,7 @@ export default function CartSidebar({
               style={{ backgroundColor: "#dc2626" }}
               onClick={() => setConfirmOpen(true)}
             >
-              {placing ? "Placing Order…" : "Place Order"}
+              {placing ? "Placing Order…" : paymentMethod ? `Pay with ${PAYMENT_OPTIONS.find((o) => o.value === paymentMethod)?.label}` : "Place Order"}
             </button>
           </div>
         </div>
@@ -231,10 +330,15 @@ export default function CartSidebar({
                   <svg className="w-5 h-5" fill="none" stroke="#6b7280" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
-              <div className="px-5 pt-3">
+              <div className="px-5 pt-3 flex items-center gap-2">
                 <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold ${orderMethod === "delivery" ? "bg-orange-50 text-orange-600" : "bg-emerald-50 text-emerald-600"}`}>
                   {orderMethod === "delivery" ? "🛵 Delivery" : "🛍️ Pickup"}
                 </span>
+                {paymentMethod && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-50 text-blue-600">
+                    {PAYMENT_OPTIONS.find((o) => o.value === paymentMethod)?.icon} {PAYMENT_OPTIONS.find((o) => o.value === paymentMethod)?.label}
+                  </span>
+                )}
               </div>
               {orderMethod === "delivery" && defaultAddress && (
                 <div className="px-5 pt-2">
@@ -244,6 +348,15 @@ export default function CartSidebar({
                     <p className="text-xs text-gray-500">
                       {defaultAddress.city}, {defaultAddress.province}{defaultAddress.zip ? ` ${defaultAddress.zip}` : ""}
                       {addressDistance !== null && <span> • {addressDistance.toFixed(1)} km</span>}
+                    </p>
+                  </div>
+                </div>
+              )}
+              {paymentMethod && (
+                <div className="px-5 pt-2">
+                  <div className="p-3 rounded-xl bg-blue-50 border border-blue-200">
+                    <p className="text-xs text-blue-600 font-medium">
+                      You'll be redirected to {PAYMENT_OPTIONS.find((o) => o.value === paymentMethod)?.label} to pay ₱{total}.
                     </p>
                   </div>
                 </div>

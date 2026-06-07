@@ -8,6 +8,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
+import { usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { type MenuItem, type CartItem } from "@/lib/menu-data";
@@ -26,7 +27,7 @@ interface CartContextType {
   updateNote: (id: string, oldNote: string, newNote: string) => void;
   removeFromCart: (id: string, note: string) => void;
   clearCart: () => void;
-  placeOrder: (orderType?: "dine_in" | "takeout" | "delivery" | "pickup", address?: { street: string; city: string; province: string; zip?: string | null } | null) => Promise<{ success: boolean; error?: string }>;
+  placeOrder: (orderType?: "dine_in" | "takeout" | "delivery" | "pickup", address?: { street: string; city: string; province: string; zip?: string | null } | null, payment?: { method: string; sourceId: string } | null) => Promise<{ success: boolean; error?: string; orderId?: string }>;
 }
 
 const CartContext = createContext<CartContextType | null>(null);
@@ -44,6 +45,7 @@ function cartKey(itemId: string, note: string) {
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const pathname = usePathname();
   const { refreshMenu } = useMenu();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -90,7 +92,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         }
       } catch { /* ignore */ } finally { setLoading(false); }
     })();
-  }, [user]);
+  }, [user, pathname]);
 
   async function syncItem(menuItemId: string, quantity: number, note: string) {
     try {
@@ -170,8 +172,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const placeOrder = useCallback(async (
     orderType: "dine_in" | "takeout" | "delivery" | "pickup" = "delivery",
-    address?: { street: string; city: string; province: string; zip?: string | null } | null
-  ): Promise<{ success: boolean; error?: string }> => {
+    address?: { street: string; city: string; province: string; zip?: string | null } | null,
+    payment?: { method: string; sourceId: string } | null,
+  ): Promise<{ success: boolean; error?: string; orderId?: string }> => {
     if (cart.length === 0) return { success: false, error: "Cart is empty." };
     try {
       const sb = getSupabase();
@@ -201,10 +204,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
         ? `${address.street}, ${address.city}, ${address.province}${address.zip ? ` ${address.zip}` : ""}`
         : null;
 
+      const paymentFields = payment
+        ? { payment_method: payment.method, payment_source_id: payment.sourceId, payment_status: "unpaid" }
+        : { payment_method: "cod", payment_source_id: null, payment_status: "unpaid" };
+
       const { data: order, error: orderErr } = await sb.from("orders").insert({
         customer_id: session.user.id, order_type: orderType, status: "pending",
         subtotal, delivery_fee: 0, discount: 0, total: subtotal,
         notes: addressStr ? `Address: ${addressStr}` : null,
+        ...paymentFields,
       }).select("id").single();
 
       if (orderErr || !order) return { success: false, error: orderErr?.message || "Failed to create order." };
@@ -244,7 +252,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       // Silent refresh menu so stock counts update across all open views
       refreshMenu().catch(() => { /* best-effort, ignore failures */ });
 
-      return { success: true };
+      return { success: true, orderId: order.id };
     } catch (err: any) {
       return { success: false, error: err?.message || "Something went wrong." };
     }

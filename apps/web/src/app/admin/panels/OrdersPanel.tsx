@@ -6,7 +6,7 @@ import { logAudit } from "@/lib/audit-log";
 import ConfirmModal from "@/app/_components/ConfirmModal";
 import { LoadingSkeleton, EmptyState } from "./shared";
 import type { OrderStatus, OrderType, AdminOrder } from "./shared";
-import { STATUS_OPTIONS, STATUS_BG, getNextStatuses, OT_ICON, OT_LABEL } from "./shared";
+import { STATUS_OPTIONS, STATUS_BG, getNextStatuses, OT_ICON, OT_LABEL, PAYMENT_LABEL, PAYMENT_ICON, PAYMENT_STATUS_BG } from "./shared";
 
 export default function OrdersPanel() {
   const [orders, setOrders] = useState<AdminOrder[]>([]);
@@ -18,16 +18,18 @@ export default function OrdersPanel() {
   const [deleteOrderId, setDeleteOrderId] = useState<string | null>(null);
   const hasOrdersLoaded = React.useRef(false);
   const fetchOrders = useCallback(async () => {
-    if (!hasOrdersLoaded.current) setLoading(true);
     const sb = createClient();
-    const { data: rows } = await sb.from("orders").select("id, order_type, status, subtotal, delivery_fee, discount, total, notes, placed_at, completed_at, customer:profiles(full_name, email)").order("placed_at", { ascending: false });
-    if (!rows) { setOrders([]); setLoading(false); return; }
+    const { data: rows, error } = await sb.from("orders").select("id, order_type, status, subtotal, delivery_fee, discount, total, notes, placed_at, completed_at, payment_method, payment_source_id, payment_status, customer:profiles(full_name, email)").order("placed_at", { ascending: false });
+    if (error || !rows) {
+      if (!hasOrdersLoaded.current) { setOrders([]); setLoading(false); }
+      return;
+    }
     const ids = rows.map((r: any) => r.id);
     const { data: items } = await sb.from("order_items").select("order_id, quantity, unit_price, note, menu_item:menu_items(name)").in("order_id", ids);
     const itemsByOrder = new Map<string, { name: string; quantity: number; price: number; note: string }[]>();
     if (items) for (const it of items) { const arr = itemsByOrder.get(it.order_id) || []; arr.push({ name: (it.menu_item as any)?.name || "Unknown", quantity: it.quantity, price: it.unit_price, note: it.note ?? "" }); itemsByOrder.set(it.order_id, arr); }
-    setOrders(rows.map((r: any) => ({ id: r.id, customerName: (r.customer as any)?.full_name || (r.customer as any)?.email || "N/A", customerEmail: (r.customer as any)?.email || "", orderType: r.order_type as OrderType, status: r.status as OrderStatus, subtotal: r.subtotal, deliveryFee: r.delivery_fee, discount: r.discount, total: r.total, notes: r.notes, items: itemsByOrder.get(r.id) || [], placedAt: r.placed_at, completedAt: r.completed_at })));
-    setLoading(false);
+    setOrders(rows.map((r: any) => ({ id: r.id, customerName: (r.customer as any)?.full_name || (r.customer as any)?.email || "N/A", customerEmail: (r.customer as any)?.email || "", orderType: r.order_type as OrderType, status: r.status as OrderStatus, subtotal: r.subtotal, deliveryFee: r.delivery_fee, discount: r.discount, total: r.total, notes: r.notes, items: itemsByOrder.get(r.id) || [], placedAt: r.placed_at, completedAt: r.completed_at, paymentMethod: r.payment_method, paymentSourceId: r.payment_source_id, paymentStatus: r.payment_status })));
+    if (!hasOrdersLoaded.current) setLoading(false);
     hasOrdersLoaded.current = true;
   }, []);
   useEffect(() => {
@@ -38,7 +40,13 @@ export default function OrdersPanel() {
   async function handleDeleteOrder(orderId: string) { const sb = createClient(); await sb.from("orders").delete().eq("id", orderId); logAudit({ action: "delete_order", entity_type: "order", entity_id: orderId }); await fetchOrders(); setDeleteOrderId(null); }
   async function handleStatusChange(orderId: string, newStatus: OrderStatus) {
     const oldOrder = orders.find((o) => o.id === orderId); setSavingId(orderId); const sb = createClient();
-    const updates: Record<string, unknown> = { status: newStatus }; if (newStatus === "delivered") updates.completed_at = new Date().toISOString();
+    const updates: Record<string, unknown> = { status: newStatus }; if (newStatus === "delivered") {
+      updates.completed_at = new Date().toISOString();
+      // When a COD order is marked as delivered, mark payment as paid
+      if (oldOrder?.paymentMethod === "cod" && oldOrder?.paymentStatus !== "paid") {
+        updates.payment_status = "paid";
+      }
+    }
     if (newStatus === "cancelled" && oldOrder && oldOrder.status !== "cancelled") {
       const reason = window.prompt("Reason for cancellation (optional):");
       if (reason !== null) {
@@ -46,6 +54,19 @@ export default function OrdersPanel() {
       }
     }
     await sb.from("orders").update(updates).eq("id", orderId);
+
+    // If cancelling a paid online order, refund via PayMongo
+    if (newStatus === "cancelled" && oldOrder && oldOrder.status !== "cancelled" &&
+        oldOrder?.paymentStatus === "paid" && oldOrder?.paymentMethod !== "cod") {
+      try {
+        await fetch("/api/paymongo/refund", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId }),
+        });
+      } catch { /* best-effort, don't block cancel */ }
+    }
+
     if (newStatus === "cancelled" && oldOrder && oldOrder.status !== "cancelled") {
       const { data: items } = await sb.from("order_items").select("menu_item_id, quantity").eq("order_id", orderId);
       if (items) {
@@ -61,7 +82,7 @@ export default function OrdersPanel() {
   function fmt(iso: string) { const d = new Date(iso); const m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]; const h = d.getHours(); const mi = d.getMinutes().toString().padStart(2, "0"); const a = h >= 12 ? "PM" : "AM"; return `${m[d.getMonth()]} ${d.getDate()}, ${h % 12 || 12}:${mi} ${a}`; }
   function toggleExpand(id: string) { setExpanded((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; }); }
   const filtered = statusFilter === "all" ? orders : orders.filter((o) => o.status === statusFilter);
-  if (loading) return <LoadingSkeleton />;
+  if (loading && orders.length === 0) return <LoadingSkeleton />;
 
   return (
     <div className="space-y-6">
@@ -99,7 +120,21 @@ export default function OrdersPanel() {
                     );
                     })}</div>
                     <div className="border-t border-gray-200 pt-2 space-y-0.5 text-xs text-gray-500"><div className="flex justify-between"><span>Subtotal</span><span className="font-semibold text-gray-700">₱{o.subtotal}</span></div>{o.deliveryFee > 0 && <div className="flex justify-between"><span>Delivery Fee</span><span className="font-semibold text-gray-700">₱{o.deliveryFee}</span></div>}{o.discount > 0 && <div className="flex justify-between text-emerald-600"><span>Discount</span><span className="font-semibold">-₱{o.discount}</span></div>}<div className="flex justify-between text-sm font-black text-gray-900 pt-1 border-t border-gray-200"><span>Total</span><span className="text-red-600">₱{o.total}</span></div></div>
-                    <div className="text-xs text-gray-400 space-y-0.5"><p>Placed: {new Date(o.placedAt).toLocaleString()}</p>{o.completedAt && <p>Completed: {new Date(o.completedAt).toLocaleString()}</p>}{o.notes && <p className="italic">Note: {o.notes}</p>}</div>
+                    <div className="text-xs text-gray-400 space-y-0.5"><p>Placed: {new Date(o.placedAt).toLocaleString()}</p>{o.completedAt && <p>Completed: {new Date(o.completedAt).toLocaleString()}</p>}{o.notes && <p className="italic">Note: {o.notes}</p>}
+                    {o.paymentMethod && (
+                      <div className="pt-1.5 border-t border-gray-200 mt-1.5">
+                        <p className="text-xs font-semibold text-gray-400 mb-1">💳 Payment</p>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-gray-700">{PAYMENT_ICON[o.paymentMethod] || ""} {PAYMENT_LABEL[o.paymentMethod] || o.paymentMethod}</span>
+                          {o.paymentStatus && (
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-extrabold capitalize ${PAYMENT_STATUS_BG[o.paymentStatus] || "bg-gray-50 text-gray-500"}`}>
+                              {o.paymentStatus}
+                            </span>
+                          )}
+                        </div>
+                        {o.paymentSourceId && <p className="text-xs text-gray-400 font-mono mt-0.5">Source: {o.paymentSourceId.slice(0, 12)}…</p>}
+                      </div>
+                    )}</div>
                     <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
                       {o.status !== "delivered" && o.status !== "cancelled" ? (
                         <>
@@ -148,6 +183,18 @@ export default function OrdersPanel() {
                   {receiptOrder.discount > 0 && <div className="flex justify-between text-emerald-600"><span>Discount</span><span className="font-semibold">-₱{receiptOrder.discount}</span></div>}
                   <div className="flex justify-between border-t border-dashed border-gray-200 pt-2 mt-1"><span className="text-base font-extrabold text-gray-900">Total</span><span className="text-lg font-extrabold text-red-600">₱{receiptOrder.total}</span></div>
                 </div>
+                {receiptOrder.paymentMethod && (
+                  <div className="border-t border-dashed border-gray-200 pt-2 mt-2 space-y-1 text-sm">
+                    <div className="flex justify-between"><span className="text-gray-500">Payment</span><span className="font-semibold text-gray-700">{PAYMENT_ICON[receiptOrder.paymentMethod] || ""} {PAYMENT_LABEL[receiptOrder.paymentMethod] || receiptOrder.paymentMethod}</span></div>
+                    {receiptOrder.paymentStatus && (
+                      <div className="flex justify-between"><span className="text-gray-500">Status</span><span className={`font-semibold capitalize ${
+                        receiptOrder.paymentStatus === "paid" ? "text-emerald-600" :
+                        receiptOrder.paymentStatus === "failed" ? "text-red-600" :
+                        "text-amber-600"
+                      }`}>{receiptOrder.paymentStatus}</span></div>
+                    )}
+                  </div>
+                )}
                 <div className="text-center mt-4 pt-3 border-t border-dashed border-gray-200"><p className="text-xs text-gray-400">Thank you!</p></div>
                 <div className="flex gap-2 mt-4 no-print"><button onClick={() => window.print()} className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700">🖨 Print Receipt</button><button onClick={() => setReceiptOrder(null)} className="px-4 py-2.5 rounded-xl bg-gray-100 text-gray-600 text-sm font-medium hover:bg-gray-200">Close</button></div>
               </div>
