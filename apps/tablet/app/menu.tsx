@@ -12,7 +12,6 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useState, useMemo, useCallback } from "react";
-import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
 import { useMenu } from "@/lib/menu-context";
 import { getImageCandidates } from "@/lib/storage";
@@ -119,9 +118,7 @@ export default function MenuScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Text style={styles.backIcon}>←</Text>
-        </TouchableOpacity>
+        <View style={styles.headerSpacer} />
         <Text style={styles.headerTitle}>Menu</Text>
         <View style={styles.headerSpacer} />
       </View>
@@ -176,9 +173,6 @@ export default function MenuScreen() {
       )}
 
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.footerBtn} onPress={() => router.replace("/home")}>
-          <Text style={styles.footerIcon}>🏠</Text><Text style={styles.footerLabel}>Home</Text>
-        </TouchableOpacity>
         <TouchableOpacity style={styles.footerBtn}>
           <Text style={styles.footerIconActive}>🍽️</Text><Text style={styles.footerLabelActive}>Menu</Text>
         </TouchableOpacity>
@@ -188,9 +182,6 @@ export default function MenuScreen() {
             {itemCount > 0 && <View style={styles.footerBadge}><Text style={styles.footerBadgeText}>{itemCount}</Text></View>}
           </View>
           <Text style={styles.footerLabel}>Cart</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.footerBtn} onPress={() => router.push("/orders")}>
-          <Text style={styles.footerIcon}>📋</Text><Text style={styles.footerLabel}>Orders</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

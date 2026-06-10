@@ -1,4 +1,11 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  type ReactNode,
+} from "react";
 import { supabase } from "@/lib/supabase";
 
 export interface MenuItem {
@@ -25,11 +32,14 @@ const MenuContext = createContext<MenuContextType | null>(null);
 
 export function MenuProvider({ children }: { children: ReactNode }) {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>(
+    []
+  );
   const [loading, setLoading] = useState(true);
 
   const fetchAll = useCallback(async () => {
     try {
+      // Fetch items, categories, and the junction table in parallel
       const [itemsRes, catsRes, junctionRes] = await Promise.all([
         supabase
           .from("menu_items")
@@ -50,6 +60,7 @@ export function MenuProvider({ children }: { children: ReactNode }) {
       if (catsErr) console.warn("categories fetch error:", catsErr.message);
       if (jnErr) console.warn("menu_item_categories fetch error:", jnErr.message);
 
+      // Build junction map: menu_item_id → category names (mirrors apps/web)
       const junctionMap = new Map<string, string[]>();
       if (junctions) {
         for (const j of junctions as any[]) {
@@ -75,12 +86,13 @@ export function MenuProvider({ children }: { children: ReactNode }) {
             imageName: r.image_url || "",
             stock: r.stock ?? 0,
             description: r.description || "",
-            category: catNames[0],
-            categories: catNames,
-            categoryId: "",
+            category: catNames[0],       // primary category for display
+            categories: catNames,        // all categories for filtering
+            categoryId: "",               // not needed with embedded names
             rating: r.rating ?? 0,
           };
         });
+        console.log("[MenuProvider] Unique categories:", [...new Set(mapped.map((m) => m.category))].sort());
         setMenuItems(mapped);
       }
     } catch (err: any) {
@@ -90,10 +102,14 @@ export function MenuProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  useEffect(() => { fetchAll(); }, [fetchAll]);
+  useEffect(() => {
+    fetchAll();
+  }, [fetchAll]);
 
   return (
-    <MenuContext.Provider value={{ menuItems, categories, loading, refresh: fetchAll }}>
+    <MenuContext.Provider
+      value={{ menuItems, categories, loading, refresh: fetchAll }}
+    >
       {children}
     </MenuContext.Provider>
   );

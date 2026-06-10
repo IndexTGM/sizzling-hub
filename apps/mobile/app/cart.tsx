@@ -24,6 +24,9 @@ import {
   STORE_LOCATION,
   MAX_DELIVERY_RADIUS_KM,
 } from "@/lib/store-config";
+import { getImageCandidates } from "@/lib/storage";
+
+const PLACEHOLDER = "placeholder.png";
 
 type OrderMethod = "delivery" | "pickup";
 
@@ -38,11 +41,6 @@ interface SavedAddress {
   lat: number;
   lng: number;
 }
-
-// ─── Static Image Map ───────────────────────────────────────────
-const IMAGES: Record<string, ImageSourcePropType> = {
-  placeholder: require("../assets/images/placeholder.png"),
-};
 
 // ─── Card Dimensions ────────────────────────────────────────────
 function useGridLayout() {
@@ -74,6 +72,19 @@ interface CartGridCardProps {
   onDelete: (id: string) => void;
 }
 
+function StorageImg({ imageBase, style }: { imageBase: string; style: any }) {
+  const [tryIdx, setTryIdx] = useState(0);
+  const candidates = useMemo(() => [...getImageCandidates(imageBase), PLACEHOLDER], [imageBase]);
+  return (
+    <Image
+      source={{ uri: candidates[tryIdx] || PLACEHOLDER }}
+      style={style}
+      resizeMode="cover"
+      onError={() => { if (tryIdx < candidates.length - 1) setTryIdx(tryIdx + 1); }}
+    />
+  );
+}
+
 const CartGridCard = memo(function CartGridCard({
   item,
   cardWidth,
@@ -87,15 +98,9 @@ const CartGridCard = memo(function CartGridCard({
   const atMax = item.quantity >= item.stock;
   const isLowStock = item.stock <= 5;
 
-  const imageSource = IMAGES[item.image] ?? IMAGES.placeholder;
-
   return (
     <View style={[styles.card, { width: cardWidth, marginBottom: gap }]}>
-      <Image
-        source={imageSource}
-        style={[styles.cardImage, { width: cardWidth, height: imageHeight }]}
-        resizeMode="cover"
-      />
+      <StorageImg imageBase={item.image} style={[styles.cardImage, { width: cardWidth, height: imageHeight }]} />
       <View style={styles.cardBody}>
         <Text style={styles.cardName} numberOfLines={1}>
           {item.name}
