@@ -3,7 +3,6 @@ import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { CartProvider } from "@/lib/cart-context";
-import { BannerProvider } from "@/lib/banner-context";
 import { MenuProvider } from "@/lib/menu-context";
 
 const PRIMARY = "#dc2626";
@@ -40,11 +39,9 @@ function AuthLoadingGate({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <BannerProvider>
-      <MenuProvider>
-        {children}
-      </MenuProvider>
-    </BannerProvider>
+    <MenuProvider>
+      {children}
+    </MenuProvider>
   );
 }
 

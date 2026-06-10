@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useCallback, useMemo, memo, useRef, useState } from "react";
-import { PRIMARY } from "@/lib/menu-data";
+const PRIMARY = "#dc2626";
 import { useCart, type CartItem } from "@/lib/cart-context";
 import { supabase } from "@/lib/supabase";
 import { getImageCandidates } from "@/lib/storage";
