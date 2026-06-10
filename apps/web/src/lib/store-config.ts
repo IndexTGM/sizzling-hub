@@ -1,4 +1,4 @@
-// Ben's Tapsihan store location
+// Sizzling Hub store location
 export const STORE_LOCATION = { lat: 14.4566673, lng: 121.0446128 };
 export const MAX_DELIVERY_RADIUS_KM = 3;
 

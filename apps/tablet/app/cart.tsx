@@ -125,6 +125,9 @@ export default function CartScreen() {
   const [checkoutVisible, setCheckoutVisible] = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [placing, setPlacing] = useState(false);
+  const [orderType, setOrderType] = useState<"dine_in" | "takeout">("dine_in");
+  const orderTypeLabel = orderType === "dine_in" ? "Dine In" : "Takeout";
+  const orderTypeIcon = orderType === "dine_in" ? "🍽️" : "🛍️";
 
   // Stable refs for callbacks
   const itemsRef = useRef(items);
@@ -171,7 +174,7 @@ export default function CartScreen() {
   const handleConfirmOrder = useCallback(() => setConfirmVisible(true), []);
   const handleCancelConfirm = useCallback(() => setConfirmVisible(false), []);
 
-  // Place order — always pickup
+  // Place order
   const handlePlaceOrder = useCallback(async () => {
     setConfirmVisible(false);
     setPlacing(true);
@@ -209,12 +212,12 @@ export default function CartScreen() {
         }
       }
 
-      // Create order as pickup
+      // Create order
       const { data: order, error: orderErr } = await supabase
         .from("orders")
         .insert({
           customer_id: session.user.id,
-          order_type: "pickup",
+          order_type: orderType,
           status: "pending",
           subtotal,
           delivery_fee: 0,
@@ -267,7 +270,7 @@ export default function CartScreen() {
       Alert.alert("Error", err?.message || "Something went wrong.");
       setPlacing(false);
     }
-  }, [items, clearCart, router]);
+  }, [items, clearCart, router, orderType]);
 
   const canPlaceOrder = items.length > 0 && !placing;
   const totalQty = items.reduce((sum, i) => sum + i.quantity, 0);
@@ -351,10 +354,26 @@ export default function CartScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Pickup badge */}
-            <View style={styles.pickupBadgeWrap}>
-              <View style={styles.pickupBadge}>
-                <Text style={styles.pickupBadgeText}>🛍️ Pickup Order</Text>
+            {/* Order Type Selector */}
+            <View style={styles.orderTypeWrap}>
+              <Text style={styles.orderTypeLabel}>Order Type</Text>
+              <View style={styles.orderTypeRow}>
+                <TouchableOpacity
+                  style={[styles.orderTypeBtn, orderType === "dine_in" && styles.orderTypeBtnActive]}
+                  onPress={() => setOrderType("dine_in")}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.orderTypeEmoji}>🍽️</Text>
+                  <Text style={[styles.orderTypeText, orderType === "dine_in" && styles.orderTypeTextActive]}>Dine In</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.orderTypeBtn, orderType === "takeout" && styles.orderTypeBtnActive]}
+                  onPress={() => setOrderType("takeout")}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.orderTypeEmoji}>🛍️</Text>
+                  <Text style={[styles.orderTypeText, orderType === "takeout" && styles.orderTypeTextActive]}>Takeout</Text>
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -415,7 +434,7 @@ export default function CartScreen() {
         <View style={styles.confirmOverlay}>
           <View style={styles.confirmSheet}>
             <View style={styles.confirmHeader}>
-              <Text style={styles.confirmTitle}>Confirm Pickup Order</Text>
+              <Text style={styles.confirmTitle}>Confirm {orderTypeLabel} Order</Text>
               <TouchableOpacity style={styles.modalCloseBtn} onPress={handleCancelConfirm}>
                 <Text style={styles.modalCloseIcon}>✕</Text>
               </TouchableOpacity>
@@ -423,7 +442,7 @@ export default function CartScreen() {
 
             <View style={styles.confirmBadgeRow}>
               <View style={styles.confirmBadge}>
-                <Text style={styles.confirmBadgeText}>🛍️ Pickup</Text>
+                <Text style={styles.confirmBadgeText}>{orderTypeIcon} {orderTypeLabel}</Text>
               </View>
             </View>
 
@@ -575,6 +594,21 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   modalCloseIcon: { fontSize: 14, fontWeight: "700", color: "#6b7280" },
+
+  // Order Type Selector
+  orderTypeWrap: { paddingHorizontal: 20, paddingBottom: 14 },
+  orderTypeLabel: { fontSize: 12, fontWeight: "700", color: "#9ca3af", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 },
+  orderTypeRow: { flexDirection: "row", gap: 10 },
+  orderTypeBtn: {
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 6, paddingVertical: 12, borderRadius: 12, backgroundColor: "#f3f4f6",
+    borderWidth: 2, borderColor: "transparent",
+  },
+  orderTypeBtnActive: { backgroundColor: "#fef2f2", borderColor: PRIMARY },
+  orderTypeEmoji: { fontSize: 18 },
+  orderTypeText: { fontSize: 14, fontWeight: "700", color: "#6b7280" },
+  orderTypeTextActive: { color: PRIMARY },
+
   pickupBadgeWrap: { paddingHorizontal: 20, paddingBottom: 10 },
   pickupBadge: {
     alignSelf: "flex-start", backgroundColor: "#ecfdf5", borderWidth: 1,

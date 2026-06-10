@@ -17,6 +17,17 @@ export const STATUS_BG: Record<OrderStatus, string> = {
 };
 
 export function getNextStatuses(current: OrderStatus, orderType?: OrderType): OrderStatus[] {
+  const isWalkIn = orderType === "dine_in" || orderType === "takeout";
+  if (isWalkIn) {
+    // Simplified flow for walk-in: Pending → Confirm → Complete
+    switch (current) {
+      case "pending": return ["confirmed", "cancelled"];
+      case "confirmed": return ["delivered", "cancelled"];
+      case "delivered": case "cancelled": return [];
+      default: return [];
+    }
+  }
+  // Full flow for online (delivery / pickup)
   switch (current) {
     case "pending": return ["confirmed", "cancelled"];
     case "confirmed": return ["preparing", "cancelled"];
@@ -46,6 +57,25 @@ export const PAYMENT_LABEL: Record<string, string> = {
 export const PAYMENT_ICON: Record<string, string> = {
   gcash: "📱",
   cod: "💵",
+};
+
+export type OrderSource = "walk_in" | "online";
+
+export const SOURCE_OPTIONS: { value: OrderSource; label: string; icon: string }[] = [
+  { value: "walk_in", label: "Walk-in", icon: "🚶" },
+  { value: "online", label: "Online", icon: "🌐" },
+];
+
+export const SOURCE_FILTER: Record<OrderType, OrderSource | "walk_in"> = {
+  dine_in: "walk_in",
+  takeout: "walk_in",
+  delivery: "online",
+  pickup: "online",
+};
+
+export const SOURCE_BG: Record<string, string> = {
+  walk_in: "bg-indigo-50 text-indigo-600",
+  online: "bg-teal-50 text-teal-600",
 };
 
 export const PAYMENT_STATUS_BG: Record<string, string> = {

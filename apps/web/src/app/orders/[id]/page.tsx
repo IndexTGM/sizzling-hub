@@ -309,7 +309,7 @@ export default function OrderDetailPage() {
                 <div className="h-2" style={{ backgroundColor: PRIMARY }} />
                 <div className="p-5">
                   <div className="text-center mb-4">
-                    <h2 className="text-xl font-black" style={{ color: PRIMARY }}>BEN'S TAPSIHAN</h2>
+                    <h2 className="text-xl font-black" style={{ color: PRIMARY }}>SIZZLING HUB</h2>
                     <p className="text-xs text-[#9ca3af] font-mono mt-0.5">Order Receipt</p>
                   </div>
                   <div className="border-t border-b border-dashed border-[#e5e7eb] py-3 space-y-1.5">

@@ -18,8 +18,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Ben's Tapsihan – Ordering System",
-  description: "Ben's Tapsihan restaurant ordering system",
+  title: "Sizzling Hub – Ordering System",
+  description: "Sizzling Hub restaurant ordering system",
 };
 
 export default function RootLayout({

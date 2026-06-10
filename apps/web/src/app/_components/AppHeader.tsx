@@ -51,11 +51,11 @@ export default function AppHeader({
         <Link href="/" className="flex items-center gap-3 shrink-0">
           <StorageImage
             imageBaseName="logo"
-            alt="Ben's Tapsihan"
+            alt="Sizzling Hub"
             className="w-9 h-9 rounded-lg object-contain"
           />
           <h1 className="text-lg sm:text-xl font-black tracking-tight" style={{ color: P }}>
-            BEN'S TAPSIHAN
+            SIZZLING HUB
           </h1>
         </Link>
 

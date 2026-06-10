@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { LoadingSkeleton, EmptyState, RED } from "./shared";
+import { LoadingSkeleton, EmptyState, RED, OT_ICON, OT_LABEL, SOURCE_FILTER, SOURCE_BG } from "./shared";
+import type { OrderType } from "./shared";
 
 function StatCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color: string }) {
   return (
@@ -27,7 +28,7 @@ export default function DashboardPanel() {
       sb.from("profiles").select("*", { count: "exact", head: true }).eq("role", "customer"),
       sb.from("menu_items").select("*", { count: "exact", head: true }),
       sb.from("orders").select("*", { count: "exact", head: true }).eq("status", "pending"),
-      sb.from("orders").select("id, total, status, placed_at, customer:profiles(full_name)").order("placed_at", { ascending: false }).limit(5),
+      sb.from("orders").select("id, total, status, placed_at, order_type, customer:profiles(full_name)").order("placed_at", { ascending: false }).limit(5),
     ]);
     setStats({
       totalOrders: orderCount ?? 0,
@@ -35,7 +36,7 @@ export default function DashboardPanel() {
       totalCustomers: customerCount ?? 0,
       totalMenuItems: menuCount ?? 0,
       pendingOrders: pendingCount ?? 0,
-      recentOrders: (recent ?? []).map((r: any) => ({ id: r.id, customer: (r.customer as any)?.full_name || "Unknown", total: Number(r.total), status: r.status, placed_at: r.placed_at })),
+      recentOrders: (recent ?? []).map((r: any) => ({ id: r.id, orderType: r.order_type as OrderType, total: Number(r.total), status: r.status, placed_at: r.placed_at })),
     });
     setLoading(false);
   }, []);
@@ -48,7 +49,7 @@ export default function DashboardPanel() {
     <div className="space-y-8">
       <div><h2 className="text-xl font-black text-gray-900 tracking-tight">Dashboard</h2><p className="text-sm text-gray-400 mt-0.5">Store overview</p></div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <StatCard label="Total Revenue" value={rev} sub="From delivered orders" color="#10b981" />
+      <StatCard label="Total Revenue" value={rev} sub="" color="#10b981" />
         <StatCard label="Orders" value={String(stats.totalOrders)} sub={`${stats.pendingOrders} pending`} color="#f59e0b" />
         <StatCard label="Customers" value={String(stats.totalCustomers)} color="#3b82f6" />
         <StatCard label="Menu Items" value={String(stats.totalMenuItems)} color="#ec4899" />
@@ -60,12 +61,16 @@ export default function DashboardPanel() {
               {/* Desktop table */}
               <div className="hidden sm:block">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 text-left text-xs uppercase text-gray-400 tracking-wider"><tr><th className="px-4 py-3 font-semibold">Order</th><th className="px-4 py-3 font-semibold">Customer</th><th className="px-4 py-3 font-semibold">Total</th><th className="px-4 py-3 font-semibold">Status</th><th className="px-4 py-3 font-semibold">Date</th></tr></thead>
+                  <thead className="bg-gray-50 text-left text-xs uppercase text-gray-400 tracking-wider"><tr><th className="px-4 py-3 font-semibold">Order</th><th className="px-4 py-3 font-semibold">Type</th><th className="px-4 py-3 font-semibold">Total</th><th className="px-4 py-3 font-semibold">Status</th><th className="px-4 py-3 font-semibold">Date</th></tr></thead>
                   <tbody className="divide-y divide-gray-100">
                     {stats.recentOrders.map((o: any) => (
                       <tr key={o.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-4 py-3 font-mono text-xs font-bold text-gray-400">#{o.id.slice(0, 8).toUpperCase()}</td>
-                        <td className="px-4 py-3 font-semibold text-gray-700">{o.customer}</td>
+                        <td className="px-4 py-3 text-xs font-semibold">
+                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded ${SOURCE_BG[SOURCE_FILTER[o.orderType as OrderType]]}`}>
+                            {OT_ICON[o.orderType as OrderType]} {OT_LABEL[o.orderType as OrderType]}
+                          </span>
+                        </td>
                         <td className="px-4 py-3 font-bold text-red-600">₱{o.total}</td>
                         <td className="px-4 py-3"><span className={`inline-block px-2 py-0.5 rounded-full text-xs font-extrabold ${o.status === "delivered" ? "bg-emerald-50 text-emerald-600" : o.status === "pending" ? "bg-amber-50 text-amber-600" : o.status === "cancelled" ? "bg-red-50 text-red-600" : o.status === "out_for_delivery" ? "bg-orange-50 text-orange-600" : "bg-blue-50 text-blue-600"}`}>{o.status}</span></td>
                         <td className="px-4 py-3 text-gray-400">{new Date(o.placed_at).toLocaleDateString()}</td>
@@ -83,7 +88,9 @@ export default function DashboardPanel() {
                         <span className="font-mono text-xs font-bold text-gray-400">#{o.id.slice(0, 8).toUpperCase()}</span>
                         <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-extrabold ${o.status === "delivered" ? "bg-emerald-50 text-emerald-600" : o.status === "pending" ? "bg-amber-50 text-amber-600" : o.status === "cancelled" ? "bg-red-50 text-red-600" : o.status === "out_for_delivery" ? "bg-orange-50 text-orange-600" : "bg-blue-50 text-blue-600"}`}>{o.status}</span>
                       </div>
-                      <p className="text-sm font-semibold text-gray-700 truncate mt-1">{o.customer}</p>
+                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-bold ${SOURCE_BG[SOURCE_FILTER[o.orderType as OrderType]]}`}>
+                        {OT_ICON[o.orderType as OrderType]} {OT_LABEL[o.orderType as OrderType]}
+                      </span>
                       <p className="text-xs text-gray-400 mt-0.5">{new Date(o.placed_at).toLocaleDateString()}</p>
                     </div>
                     <span className="text-base font-black text-red-600 flex-shrink-0">₱{o.total}</span>

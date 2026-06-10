@@ -10,7 +10,7 @@ export default function Footer() {
           {/* Brand */}
           <div className="space-y-3">
             <h3 className="text-lg font-black tracking-tight" style={{ color: PRIMARY }}>
-              BEN'S TAPSIHAN
+              SIZZLING HUB
             </h3>
             <p className="text-sm text-[#9ca3af] leading-relaxed">
               Serving comfort, one sizzling plate at a time. Since 2003.
@@ -78,7 +78,7 @@ export default function Footer() {
         {/* Divider */}
 <div className="border-t border-[#374151] mt-10 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-xs text-[#6b7280]">
-            &copy; {new Date().getFullYear()} Ben's Tapsihan. All rights reserved.
+            &copy; {new Date().getFullYear()} Sizzling Hub. All rights reserved.
             <span className="ml-3 text-[10px] text-[#6b7280] font-mono">v1.0.0</span>
           </p>
           <div className="flex items-center gap-4">

@@ -6,11 +6,12 @@ import { logAudit } from "@/lib/audit-log";
 import ConfirmModal from "@/app/_components/ConfirmModal";
 import { LoadingSkeleton, EmptyState } from "./shared";
 import type { OrderStatus, OrderType, AdminOrder } from "./shared";
-import { STATUS_OPTIONS, STATUS_BG, getNextStatuses, OT_ICON, OT_LABEL, PAYMENT_LABEL, PAYMENT_ICON, PAYMENT_STATUS_BG } from "./shared";
+import { STATUS_OPTIONS, STATUS_BG, getNextStatuses, OT_ICON, OT_LABEL, PAYMENT_LABEL, PAYMENT_ICON, PAYMENT_STATUS_BG, SOURCE_OPTIONS, SOURCE_FILTER, SOURCE_BG, type OrderSource } from "./shared";
 
 export default function OrdersPanel() {
   const [orders, setOrders] = useState<AdminOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sourceFilter, setSourceFilter] = useState<"all" | OrderSource>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | OrderStatus>("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -37,6 +38,13 @@ export default function OrdersPanel() {
     const interval = setInterval(fetchOrders, 1000);
     return () => clearInterval(interval);
   }, [fetchOrders]);
+  async function handleTogglePayment(orderId: string, currentStatus: string) {
+    const newStatus = currentStatus === "paid" ? "unpaid" : "paid";
+    const sb = createClient();
+    await sb.from("orders").update({ payment_status: newStatus }).eq("id", orderId);
+    logAudit({ action: "update_payment_status", entity_type: "order", entity_id: orderId, details: { from: currentStatus, to: newStatus } });
+    await fetchOrders();
+  }
   async function handleDeleteOrder(orderId: string) { const sb = createClient(); await sb.from("orders").delete().eq("id", orderId); logAudit({ action: "delete_order", entity_type: "order", entity_id: orderId }); await fetchOrders(); setDeleteOrderId(null); }
   async function handleStatusChange(orderId: string, newStatus: OrderStatus) {
     const oldOrder = orders.find((o) => o.id === orderId); setSavingId(orderId); const sb = createClient();
@@ -81,7 +89,14 @@ export default function OrdersPanel() {
   }
   function fmt(iso: string) { const d = new Date(iso); const m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]; const h = d.getHours(); const mi = d.getMinutes().toString().padStart(2, "0"); const a = h >= 12 ? "PM" : "AM"; return `${m[d.getMonth()]} ${d.getDate()}, ${h % 12 || 12}:${mi} ${a}`; }
   function toggleExpand(id: string) { setExpanded((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; }); }
-  const filtered = statusFilter === "all" ? orders : orders.filter((o) => o.status === statusFilter);
+  const isWalkIn = (o: AdminOrder) => o.orderType === "dine_in" || o.orderType === "takeout";
+  const statusLabel = (status: OrderStatus, orderType: OrderType) => {
+    if (status === "delivered" && (orderType === "dine_in" || orderType === "takeout")) return "complete";
+    return status.replace(/_/g, " ");
+  };
+  const filtered = orders
+    .filter((o) => sourceFilter === "all" || SOURCE_FILTER[o.orderType] === sourceFilter)
+    .filter((o) => statusFilter === "all" || o.status === statusFilter);
   if (loading && orders.length === 0) return <LoadingSkeleton />;
 
   return (
@@ -93,9 +108,15 @@ export default function OrdersPanel() {
           Refresh
         </button>
       </div>
-      <div className="flex gap-1 flex-wrap">
-        <button onClick={() => setStatusFilter("all")} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${statusFilter === "all" ? "bg-red-600 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}>All</button>
-        {STATUS_OPTIONS.map((s) => (<button key={s.value} onClick={() => setStatusFilter(s.value)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${statusFilter === s.value ? "bg-red-600 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}>{s.label}</button>))}
+      <div className="space-y-2">
+        <div className="flex gap-1 flex-wrap">
+          <button onClick={() => setSourceFilter("all")} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${sourceFilter === "all" ? "bg-red-600 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}>All Sources</button>
+          {SOURCE_OPTIONS.map((s) => (<button key={s.value} onClick={() => setSourceFilter(s.value)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${sourceFilter === s.value ? "bg-red-600 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}>{s.icon} {s.label}</button>))}
+        </div>
+        <div className="flex gap-1 flex-wrap">
+          <button onClick={() => setStatusFilter("all")} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${statusFilter === "all" ? "bg-red-600 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}>All Status</button>
+          {STATUS_OPTIONS.map((s) => (<button key={s.value} onClick={() => setStatusFilter(s.value)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${statusFilter === s.value ? "bg-red-600 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}>{s.label}</button>))}
+        </div>
       </div>
       {filtered.length === 0 ? <EmptyState message="No orders." /> : (
         <div className="space-y-3">
@@ -105,8 +126,8 @@ export default function OrdersPanel() {
               <div key={o.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                 <div className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors" onClick={() => toggleExpand(o.id)}>
                   <div className="flex-shrink-0 text-gray-300 text-sm">{isEx ? "▼" : "▶"}</div>
-                  <div className="flex-1 min-w-0"><div className="flex items-center gap-2"><span className="font-mono text-xs font-bold text-gray-400">#{o.id.slice(0, 8).toUpperCase()}…</span><span className="text-xs text-gray-400">{OT_ICON[o.orderType]} {OT_LABEL[o.orderType]}</span></div><p className="text-sm font-semibold text-gray-800 truncate">{o.customerName}</p></div>
-                  <div className="text-right flex-shrink-0"><p className="text-sm font-black text-red-600">₱{o.total}</p><span className={`inline-block px-2 py-0.5 rounded-full text-xs font-extrabold ${s}`}>{o.status}</span></div>
+                  <div className="flex-1 min-w-0"><div className="flex items-center gap-2"><span className="font-mono text-xs font-bold text-gray-400">#{o.id.slice(0, 8).toUpperCase()}…</span><span className="text-xs text-gray-400">{OT_ICON[o.orderType]} {OT_LABEL[o.orderType]}</span><span className={`inline-block px-1.5 py-0.5 rounded text-xs font-bold ${SOURCE_BG[SOURCE_FILTER[o.orderType]]}`}>{SOURCE_FILTER[o.orderType] === "walk_in" ? "🚶 Walk-in" : "🌐 Online"}</span></div><p className="text-sm font-semibold text-gray-800 truncate">{o.customerName}</p></div>
+                  <div className="text-right flex-shrink-0"><p className="text-sm font-black text-red-600">₱{o.total}</p><span className={`inline-block px-2 py-0.5 rounded-full text-xs font-extrabold ${s}`}>{isWalkIn(o) && o.status === "delivered" ? "complete" : o.status}</span></div>
                 </div>
                 {isEx && (
                   <div className="border-t border-gray-100 px-4 py-3 space-y-3 bg-gray-50">
@@ -124,12 +145,20 @@ export default function OrdersPanel() {
                     {o.paymentMethod && (
                       <div className="pt-1.5 border-t border-gray-200 mt-1.5">
                         <p className="text-xs font-semibold text-gray-400 mb-1">💳 Payment</p>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-semibold text-gray-700">{PAYMENT_ICON[o.paymentMethod] || ""} {PAYMENT_LABEL[o.paymentMethod] || o.paymentMethod}</span>
                           {o.paymentStatus && (
                             <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-extrabold capitalize ${PAYMENT_STATUS_BG[o.paymentStatus] || "bg-gray-50 text-gray-500"}`}>
                               {o.paymentStatus}
                             </span>
+                          )}
+                          {isWalkIn(o) && o.paymentStatus === "unpaid" && o.status !== "cancelled" && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleTogglePayment(o.id, o.paymentStatus!); }}
+                              className="px-2 py-0.5 rounded text-xs font-bold bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors"
+                            >
+                              Mark as Paid
+                            </button>
                           )}
                         </div>
                         {o.paymentSourceId && <p className="text-xs text-gray-400 font-mono mt-0.5">Source: {o.paymentSourceId.slice(0, 12)}…</p>}
@@ -140,15 +169,15 @@ export default function OrdersPanel() {
                         <>
                           <span className="text-xs font-semibold text-gray-400">Status:</span>
                           <select value={o.status} onChange={(e) => handleStatusChange(o.id, e.target.value as OrderStatus)} disabled={savingId === o.id} className="text-xs font-semibold px-2 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-800 cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-500/30">
-                            <option value={o.status} className="bg-white">{o.status.replace(/_/g, " ")} (current)</option>
+                            <option value={o.status} className="bg-white">{statusLabel(o.status, o.orderType)} (current)</option>
                         {getNextStatuses(o.status, o.orderType).map((s) => (
-                              <option key={s} value={s} className="bg-white">{s.replace(/_/g, " ")}</option>
+                              <option key={s} value={s} className="bg-white">{statusLabel(s, o.orderType)}</option>
                             ))}
                           </select>
                           {savingId === o.id && <span className="text-xs text-gray-400 animate-pulse">Saving…</span>}
                         </>
                       ) : (
-                        <span className="text-xs font-semibold text-gray-400">Status: {o.status.replace(/_/g, " ")} (final)</span>
+                        <span className="text-xs font-semibold text-gray-400">Status: {statusLabel(o.status, o.orderType)} (final)</span>
                       )}
                       {o.status !== "pending" && <button onClick={(e) => { e.stopPropagation(); setReceiptOrder(o); }} className="ml-auto px-3 py-1.5 rounded-md text-xs font-semibold bg-blue-50 text-blue-600 hover:bg-blue-100">Print Receipt</button>}
                       {(o.status === "pending" || o.status === "delivered" || o.status === "cancelled") && (
@@ -169,7 +198,7 @@ export default function OrdersPanel() {
             <div className="bg-white rounded-2xl border border-gray-200 shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
               <style jsx global>{`@media print { body * { visibility: hidden; } .receipt-popup, .receipt-popup * { visibility: visible; } .receipt-popup { position: absolute; left: 0; top: 0; width: 100%; padding: 0; margin: 0; max-height: none !important; } .no-print { display: none !important; } @page { margin: 10mm; size: auto; } }`}</style>
               <div className="receipt-popup p-5">
-                <div className="text-center mb-4"><h2 className="text-xl font-black text-red-600">BEN'S TAPSIHAN</h2><p className="text-xs text-gray-400 font-mono mt-0.5">Order Receipt</p></div>
+<div className="text-center mb-4"><h2 className="text-xl font-black text-red-600">SIZZLING HUB</h2><p className="text-xs text-gray-400 font-mono mt-0.5">Order Receipt</p></div>
                 <div className="border-t border-b border-dashed border-gray-200 py-3 space-y-1.5">
                   <div className="flex justify-between text-sm"><span className="text-gray-500 font-medium">Order #</span><span className="font-mono font-bold text-gray-900">{receiptOrder.id.slice(0, 8).toUpperCase()}</span></div>
                   <div className="flex justify-between text-sm"><span className="text-gray-500 font-medium">Customer</span><span className="font-semibold text-gray-800">{receiptOrder.customerName}</span></div>

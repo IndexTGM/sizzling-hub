@@ -171,12 +171,12 @@ function OurStory() {
         <div className="w-full h-48 sm:h-64 bg-[#f3f4f6] relative overflow-hidden">
           <StorageImage
             imageBaseName="story_background"
-            alt="Ben's Tapsihan"
+            alt="Sizzling Hub"
             className="w-full h-full object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end">
             <div className="p-6">
-              <h3 className="text-2xl sm:text-3xl font-black text-white drop-shadow-lg">Ben's Tapsihan</h3>
+              <h3 className="text-2xl sm:text-3xl font-black text-white drop-shadow-lg">Sizzling Hub</h3>
               <p className="text-white/80 text-sm font-medium">Since 2003 — Serving comfort, one sizzling plate at a time.</p>
             </div>
           </div>
@@ -186,11 +186,11 @@ function OurStory() {
         <div className="p-6 sm:p-10 space-y-5 text-sm sm:text-base leading-relaxed text-[#4b5563]">
           <p>
             What started as a humble carinderia along the busy streets of Manila has grown into a beloved neighborhood
-            institution. <span className="font-bold text-[#0a0a0a]">Ben's Tapsihan</span> was born from a simple idea:
+            institution. <span className="font-bold text-[#0a0a0a]">Sizzling Hub</span> was born from a simple idea:
             serve hearty, affordable Filipino comfort food that brings people together.
           </p>
           <p>
-            Our founder, <span className="font-semibold text-[#0a0a0a]">Kuya Ben</span>, believed that the best meals
+            Our founder believed that the best meals
             are the ones shared with family and friends. He perfected the art of sizzling silog — garlic fried rice
             topped with a runny egg and your choice of tender, flavorful meat — all served on a cast-iron plate that
             crackles with excitement.
@@ -202,7 +202,7 @@ function OurStory() {
             with love, and serve with a smile — because that's the Filipino way.
           </p>
           <p>
-            Today, Ben's Tapsihan continues Kuya Ben's legacy. Whether you're a regular who's been with us since day one
+            Today, Sizzling Hub continues the legacy. Whether you're a regular who's been with us since day one
             or a first-timer looking for your new favorite meal, you're family here. Come for the sizzle, stay for the
             flavor.
           </p>
