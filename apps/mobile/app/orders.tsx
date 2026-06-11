@@ -22,6 +22,7 @@ type OrderStatus =
   | "pending"
   | "confirmed"
   | "preparing"
+  | "prepared"
   | "ready"
   | "out_for_delivery"
   | "delivered"
@@ -56,6 +57,7 @@ const STATUS_CONFIG: Record<
   pending: { label: "Pending", color: "#92400e", bg: "#fef3c7" },
   confirmed: { label: "Confirmed", color: "#1e40af", bg: "#dbeafe" },
   preparing: { label: "Preparing", color: "#6b21a8", bg: "#f3e8ff" },
+  prepared: { label: "Prepared", color: "#3730a3", bg: "#e0e7ff" },
   ready: { label: "Ready", color: "#065f46", bg: "#d1fae5" },
   out_for_delivery: { label: "Out for Delivery", color: "#c2410c", bg: "#ffedd5" },
   delivered: { label: "Delivered", color: "#1e3a5f", bg: "#e0f2fe" },
@@ -83,6 +85,7 @@ const FILTER_TABS: { key: FilterTab; label: string }[] = [
   { key: "pending", label: "Pending" },
   { key: "confirmed", label: "Confirmed" },
   { key: "preparing", label: "Preparing" },
+  { key: "prepared", label: "Prepared" },
   { key: "ready", label: "Ready" },
   { key: "out_for_delivery", label: "Out for Delivery" },
   { key: "delivered", label: "Delivered" },
@@ -484,6 +487,13 @@ export default function OrdersScreen() {
           <Text style={styles.footerIconActive}>📋</Text>
           <Text style={styles.footerLabelActive}>Orders</Text>
         </TouchableOpacity>
+
+        {user?.role === "admin" && (
+          <TouchableOpacity style={styles.footerBtn} onPress={() => router.push("/drivers")}>
+            <Text style={styles.footerIcon}>🛵</Text>
+            <Text style={styles.footerLabel}>Drivers</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </SafeAreaView>
   );

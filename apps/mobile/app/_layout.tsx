@@ -70,6 +70,7 @@ export default function RootLayout() {
           <Stack.Screen name="terms" />
           <Stack.Screen name="addresses" />
           <Stack.Screen name="privacy" />
+          <Stack.Screen name="drivers" />
           </Stack>
         </AuthGate>
       </CartProvider>

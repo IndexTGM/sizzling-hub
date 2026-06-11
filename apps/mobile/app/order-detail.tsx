@@ -25,6 +25,7 @@ type OrderStatus =
   | "pending"
   | "confirmed"
   | "preparing"
+  | "prepared"
   | "ready"
   | "out_for_delivery"
   | "delivered"
@@ -62,6 +63,7 @@ const STATUS_CONFIG: Record<
   pending: { label: "Pending", color: "#92400e", bg: "#fef3c7" },
   confirmed: { label: "Confirmed", color: "#1e40af", bg: "#dbeafe" },
   preparing: { label: "Preparing", color: "#6b21a8", bg: "#f3e8ff" },
+  prepared: { label: "Prepared", color: "#3730a3", bg: "#e0e7ff" },
   ready: { label: "Ready", color: "#065f46", bg: "#d1fae5" },
   out_for_delivery: {
     label: "Out for Delivery",
@@ -91,6 +93,7 @@ const DELIVERY_STEPS = [
   { key: "placed", label: "Order Placed", icon: "📝" },
   { key: "confirmed", label: "Confirmed", icon: "✅" },
   { key: "preparing", label: "Preparing", icon: "👨‍🍳" },
+  { key: "prepared", label: "Prepared", icon: "📦" },
   { key: "out_for_delivery", label: "Out for Delivery", icon: "🛵" },
   { key: "delivered", label: "Delivered", icon: "🏠" },
 ];
@@ -107,6 +110,7 @@ const STEP_ORDER_DELIVERY = [
   "placed",
   "confirmed",
   "preparing",
+  "prepared",
   "out_for_delivery",
   "delivered",
 ];

@@ -95,6 +95,7 @@ export default function MenuScreen() {
   const [activeCat, setActiveCat] = useState("all");
   const [search, setSearch] = useState("");
   const { cols, cardW, gap } = useGridLayout();
+  const { user } = useAuth();
 
   const displayCats = useMemo(() => [
     { key: "all", label: "All" },
@@ -192,6 +193,13 @@ export default function MenuScreen() {
         <TouchableOpacity style={styles.footerBtn} onPress={() => router.push("/orders")}>
           <Text style={styles.footerIcon}>📋</Text><Text style={styles.footerLabel}>Orders</Text>
         </TouchableOpacity>
+
+        {user?.role === "admin" && (
+          <TouchableOpacity style={styles.footerBtn} onPress={() => router.push("/drivers")}>
+            <Text style={styles.footerIcon}>🛵</Text>
+            <Text style={styles.footerLabel}>Drivers</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </SafeAreaView>
   );

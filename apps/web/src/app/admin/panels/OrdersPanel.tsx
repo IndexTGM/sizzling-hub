@@ -17,6 +17,8 @@ export default function OrdersPanel() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [receiptOrder, setReceiptOrder] = useState<AdminOrder | null>(null);
   const [deleteOrderId, setDeleteOrderId] = useState<string | null>(null);
+  const [confirmOutForDelivery, setConfirmOutForDelivery] = useState<{ orderId: string } | null>(null);
+  const [confirmDeliver, setConfirmDeliver] = useState<{ orderId: string } | null>(null);
   const hasOrdersLoaded = React.useRef(false);
   const fetchOrders = useCallback(async () => {
     const sb = createClient();
@@ -46,8 +48,49 @@ export default function OrdersPanel() {
     await fetchOrders();
   }
   async function handleDeleteOrder(orderId: string) { const sb = createClient(); await sb.from("orders").delete().eq("id", orderId); logAudit({ action: "delete_order", entity_type: "order", entity_id: orderId }); await fetchOrders(); setDeleteOrderId(null); }
+  async function handleConfirmOutForDelivery() {
+    if (!confirmOutForDelivery) return;
+    const orderId = confirmOutForDelivery.orderId;
+    setConfirmOutForDelivery(null);
+    setSavingId(orderId);
+    const sb = createClient();
+    await sb.from("orders").update({ status: "out_for_delivery" }).eq("id", orderId);
+    logAudit({ action: "update_order_status", entity_type: "order", entity_id: orderId, details: { from: "prepared", to: "out_for_delivery" } });
+    await fetchOrders();
+    setSavingId(null);
+  }
+  async function handleConfirmDeliver() {
+    if (!confirmDeliver) return;
+    const orderId = confirmDeliver.orderId;
+    const oldOrder = orders.find((o) => o.id === orderId);
+    setConfirmDeliver(null);
+    setSavingId(orderId);
+    const sb = createClient();
+    const updates: Record<string, unknown> = { status: "delivered", completed_at: new Date().toISOString() };
+    if (oldOrder?.paymentMethod === "cod" && oldOrder?.paymentStatus !== "paid") {
+      updates.payment_status = "paid";
+    }
+    await sb.from("orders").update(updates).eq("id", orderId);
+    logAudit({ action: "update_order_status", entity_type: "order", entity_id: orderId, details: { from: "out_for_delivery", to: "delivered" } });
+    await fetchOrders();
+    setSavingId(null);
+  }
   async function handleStatusChange(orderId: string, newStatus: OrderStatus) {
-    const oldOrder = orders.find((o) => o.id === orderId); setSavingId(orderId); const sb = createClient();
+    const oldOrder = orders.find((o) => o.id === orderId);
+
+    // Intercept: online delivery order going from "prepared" → "out_for_delivery" needs confirmation
+    if (newStatus === "out_for_delivery" && oldOrder?.status === "prepared" && oldOrder?.orderType === "delivery") {
+      setConfirmOutForDelivery({ orderId });
+      return;
+    }
+
+    // Intercept: online delivery order going from "out_for_delivery" → "delivered" needs confirmation
+    if (newStatus === "delivered" && oldOrder?.status === "out_for_delivery" && oldOrder?.orderType === "delivery") {
+      setConfirmDeliver({ orderId });
+      return;
+    }
+
+    setSavingId(orderId); const sb = createClient();
     const updates: Record<string, unknown> = { status: newStatus }; if (newStatus === "delivered") {
       updates.completed_at = new Date().toISOString();
       // When a COD order is marked as delivered, mark payment as paid
@@ -239,6 +282,22 @@ export default function OrdersPanel() {
         confirmDanger
         onConfirm={() => deleteOrderId && handleDeleteOrder(deleteOrderId)}
         onCancel={() => setDeleteOrderId(null)}
+      />
+      <ConfirmModal
+        open={confirmOutForDelivery !== null}
+        title="Out for Delivery"
+        message={`Mark order #${confirmOutForDelivery?.orderId.slice(0, 8).toUpperCase() || ""} as "Out for Delivery"? This action should be confirmed in the driver's app before proceeding.`}
+        confirmLabel="Yes, Out for Delivery"
+        onConfirm={handleConfirmOutForDelivery}
+        onCancel={() => setConfirmOutForDelivery(null)}
+      />
+      <ConfirmModal
+        open={confirmDeliver !== null}
+        title="Mark as Delivered"
+        message={`Mark order #${confirmDeliver?.orderId.slice(0, 8).toUpperCase() || ""} as "Delivered"? This will complete the order.`}
+        confirmLabel="Yes, Delivered"
+        onConfirm={handleConfirmDeliver}
+        onCancel={() => setConfirmDeliver(null)}
       />
     </div>
   );

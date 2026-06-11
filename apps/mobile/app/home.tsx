@@ -310,6 +310,13 @@ export default function HomeScreen() {
           <Text style={styles.footerIcon}>📋</Text>
           <Text style={styles.footerLabel}>Orders</Text>
         </TouchableOpacity>
+
+        {user?.role === "admin" && (
+          <TouchableOpacity style={styles.footerBtn} onPress={() => router.push("/drivers")}>
+            <Text style={styles.footerIcon}>🛵</Text>
+            <Text style={styles.footerLabel}>Drivers</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </SafeAreaView>
   );

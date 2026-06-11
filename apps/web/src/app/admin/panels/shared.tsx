@@ -4,16 +4,16 @@ import React from "react";
 
 export const RED = "#dc2626";
 
-export type OrderStatus = "pending" | "confirmed" | "preparing" | "ready" | "out_for_delivery" | "delivered" | "cancelled";
+export type OrderStatus = "pending" | "confirmed" | "preparing" | "prepared" | "ready" | "out_for_delivery" | "delivered" | "cancelled";
 export type OrderType = "dine_in" | "takeout" | "delivery" | "pickup";
 
 export const STATUS_OPTIONS: { value: OrderStatus; label: string }[] = [
   { value: "pending", label: "Pending" }, { value: "confirmed", label: "Confirmed" }, { value: "preparing", label: "Preparing" },
-  { value: "ready", label: "Ready" }, { value: "out_for_delivery", label: "Out for Delivery" }, { value: "delivered", label: "Delivered" }, { value: "cancelled", label: "Cancelled" },
+  { value: "prepared", label: "Prepared" }, { value: "ready", label: "Ready" }, { value: "out_for_delivery", label: "Out for Delivery" }, { value: "delivered", label: "Delivered" }, { value: "cancelled", label: "Cancelled" },
 ];
 export const STATUS_BG: Record<OrderStatus, string> = {
   pending: "bg-amber-50 text-amber-600", confirmed: "bg-blue-50 text-blue-600", preparing: "bg-purple-50 text-purple-600",
-  ready: "bg-emerald-50 text-emerald-600", out_for_delivery: "bg-orange-50 text-orange-600", delivered: "bg-cyan-50 text-cyan-600", cancelled: "bg-red-50 text-red-600",
+  prepared: "bg-indigo-50 text-indigo-600", ready: "bg-emerald-50 text-emerald-600", out_for_delivery: "bg-orange-50 text-orange-600", delivered: "bg-cyan-50 text-cyan-600", cancelled: "bg-red-50 text-red-600",
 };
 
 export function getNextStatuses(current: OrderStatus, orderType?: OrderType): OrderStatus[] {
@@ -31,7 +31,8 @@ export function getNextStatuses(current: OrderStatus, orderType?: OrderType): Or
   switch (current) {
     case "pending": return ["confirmed", "cancelled"];
     case "confirmed": return ["preparing", "cancelled"];
-    case "preparing": return orderType === "pickup" ? ["ready", "cancelled"] : ["out_for_delivery", "cancelled"];
+    case "preparing": return orderType === "pickup" ? ["ready", "cancelled"] : ["prepared", "cancelled"];
+    case "prepared": return ["out_for_delivery", "cancelled"];
     case "ready": return ["delivered", "cancelled"];
     case "out_for_delivery": return ["delivered", "cancelled"];
     case "delivered": case "cancelled": return [];
