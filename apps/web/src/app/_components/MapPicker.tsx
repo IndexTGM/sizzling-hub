@@ -34,7 +34,16 @@ function getStoreIcon() {
 
 export interface AddressParts { street: string; city: string; province: string; zip: string; lat: number; lng: number; }
 
-interface MapPickerProps { initialLat?: number; initialLng?: number; onAddressChange: (parts: AddressParts) => void; }
+interface MapPickerProps {
+  initialLat?: number;
+  initialLng?: number;
+  /** Center of the delivery circle – defaults to STORE_LOCATION */
+  storeLat?: number;
+  storeLng?: number;
+  /** Radius of the delivery circle in km – defaults to MAX_DELIVERY_RADIUS_KM */
+  storeRadiusKm?: number;
+  onAddressChange: (parts: AddressParts) => void;
+}
 
 interface SearchResult { lat: string; lon: string; display_name: string; }
 
@@ -61,7 +70,14 @@ function DraggableMarker({ lat, lng, onDragEnd }: { lat: number; lng: number; on
   return <Marker position={[lat, lng]} draggable eventHandlers={{ dragend: async (e) => { const pos = e.target.getLatLng(); onDragEnd(pos.lat, pos.lng); } }} />;
 }
 
-export default function MapPicker({ initialLat = STORE_LOCATION.lat, initialLng = STORE_LOCATION.lng, onAddressChange }: MapPickerProps) {
+export default function MapPicker({
+  initialLat = STORE_LOCATION.lat,
+  initialLng = STORE_LOCATION.lng,
+  storeLat = STORE_LOCATION.lat,
+  storeLng = STORE_LOCATION.lng,
+  storeRadiusKm = MAX_DELIVERY_RADIUS_KM,
+  onAddressChange,
+}: MapPickerProps) {
   const [lat, setLat] = useState(initialLat); const [lng, setLng] = useState(initialLng);
   const [searchQuery, setSearchQuery] = useState(""); const [suggestions, setSuggestions] = useState<SearchResult[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false); const [searching, setSearching] = useState(false);
@@ -117,14 +133,14 @@ export default function MapPicker({ initialLat = STORE_LOCATION.lat, initialLng 
         <MapContainer center={[lat, lng]} zoom={13} style={{ height: "100%", width: "100%" }} scrollWheelZoom>
           <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
           <MapFlyTo lat={lat} lng={lng} />
-          <Circle center={[STORE_LOCATION.lat, STORE_LOCATION.lng]} radius={MAX_DELIVERY_RADIUS_KM * 1000} pathOptions={{ color: "#dc2626", fillColor: "#dc2626", fillOpacity: 0.08, weight: 2, dashArray: "6 4" }} />
-          <Marker position={[STORE_LOCATION.lat, STORE_LOCATION.lng]} icon={getStoreIcon() ?? undefined} />
+          <Circle center={[storeLat, storeLng]} radius={storeRadiusKm * 1000} pathOptions={{ color: "#dc2626", fillColor: "#dc2626", fillOpacity: 0.08, weight: 2, dashArray: "6 4" }} />
+          <Marker position={[storeLat, storeLng]} icon={getStoreIcon() ?? undefined} />
           <DraggableMarker lat={lat} lng={lng} onDragEnd={handlePositionChange} />
         </MapContainer>
       </div>
       <div className="flex items-center gap-4 text-xs text-gray-400">
         <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-red-500 inline-block" /> Store location</span>
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full border-2 border-dashed border-red-500 inline-block" /> Delivery radius ({MAX_DELIVERY_RADIUS_KM}km)</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full border-2 border-dashed border-red-500 inline-block" /> Delivery radius ({storeRadiusKm}km)</span>
       </div>
     </div>
   );

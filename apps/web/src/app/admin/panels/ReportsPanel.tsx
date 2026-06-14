@@ -76,7 +76,7 @@ function EmptyChart({ msg }: { msg: string }) {
 /* ──────────────────────────────────────────────────
    Reports Panel
    ────────────────────────────────────────────────── */
-export default function ReportsPanel() {
+export default function ReportsPanel({ branchId }: { branchId?: string | null }) {
   const [loading, setLoading] = useState(true);
   // Overview
   const [totalRevenue, setTotalRevenue] = useState(0);
@@ -99,10 +99,11 @@ export default function ReportsPanel() {
 
     // ── Overview: 30 days ──
     const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const { data: overviewOrders } = await sb.from("orders").select("id, total, placed_at")
+    let ovQuery = sb.from("orders").select("id, total, placed_at")
       .in("status", ["delivered", "out_for_delivery"])
-      .gte("placed_at", thirtyDaysAgo.toISOString())
-      .order("placed_at", { ascending: true });
+      .gte("placed_at", thirtyDaysAgo.toISOString());
+    if (branchId) ovQuery = ovQuery.eq("branch_id", branchId);
+    const { data: overviewOrders } = await ovQuery.order("placed_at", { ascending: true });
     if (overviewOrders) {
       setTotalRevenue(overviewOrders.reduce((s: number, o: any) => s + Number(o.total), 0));
       setTotalOrders(overviewOrders.length);
@@ -119,10 +120,13 @@ export default function ReportsPanel() {
     // ── Daily ──
     const td = todayRange();
     const yd = yesterdayRange();
-    const { data: todayOrdersData } = await sb.from("orders").select("id, total, placed_at")
+    let tq = sb.from("orders").select("id, total, placed_at")
       .in("status", ["delivered", "out_for_delivery"]).gte("placed_at", td.start).lte("placed_at", td.end);
-    const { data: yesterdayOrdersData } = await sb.from("orders").select("total")
+    let yq = sb.from("orders").select("total")
       .in("status", ["delivered", "out_for_delivery"]).gte("placed_at", yd.start).lte("placed_at", yd.end);
+    if (branchId) { tq = tq.eq("branch_id", branchId); yq = yq.eq("branch_id", branchId); }
+    const { data: todayOrdersData } = await tq;
+    const { data: yesterdayOrdersData } = await yq;
 
     if (todayOrdersData) {
       setTodayRevenue(todayOrdersData.reduce((s: number, o: any) => s + Number(o.total), 0));
@@ -154,8 +158,10 @@ export default function ReportsPanel() {
 
     // ── Weekly top items ──
     const wk = weekRange();
-    const { data: weekOrders } = await sb.from("orders").select("id")
+    let wq = sb.from("orders").select("id")
       .in("status", ["delivered", "out_for_delivery"]).gte("placed_at", wk.start).lte("placed_at", wk.end);
+    if (branchId) wq = wq.eq("branch_id", branchId);
+    const { data: weekOrders } = await wq;
     if (weekOrders && weekOrders.length > 0) {
       const ids = weekOrders.map((o: any) => o.id);
       const { data: weekItems } = await sb.from("order_items").select("quantity, unit_price, menu_item:menu_items(name)").in("order_id", ids);
@@ -191,7 +197,7 @@ export default function ReportsPanel() {
     }
 
     setLoading(false);
-  }, []);
+  }, [branchId]);
 
   useEffect(() => {
     fetchAll();

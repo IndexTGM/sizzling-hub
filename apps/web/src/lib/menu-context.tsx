@@ -11,6 +11,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MenuItem } from "@/lib/menu-data";
+import { useBranch } from "@/lib/branch-context";
 
 interface Category {
   id: string;
@@ -34,13 +35,21 @@ function getSupabase() {
   return supabase;
 }
 
-async function fetchMenuData(): Promise<{ menuItems: MenuItem[]; categories: Category[]; error: string | null }> {
+async function fetchMenuData(branchId: string | null): Promise<{ menuItems: MenuItem[]; categories: Category[]; error: string | null }> {
   try {
     const sb = getSupabase();
 
+    let catsQuery = sb.from("categories").select("id, name, slug").eq("is_active", true).order("sort_order");
+    let itemsQuery = sb.from("menu_items").select("id, name, price, image_url, stock, rating").eq("is_available", true).order("name");
+
+    if (branchId) {
+      catsQuery = catsQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+      itemsQuery = itemsQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    }
+
     const [catsRes, itemsRes, junctionsRes] = await Promise.all([
-      sb.from("categories").select("id, name, slug").eq("is_active", true).order("sort_order"),
-      sb.from("menu_items").select("id, name, price, image_url, stock, rating").eq("is_available", true).order("name"),
+      catsQuery,
+      itemsQuery,
       sb.from("menu_item_categories").select("menu_item_id, category_id, categories!inner(name)"),
     ]);
 
@@ -77,13 +86,14 @@ async function fetchMenuData(): Promise<{ menuItems: MenuItem[]; categories: Cat
 }
 
 export function MenuProvider({ children }: { children: ReactNode }) {
+  const { branchId } = useBranch();
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const refreshMenu = useCallback(async () => {
-    const result = await fetchMenuData();
+    const result = await fetchMenuData(branchId);
     if (result.error) {
       setError(result.error);
     } else {
@@ -91,18 +101,18 @@ export function MenuProvider({ children }: { children: ReactNode }) {
       setMenuItems(result.menuItems);
       setCategories(result.categories);
     }
-  }, []);
+  }, [branchId]);
 
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const result = await fetchMenuData();
+      const result = await fetchMenuData(branchId);
       setError(result.error);
       setMenuItems(result.menuItems);
       setCategories(result.categories);
       setLoading(false);
     })();
-  }, []);
+  }, [branchId]);
 
   return (
     <MenuContext.Provider value={{ menuItems, categories, loading, error, refreshMenu }}>

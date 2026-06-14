@@ -6,7 +6,7 @@ import { logAudit } from "@/lib/audit-log";
 import ConfirmModal from "@/app/_components/ConfirmModal";
 import { LoadingSkeleton, EmptyState } from "./shared";
 
-export default function BannersPanel() {
+export default function BannersPanel({ branchId }: { branchId?: string | null }) {
   const [banners, setBanners] = useState<{ id: string; title: string; subtitle: string; image: string; tag: string | null; sort_order: number; is_active: boolean }[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<string | null>(null);
@@ -15,7 +15,14 @@ export default function BannersPanel() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const fetchBanners = useCallback(async () => { const sb = createClient(); const { data } = await sb.from("banners").select("*").order("sort_order"); if (data) setBanners(data); setLoading(false); }, []);
+  const fetchBanners = useCallback(async () => {
+    const sb = createClient();
+    let query = sb.from("banners").select("*");
+    if (branchId) query = query.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    const { data } = await query.order("sort_order");
+    if (data) setBanners(data);
+    setLoading(false);
+  }, [branchId]);
   useEffect(() => { fetchBanners(); }, [fetchBanners]);
   function startEdit(b: typeof banners[0]) { setEditing(b.id); setCreating(false); setForm({ title: b.title, subtitle: b.subtitle, image: b.image, tag: b.tag || "", sort_order: b.sort_order, is_active: b.is_active }); setError(""); }
   function startCreate() { setCreating(true); setEditing(null); setForm({ title: "", subtitle: "", image: "", tag: "", sort_order: banners.length + 1, is_active: true }); setError(""); }
@@ -24,7 +31,7 @@ export default function BannersPanel() {
     if (!form.title.trim()) { setError("Title required."); return; } if (!form.image.trim()) { setError("Image filename required."); return; }
     setSaving(true); const sb = createClient();
     if (editing) { await sb.from("banners").update({ title: form.title.trim(), subtitle: form.subtitle.trim(), image: form.image.trim(), tag: form.tag.trim() || null, sort_order: form.sort_order, is_active: form.is_active }).eq("id", editing); logAudit({ action: "update_banner", entity_type: "banner", entity_id: editing }); }
-    else { const { error: insertErr } = await sb.from("banners").insert({ title: form.title.trim(), subtitle: form.subtitle.trim(), image: form.image.trim(), tag: form.tag.trim() || null, sort_order: form.sort_order, is_active: form.is_active }); if (insertErr) { setError(insertErr.message); setSaving(false); return; } logAudit({ action: "create_banner", entity_type: "banner" }); }
+    else { const { error: insertErr } = await sb.from("banners").insert({ title: form.title.trim(), subtitle: form.subtitle.trim(), image: form.image.trim(), tag: form.tag.trim() || null, sort_order: form.sort_order, is_active: form.is_active, ...(branchId ? { branch_id: branchId } : {}) }); if (insertErr) { setError(insertErr.message); setSaving(false); return; } logAudit({ action: "create_banner", entity_type: "banner" }); }
     setSaving(false); cancelEdit(); await fetchBanners();
   }
   async function handleDelete(id: string) { const sb = createClient(); await sb.from("banners").delete().eq("id", id); logAudit({ action: "delete_banner", entity_type: "banner", entity_id: id }); await fetchBanners(); setDeleteId(null); }

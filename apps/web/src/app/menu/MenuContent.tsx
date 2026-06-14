@@ -5,9 +5,11 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { useMenu } from "@/lib/menu-context";
+import { useBranch } from "@/lib/branch-context";
 import { useCart } from "@/lib/cart-context";
 import type { MenuItem } from "@/lib/menu-data";
 import AppHeader from "@/app/_components/AppHeader";
+import BranchSwitcher from "@/app/_components/BranchSwitcher";
 import CartSidebar from "@/app/_components/CartSidebar";
 import ProfileModal from "@/app/_components/ProfileModal";
 import PlaceholderImage from "@/app/_components/PlaceholderImage";
@@ -28,6 +30,7 @@ const CATEGORIES: CategoryFilter[] = [
 
 export default function MenuContent() {
   const { user, loading: authLoading } = useAuth();
+  const { branch, branchId, allBranches, setBranchSlug } = useBranch();
   const { menuItems, categories, loading: menuLoading } = useMenu();
   const { cart, addToCart } = useCart();
   const router = useRouter();
@@ -81,15 +84,37 @@ export default function MenuContent() {
 
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-6xl mx-auto px-4 pt-4 pb-20 sm:pb-0">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-1 text-sm font-medium text-[#6b7280] hover:text-[#dc2626] transition-colors mb-3"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-            </svg>
-            Back to Home
-          </Link>
+          {/* Back + Branch Picker Row */}
+          <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-1 text-sm font-medium text-[#6b7280] hover:text-[#dc2626] transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+              Back to Home
+            </Link>
+            {allBranches.length > 1 && (
+              <BranchSwitcher />
+            )}
+          </div>
+
+          {/* Branch name banner when branch is selected */}
+          {branch && allBranches.length > 1 && (
+            <div
+              className="mb-4 px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2"
+              style={{ backgroundColor: "#fef2f2", color: "#dc2626" }}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Viewing menu for <span className="font-bold">{branch.name}</span>
+              {branch.address && <span className="text-gray-400 font-normal hidden sm:inline">· {branch.address}</span>}
+            </div>
+          )}
+
           <h2 className="text-2xl font-black text-[#0a0a0a] mb-4">Menu</h2>
 
           {/* Search and Category Tabs */}

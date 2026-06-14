@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { LoadingSkeleton, EmptyState, RED, OT_ICON, OT_LABEL, SOURCE_FILTER, SOURCE_BG } from "./shared";
+import { LoadingSkeleton, EmptyState, OT_ICON, OT_LABEL, SOURCE_FILTER, SOURCE_BG } from "./shared";
 import type { OrderType } from "./shared";
 
 function StatCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color: string }) {
@@ -16,19 +16,23 @@ function StatCard({ label, value, sub, color }: { label: string; value: string; 
   );
 }
 
-export default function DashboardPanel() {
+export default function DashboardPanel({ branchId }: { branchId?: string | null }) {
   const [stats, setStats] = useState<{ totalOrders: number; totalRevenue: number; totalCustomers: number; totalMenuItems: number; pendingOrders: number; recentOrders: any[] } | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchStats = useCallback(async () => {
     const sb = createClient();
+
+    const branchFilter = { column: "branch_id", value: branchId };
+    const maybeEq = (q: any) => branchId ? q.eq("branch_id", branchId) : q;
+
     const [{ count: orderCount }, { data: revenueRows }, { count: customerCount }, { count: menuCount }, { count: pendingCount }, { data: recent }] = await Promise.all([
-      sb.from("orders").select("*", { count: "exact", head: true }),
-      sb.from("orders").select("total").in("status", ["delivered", "out_for_delivery"]),
+      maybeEq(sb.from("orders").select("*", { count: "exact", head: true })),
+      maybeEq(sb.from("orders").select("total").in("status", ["delivered", "out_for_delivery"])),
       sb.from("profiles").select("*", { count: "exact", head: true }).eq("role", "customer"),
-      sb.from("menu_items").select("*", { count: "exact", head: true }),
-      sb.from("orders").select("*", { count: "exact", head: true }).eq("status", "pending"),
-      sb.from("orders").select("id, total, status, placed_at, order_type, customer:profiles(full_name)").order("placed_at", { ascending: false }).limit(5),
+      branchId ? sb.from("menu_items").select("*", { count: "exact", head: true }).eq("branch_id", branchId) : sb.from("menu_items").select("*", { count: "exact", head: true }),
+      maybeEq(sb.from("orders").select("*", { count: "exact", head: true }).eq("status", "pending")),
+      maybeEq(sb.from("orders").select("id, total, status, placed_at, order_type, customer:profiles(full_name)").order("placed_at", { ascending: false }).limit(5)),
     ]);
     setStats({
       totalOrders: orderCount ?? 0,
@@ -39,7 +43,7 @@ export default function DashboardPanel() {
       recentOrders: (recent ?? []).map((r: any) => ({ id: r.id, orderType: r.order_type as OrderType, total: Number(r.total), status: r.status, placed_at: r.placed_at })),
     });
     setLoading(false);
-  }, []);
+  }, [branchId]);
   useEffect(() => { fetchStats(); }, [fetchStats]);
   if (loading) return <LoadingSkeleton />;
   if (!stats) return <EmptyState message="No data available." />;

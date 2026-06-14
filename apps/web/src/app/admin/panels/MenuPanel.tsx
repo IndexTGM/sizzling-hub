@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { logAudit } from "@/lib/audit-log";
 import StorageImage from "@/app/_components/StorageImage";
 import ConfirmModal from "@/app/_components/ConfirmModal";
 import { LoadingSkeleton, EmptyState } from "./shared";
@@ -18,7 +17,7 @@ interface MenuItemRow {
   categoryNames: string[];
 }
 
-export default function MenuPanel() {
+export default function MenuPanel({ branchId }: { branchId?: string | null }) {
   const [items, setItems] = useState<MenuItemRow[]>([]);
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,12 +40,18 @@ export default function MenuPanel() {
 
   const fetchItems = useCallback(async () => {
     const sb = createClient();
-    // Fetch menu items
-    const { data: menuData } = await sb.from("menu_items").select("id, name, price, image_url, stock, description").order("name");
-    // Fetch junction table
+
+    // Build branch-aware queries
+    let menuQ = sb.from("menu_items").select("id, name, price, image_url, stock, description").order("name");
+    let catQ = sb.from("categories").select("id, name").order("sort_order");
+    if (branchId) {
+      menuQ = menuQ.eq("branch_id", branchId);
+      catQ = catQ.eq("branch_id", branchId);
+    }
+
+    const { data: menuData } = await menuQ;
     const { data: junctions } = await sb.from("menu_item_categories").select("menu_item_id, category_id, categories(name)");
-    // Fetch all categories
-    const { data: cats } = await sb.from("categories").select("id, name").order("sort_order");
+    const { data: cats } = await catQ;
     if (cats) setCategories(cats);
 
     // Build map: menu_item_id → { categoryIds, categoryNames }
@@ -80,7 +85,7 @@ export default function MenuPanel() {
       }));
     }
     setLoading(false);
-  }, []);
+  }, [branchId]);
   useEffect(() => { fetchItems(); }, [fetchItems]);
 
   function toggleCategory(catId: string) {
@@ -103,7 +108,6 @@ export default function MenuPanel() {
 
   async function handleDeleteReview(reviewId: string) {
     const sb = createClient(); await sb.from("reviews").delete().eq("id", reviewId);
-    logAudit({ action: "delete_review", entity_type: "review", entity_id: reviewId });
     setReviews((prev) => prev.filter((r) => r.id !== reviewId));
     if (reviewsItem) { try { await sb.rpc("recalc_menu_item_rating", { p_menu_item_id: reviewsItem.id }); } catch {} }
     setConfirmDelete(null);
@@ -138,15 +142,20 @@ export default function MenuPanel() {
       if (form.categoryIds.length > 0) {
         await sb.from("menu_item_categories").insert(form.categoryIds.map((cid) => ({ menu_item_id: itemId, category_id: cid })));
       }
-      logAudit({ action: "update_menu_item", entity_type: "menu_item", entity_id: itemId, details: { name: form.name.trim() } });
     } else {
-      const { data: newItem, error: insertErr } = await sb.from("menu_items").insert({ name: form.name.trim(), price: form.price, image_url: img, stock: form.stock, description: form.description.trim() }).select("id").single();
+      const { data: newItem, error: insertErr } = await sb.from("menu_items").insert({
+        name: form.name.trim(),
+        price: form.price,
+        image_url: img,
+        stock: form.stock,
+        description: form.description.trim(),
+        ...(branchId ? { branch_id: branchId } : {}),
+      }).select("id").single();
       if (insertErr || !newItem) { setError(insertErr?.message || "Insert failed"); setSaving(false); return; }
       itemId = newItem.id;
       if (form.categoryIds.length > 0) {
         await sb.from("menu_item_categories").insert(form.categoryIds.map((cid) => ({ menu_item_id: itemId, category_id: cid })));
       }
-      logAudit({ action: "create_menu_item", entity_type: "menu_item", entity_id: itemId, details: { name: form.name.trim() } });
     }
     setSaving(false); cancelEdit(); await fetchItems();
   }
@@ -155,7 +164,6 @@ export default function MenuPanel() {
     const sb = createClient();
     await sb.from("menu_item_categories").delete().eq("menu_item_id", id);
     await sb.from("menu_items").delete().eq("id", id);
-    logAudit({ action: "delete_menu_item", entity_type: "menu_item", entity_id: id });
     await fetchItems(); setConfirmDelete(null);
   }
 
@@ -163,16 +171,20 @@ export default function MenuPanel() {
     const sb = createClient();
     await sb.from("menu_item_categories").delete().eq("category_id", catId);
     await sb.from("categories").delete().eq("id", catId);
-    logAudit({ action: "delete_category", entity_type: "category", entity_id: catId, details: { name: catName } });
     await fetchItems(); setConfirmDelete(null);
   }
 
   async function handleAddCategory() {
     if (!newCatName.trim()) { setCatError("Category name is required."); return; }
     setCatError(""); const sb = createClient();
-    const { error: insertErr } = await sb.from("categories").insert({ name: newCatName.trim(), slug: newCatName.trim().toLowerCase().replace(/\s+/g, "-"), sort_order: categories.length + 1, is_active: true });
+    const { error: insertErr } = await sb.from("categories").insert({
+      name: newCatName.trim(),
+      slug: newCatName.trim().toLowerCase().replace(/\s+/g, "-"),
+      sort_order: categories.length + 1,
+      is_active: true,
+      ...(branchId ? { branch_id: branchId } : {}),
+    });
     if (insertErr) { setCatError(insertErr.message); return; }
-    logAudit({ action: "create_category", entity_type: "category", details: { name: newCatName.trim() } });
     setNewCatName(""); setAddingCat(false); await fetchItems();
   }
 

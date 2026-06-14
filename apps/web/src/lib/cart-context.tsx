@@ -14,8 +14,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { type MenuItem, type CartItem } from "@/lib/menu-data";
 import { useAuth } from "@/lib/auth-context";
 import { useMenu } from "@/lib/menu-context";
-import { logAudit } from "@/lib/audit-log";
-import { haversineDistance, STORE_LOCATION, MAX_DELIVERY_RADIUS_KM } from "@/lib/store-config";
+import { useBranch } from "@/lib/branch-context";
+import { isWithinDeliveryRange } from "@/lib/store-config";
 
 interface CartContextType {
   cart: CartItem[];
@@ -45,6 +45,7 @@ function cartKey(itemId: string, note: string) {
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const { branchId, branchLocation } = useBranch();
   const pathname = usePathname();
   const { refreshMenu } = useMenu();
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -197,11 +198,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
       const subtotal = cart.reduce((sum, c) => sum + c.price * c.quantity, 0);
 
-      // Validate delivery address is within range
+      // Validate delivery address is within range of the current branch
       if (orderType === "delivery" && address && (address as any).addressLat != null && (address as any).addressLng != null) {
-        const dist = haversineDistance(STORE_LOCATION.lat, STORE_LOCATION.lng, (address as any).addressLat, (address as any).addressLng);
-        if (dist > MAX_DELIVERY_RADIUS_KM) {
-          return { success: false, error: `Delivery address is ${dist.toFixed(1)} km away — our maximum range is ${MAX_DELIVERY_RADIUS_KM} km.` };
+        const { valid, distanceKm } = isWithinDeliveryRange(
+          branchLocation.lat,
+          branchLocation.lng,
+          branchLocation.deliveryRadiusKm,
+          (address as any).addressLat,
+          (address as any).addressLng
+        );
+        if (!valid) {
+          return { success: false, error: `Delivery address is ${distanceKm.toFixed(1)} km away — our maximum range is ${branchLocation.deliveryRadiusKm} km.` };
         }
       }
 
@@ -226,6 +233,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         customer_id: session.user.id, order_type: orderType, status: "pending",
         subtotal, delivery_fee: 0, discount: 0, total: subtotal,
         notes: addressStr ? `Address: ${addressStr}` : null,
+        branch_id: branchId || null,
         ...paymentFields,
       }).select("id").single();
 
@@ -248,21 +256,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
         await sb.rpc("decrement_stock", { p_menu_item_id: item.id, p_quantity: item.quantity });
       }
 
-      logAudit({
-        source: "customer", action: "place_order", entity_type: "order", entity_id: order.id,
-        details: {
-          order_type: orderType,
-          total: subtotal,
-          items: cart.map((item) => ({
-            name: item.name,
-            quantity: item.quantity,
-            price: item.price,
-            note: item.note ?? "",
-            subtotal: item.price * item.quantity,
-          })),
-        },
-      });
-
       // Silent refresh menu so stock counts update across all open views
       refreshMenu().catch(() => { /* best-effort, ignore failures */ });
 
@@ -270,7 +263,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     } catch (err: any) {
       return { success: false, error: err?.message || "Something went wrong." };
     }
-  }, [cart]);
+  }, [cart, branchId, branchLocation]);
 
   const clearCart = useCallback(() => {
     setCart([]);

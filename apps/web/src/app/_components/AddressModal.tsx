@@ -24,9 +24,16 @@ interface AddressModalProps {
   open: boolean;
   onClose: () => void;
   userId: string;
+  branchLat?: number;
+  branchLng?: number;
+  branchRadiusKm?: number;
 }
 
-export default function AddressModal({ open, onClose, userId }: AddressModalProps) {
+export default function AddressModal({ open, onClose, userId, branchLat, branchLng, branchRadiusKm }: AddressModalProps) {
+  const effBranchLat = branchLat ?? STORE_LOCATION.lat;
+  const effBranchLng = branchLng ?? STORE_LOCATION.lng;
+  const effBranchRadiusKm = branchRadiusKm ?? MAX_DELIVERY_RADIUS_KM;
+
   const [addresses, setAddresses] = useState<AddressEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -38,8 +45,8 @@ export default function AddressModal({ open, onClose, userId }: AddressModalProp
   const [formCity, setFormCity] = useState("");
   const [formProvince, setFormProvince] = useState("Metro Manila");
   const [formZip, setFormZip] = useState("");
-  const [formLat, setFormLat] = useState(STORE_LOCATION.lat);
-  const [formLng, setFormLng] = useState(STORE_LOCATION.lng);
+  const [formLat, setFormLat] = useState(effBranchLat);
+  const [formLng, setFormLng] = useState(effBranchLng);
   const [formDistance, setFormDistance] = useState(0);
 
   const sb = createClient();
@@ -70,7 +77,7 @@ export default function AddressModal({ open, onClose, userId }: AddressModalProp
   async function handleSaveAddress() {
     if (!formStreet.trim()) { setError("Street address is required."); return; }
     if (!formCity.trim()) { setError("City is required."); return; }
-    if (formDistance > MAX_DELIVERY_RADIUS_KM) { setError(`This address is ${formDistance.toFixed(1)} km away — our delivery range is ${MAX_DELIVERY_RADIUS_KM} km. Please choose a closer address.`); return; }
+    if (formDistance > effBranchRadiusKm) { setError(`This address is ${formDistance.toFixed(1)} km away — our delivery range is ${effBranchRadiusKm} km. Please choose a closer address.`); return; }
     setSaving(true);
     setError("");
 
@@ -94,7 +101,7 @@ export default function AddressModal({ open, onClose, userId }: AddressModalProp
     setSaving(false);
     setAdding(false);
     setFormStreet(""); setFormCity(""); setFormProvince("Metro Manila"); setFormZip(""); setFormLabel("Home");
-    setFormLat(STORE_LOCATION.lat); setFormLng(STORE_LOCATION.lng); setFormDistance(0);
+    setFormLat(effBranchLat); setFormLng(effBranchLng); setFormDistance(0);
     await fetchAddresses();
   }
 
@@ -105,13 +112,13 @@ export default function AddressModal({ open, onClose, userId }: AddressModalProp
     if (parts.zip) setFormZip(parts.zip);
     setFormLat(parts.lat);
     setFormLng(parts.lng);
-    setFormDistance(haversineDistance(STORE_LOCATION.lat, STORE_LOCATION.lng, parts.lat, parts.lng));
+    setFormDistance(haversineDistance(effBranchLat, effBranchLng, parts.lat, parts.lng));
   }
 
   if (!open) return null;
 
   const hasAddress = addresses.length > 0;
-  const isOutsideRadius = formDistance > MAX_DELIVERY_RADIUS_KM;
+  const isOutsideRadius = formDistance > effBranchRadiusKm;
 
   return (
     <>
@@ -190,7 +197,14 @@ export default function AddressModal({ open, onClose, userId }: AddressModalProp
 
                 <div>
                   <label className="block text-xs font-semibold text-gray-400 mb-2">Pin Your Location</label>
-                  <MapPicker initialLat={formLat} initialLng={formLng} onAddressChange={handleAddressChange} />
+                  <MapPicker
+                    initialLat={formLat}
+                    initialLng={formLng}
+                    storeLat={effBranchLat}
+                    storeLng={effBranchLng}
+                    storeRadiusKm={effBranchRadiusKm}
+                    onAddressChange={handleAddressChange}
+                  />
                 </div>
 
                 {formDistance > 0 && (
@@ -199,7 +213,7 @@ export default function AddressModal({ open, onClose, userId }: AddressModalProp
                       {isOutsideRadius ? "⚠️ Outside Delivery Zone" : "✅ Within Delivery Zone"}
                     </p>
                     <p className="text-xs mt-0.5 opacity-80">
-                      Distance from store: {formDistance.toFixed(1)} km {isOutsideRadius ? `(max: ${MAX_DELIVERY_RADIUS_KM} km)` : ""}
+                      Distance from branch: {formDistance.toFixed(1)} km {isOutsideRadius ? `(max: ${effBranchRadiusKm} km)` : ""}
                     </p>
                     {isOutsideRadius && (
                       <p className="text-xs mt-1 opacity-70">Delivery orders won't be available for this address. You can still place pickup orders.</p>

@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { useBranch } from "@/lib/branch-context";
 import { useCart } from "@/lib/cart-context";
 import { useToast } from "@/app/_components/Toast";
 import { createClient } from "@/lib/supabase/client";
-import { haversineDistance, STORE_LOCATION, MAX_DELIVERY_RADIUS_KM } from "@/lib/store-config";
+import { haversineDistance } from "@/lib/store-config";
 import PlaceholderImage from "./PlaceholderImage";
 import StorageImage from "./StorageImage";
 import AddressModal from "./AddressModal";
@@ -40,6 +41,7 @@ export default function CartSidebar({
   onImgError: (name: string) => void;
 }) {
   const { user } = useAuth();
+  const { branchLocation } = useBranch();
   const { cart, itemCount, total, updateQty, removeFromCart, placeOrder } = useCart();
   const { showToast } = useToast();
   const [placing, setPlacing] = useState(false);
@@ -74,9 +76,9 @@ export default function CartSidebar({
         const addrLat = (data as any).lat as number | undefined;
         const addrLng = (data as any).lng as number | undefined;
         if (addrLat && addrLng) {
-          const dist = haversineDistance(STORE_LOCATION.lat, STORE_LOCATION.lng, addrLat, addrLng);
+          const dist = haversineDistance(branchLocation.lat, branchLocation.lng, addrLat, addrLng);
           setAddressDistance(dist);
-          setWithinRange(dist <= MAX_DELIVERY_RADIUS_KM);
+          setWithinRange(dist <= branchLocation.deliveryRadiusKm);
         } else {
           setAddressDistance(null);
           setWithinRange(true);
@@ -88,11 +90,26 @@ export default function CartSidebar({
       }
       setAddressLoading(false);
     })();
-  }, [user, orderMethod, addressModalOpen]);
+  }, [user, orderMethod, addressModalOpen, branchLocation]);
 
   const hasDeliveryAddress = orderMethod === "delivery" && defaultAddress !== null;
   const needsAddress = orderMethod === "delivery" && !addressLoading && defaultAddress === null;
   const outOfRange = orderMethod === "delivery" && hasDeliveryAddress && !withinRange;
+
+  // Opening hours check: Mon-Sat 11:00 AM - 11:00 PM
+  const isWithinOpeningHours = (() => {
+    const now = new Date();
+    const day = now.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+    if (day === 0) return false; // Closed Sundays
+    const hour = now.getHours();
+    const minute = now.getMinutes();
+    const timeInMinutes = hour * 60 + minute;
+    return timeInMinutes >= 11 * 60 && timeInMinutes < 23 * 60; // 11:00 AM to 11:00 PM
+  })();
+
+  const isAdmin = user?.role === "admin";
+  const blockedByHours = !isWithinOpeningHours && !isAdmin;
+  const showHoursWarning = !isWithinOpeningHours;
 
   async function handleConfirmOrder() {
     if (!user) return;
@@ -228,6 +245,23 @@ export default function CartSidebar({
               <button onClick={() => setOrderMethod("pickup")} className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 ${orderMethod === "pickup" ? "text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`} style={orderMethod === "pickup" ? { backgroundColor: "#dc2626" } : undefined}>🛍️ Pickup</button>
             </div>
 
+            {/* Opening Hours Warning */}
+            {showHoursWarning && (
+              <div className={`p-3 rounded-xl border text-sm ${isAdmin ? "bg-amber-50 border-amber-200 text-amber-700" : "bg-red-50 border-red-200 text-red-700"}`}>
+                <p className="text-xs font-bold">
+                  {isAdmin ? "⚠️ Outside Operating Hours" : "⛔ Outside Operating Hours"}
+                </p>
+                <p className="text-xs mt-0.5 opacity-80">
+                  Operating hours are Monday – Saturday, 11:00 AM – 11:00 PM.
+                </p>
+                {isAdmin ? (
+                  <p className="text-xs mt-0.5 opacity-70">You can still place this order as an admin.</p>
+                ) : (
+                  <p className="text-xs mt-0.5 opacity-70">Orders can only be placed during operating hours.</p>
+                )}
+              </div>
+            )}
+
             {/* Address warning for delivery — no address */}
             {needsAddress && (
               <div className="p-3 rounded-xl bg-red-50 border border-red-200 space-y-2">
@@ -244,7 +278,8 @@ export default function CartSidebar({
                 <p className="text-xs text-emerald-600 font-medium">{defaultAddress.street}</p>
                 <p className="text-xs text-emerald-500">
                   {defaultAddress.city}, {defaultAddress.province}
-                  {addressDistance !== null && <span> • {addressDistance.toFixed(1)} km away</span>}
+                  {addressDistance !== null && <span> • {addressDistance.toFixed(1)} km away</span>}{" "}
+                  <span className="text-emerald-400">(max {branchLocation.deliveryRadiusKm} km)</span>
                 </p>
                 <button onClick={() => setAddressModalOpen(true)} className="mt-2 text-xs font-semibold text-emerald-700 underline hover:no-underline">Change Address</button>
               </div>
@@ -255,7 +290,7 @@ export default function CartSidebar({
               <div className="p-3 rounded-xl bg-red-50 border border-red-200 space-y-2">
                 <p className="text-xs font-semibold text-red-700">⚠️ Outside Delivery Zone</p>
                 <p className="text-xs text-red-500">
-                  This address is {addressDistance?.toFixed(1)} km away — our delivery range is {MAX_DELIVERY_RADIUS_KM} km.
+                  This address is {addressDistance?.toFixed(1)} km away — our delivery range is {branchLocation.deliveryRadiusKm} km.
                 </p>
                 <p className="text-xs text-red-400">Please choose a closer address or switch to pickup.</p>
                 <button onClick={() => setAddressModalOpen(true)} className="w-full py-2 rounded-lg bg-red-600 text-white text-xs font-bold hover:bg-red-700 transition-colors">Change Address</button>
@@ -290,7 +325,7 @@ export default function CartSidebar({
                 </p>
               )}
               {/* COD only for Delivery */}
-              {orderMethod === "delivery" && 
+              {orderMethod === "delivery" &&
                 <button
                   onClick={() => setPaymentMethod(null)}
                   className={`w-full py-2 rounded-lg text-xs font-semibold border transition-all duration-200 ${
@@ -309,7 +344,7 @@ export default function CartSidebar({
               <span className="text-xl font-black" style={{ color: "#dc2626" }}>₱{total}</span>
             </div>
             <button
-              disabled={cart.length === 0 || placing || needsAddress || outOfRange}
+              disabled={cart.length === 0 || placing || needsAddress || outOfRange || blockedByHours}
               className="w-full py-3 rounded-xl font-bold text-white text-sm tracking-wide transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed hover:scale-[1.02] active:scale-100"
               style={{ backgroundColor: "#dc2626" }}
               onClick={() => setConfirmOpen(true)}
@@ -394,7 +429,14 @@ export default function CartSidebar({
         </>
       )}
 
-      <AddressModal open={addressModalOpen} onClose={() => setAddressModalOpen(false)} userId={user?.id || ""} />
+      <AddressModal
+        open={addressModalOpen}
+        onClose={() => setAddressModalOpen(false)}
+        userId={user?.id || ""}
+        branchLat={branchLocation.lat}
+        branchLng={branchLocation.lng}
+        branchRadiusKm={branchLocation.deliveryRadiusKm}
+      />
     </>
   );
 }

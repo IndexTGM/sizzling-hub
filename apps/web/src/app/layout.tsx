@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AuthProvider } from "@/lib/auth-context";
+import { BranchProvider } from "@/lib/branch-context";
 import { CartProvider } from "@/lib/cart-context";
 import { MenuProvider } from "@/lib/menu-context";
 import { BannerProvider } from "@/lib/banner-context";
@@ -43,13 +44,15 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <ToastProvider>
           <AuthProvider>
-            <MenuProvider>
-              <BannerProvider>
-                <CartProvider>
-                  {children}
-                </CartProvider>
-              </BannerProvider>
-            </MenuProvider>
+            <BranchProvider>
+              <MenuProvider>
+                <BannerProvider>
+                  <CartProvider>
+                    {children}
+                  </CartProvider>
+                </BannerProvider>
+              </MenuProvider>
+            </BranchProvider>
           </AuthProvider>
         </ToastProvider>
       </body>

@@ -8,7 +8,7 @@ import { LoadingSkeleton, EmptyState } from "./shared";
 import type { OrderStatus, OrderType, AdminOrder } from "./shared";
 import { STATUS_OPTIONS, STATUS_BG, getNextStatuses, OT_ICON, OT_LABEL, PAYMENT_LABEL, PAYMENT_ICON, PAYMENT_STATUS_BG, SOURCE_OPTIONS, SOURCE_FILTER, SOURCE_BG, type OrderSource } from "./shared";
 
-export default function OrdersPanel() {
+export default function OrdersPanel({ branchId }: { branchId?: string | null }) {
   const [orders, setOrders] = useState<AdminOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [sourceFilter, setSourceFilter] = useState<"all" | OrderSource>("all");
@@ -22,7 +22,9 @@ export default function OrdersPanel() {
   const hasOrdersLoaded = React.useRef(false);
   const fetchOrders = useCallback(async () => {
     const sb = createClient();
-    const { data: rows, error } = await sb.from("orders").select("id, order_type, status, subtotal, delivery_fee, discount, total, notes, placed_at, completed_at, payment_method, payment_source_id, payment_status, customer:profiles(full_name, email)").order("placed_at", { ascending: false });
+    let query = sb.from("orders").select("id, order_type, status, subtotal, delivery_fee, discount, total, notes, placed_at, completed_at, payment_method, payment_source_id, payment_status, customer:profiles(full_name, email)");
+    if (branchId) query = query.eq("branch_id", branchId);
+    const { data: rows, error } = await query.order("placed_at", { ascending: false });
     if (error || !rows) {
       if (!hasOrdersLoaded.current) { setOrders([]); setLoading(false); }
       return;
@@ -34,7 +36,7 @@ export default function OrdersPanel() {
     setOrders(rows.map((r: any) => ({ id: r.id, customerName: (r.customer as any)?.full_name || (r.customer as any)?.email || "N/A", customerEmail: (r.customer as any)?.email || "", orderType: r.order_type as OrderType, status: r.status as OrderStatus, subtotal: r.subtotal, deliveryFee: r.delivery_fee, discount: r.discount, total: r.total, notes: r.notes, items: itemsByOrder.get(r.id) || [], placedAt: r.placed_at, completedAt: r.completed_at, paymentMethod: r.payment_method, paymentSourceId: r.payment_source_id, paymentStatus: r.payment_status })));
     if (!hasOrdersLoaded.current) setLoading(false);
     hasOrdersLoaded.current = true;
-  }, []);
+  }, [branchId]);
   useEffect(() => {
     fetchOrders();
     const interval = setInterval(fetchOrders, 1000);
