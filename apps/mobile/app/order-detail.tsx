@@ -17,6 +17,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
 import { supabase } from "@/lib/supabase";
 import MapView, { Marker, Region } from "react-native-maps";
+import { STORE_LOCATION } from "@/lib/store-config";
 
 const PRIMARY = "#dc2626";
 const GREEN = "#10b981";
@@ -212,6 +213,11 @@ export default function OrderDetailScreen() {
     latitudeDelta: 0.01,
     longitudeDelta: 0.01,
   });
+  const mapInitialFitRef = useRef(true);
+  const [customerAddressCoords, setCustomerAddressCoords] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
 
   // Review states
   const [reviewVisible, setReviewVisible] = useState(false);
@@ -303,8 +309,27 @@ export default function OrderDetailScreen() {
   useEffect(() => {
     if (!id || !order || order.orderType !== "delivery" || order.status !== "out_for_delivery") {
       setDriverLocation(null);
+      setCustomerAddressCoords(null);
+      mapInitialFitRef.current = true;
       return;
     }
+
+    // Fetch customer's delivery address coordinates
+    (async () => {
+      const { data: addrs } = await supabase
+        .from("addresses")
+        .select("lat, lng")
+        .eq("user_id", user?.id)
+        .eq("is_default", true)
+        .limit(1)
+        .maybeSingle();
+      if (addrs && addrs.lat != null && addrs.lng != null) {
+        setCustomerAddressCoords({
+          latitude: addrs.lat,
+          longitude: addrs.lng,
+        });
+      }
+    })();
 
     // Initial fetch of latest driver location
     supabase
@@ -322,12 +347,15 @@ export default function OrderDetailScreen() {
             heading: data.heading,
             updatedAt: data.recorded_at,
           });
-          setMapRegion({
-            latitude: data.latitude,
-            longitude: data.longitude,
-            latitudeDelta: 0.005,
-            longitudeDelta: 0.005,
-          });
+          if (mapInitialFitRef.current) {
+            mapInitialFitRef.current = false;
+            setMapRegion({
+              latitude: data.latitude,
+              longitude: data.longitude,
+              latitudeDelta: 0.005,
+              longitudeDelta: 0.005,
+            });
+          }
         }
       });
 
@@ -351,11 +379,7 @@ export default function OrderDetailScreen() {
               heading: loc.heading,
               updatedAt: loc.recorded_at,
             });
-            setMapRegion((prev) => ({
-              ...prev,
-              latitude: loc.latitude,
-              longitude: loc.longitude,
-            }));
+            // Don't re-center — let the user pan freely
           }
         }
       )
@@ -700,6 +724,24 @@ export default function OrderDetailScreen() {
                   scrollEnabled={true}
                   zoomEnabled={true}
                 >
+                  {/* Store marker */}
+                  <Marker
+                    coordinate={{
+                      latitude: STORE_LOCATION.lat,
+                      longitude: STORE_LOCATION.lng,
+                    }}
+                    title="Ben's Tapsihan"
+                    pinColor="#fbbf24"
+                  />
+                  {/* Customer address marker */}
+                  {customerAddressCoords && (
+                    <Marker
+                      coordinate={customerAddressCoords}
+                      title="Your Address"
+                      pinColor="#3b82f6"
+                    />
+                  )}
+                  {/* Driver marker */}
                   <Marker
                     coordinate={{
                       latitude: driverLocation.latitude,

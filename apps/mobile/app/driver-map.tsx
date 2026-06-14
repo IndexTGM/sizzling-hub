@@ -82,6 +82,7 @@ function buildMapHtml(
 
   // Route only drawn when driver GPS position arrives via moveDriver()
 
+  var initialFitDone=false;
   var group=L.featureGroup([storeMarker,custMarker]);
   map.fitBounds(group.getBounds().pad(0.2));
 
@@ -96,8 +97,12 @@ function buildMapHtml(
       prevCoords=ck;
       fetchRoute(lat,lng,CUST_LAT,CUST_LNG);
     }
-    var all=L.featureGroup([storeMarker,custMarker,driverMarker]);
-    map.fitBounds(all.getBounds().pad(0.1));
+    // Only auto-fit bounds on the very first GPS fix
+    if(!initialFitDone){
+      initialFitDone=true;
+      var all=L.featureGroup([storeMarker,custMarker,driverMarker]);
+      map.fitBounds(all.getBounds().pad(0.1));
+    }
   }
   window.ReactNativeWebView.postMessage('ready');
 <\/script>
