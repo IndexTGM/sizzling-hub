@@ -36,6 +36,15 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
+      ],
+      [
+        "expo-location",
+        {
+          "isAndroidBackgroundLocationEnabled": true,
+          "locationAlwaysAndWhenInUsePermission": "Allow Sizzling Hub to use your location to track deliveries.",
+          "locationAlwaysPermission": "Allow Sizzling Hub to track your location in the background while delivering orders.",
+          "locationWhenInUsePermission": "Allow Sizzling Hub to access your location while using the app."
+        }
       ]
     ],
     "jsEngine": "jsc",

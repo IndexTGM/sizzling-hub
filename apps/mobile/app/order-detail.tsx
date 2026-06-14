@@ -8,6 +8,7 @@ import {
   Alert,
   Modal,
   TextInput,
+  Dimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -15,10 +16,12 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
 import { supabase } from "@/lib/supabase";
+import MapView, { Marker, Region } from "react-native-maps";
 
 const PRIMARY = "#dc2626";
 const GREEN = "#10b981";
 const AMBER = "#f59e0b";
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 // ─── Order Types ────────────────────────────────────────────────
 type OrderStatus =
@@ -196,6 +199,20 @@ export default function OrderDetailScreen() {
   const [cancelLoading, setCancelLoading] = useState(false);
   const hasLoadedRef = useRef(false);
 
+  // Driver location tracking
+  const [driverLocation, setDriverLocation] = useState<{
+    latitude: number;
+    longitude: number;
+    heading: number | null;
+    updatedAt: string;
+  } | null>(null);
+  const [mapRegion, setMapRegion] = useState<Region>({
+    latitude: 14.5995,
+    longitude: 120.9842,
+    latitudeDelta: 0.01,
+    longitudeDelta: 0.01,
+  });
+
   // Review states
   const [reviewVisible, setReviewVisible] = useState(false);
   const [reviewItem, setReviewItem] = useState<OrderItem | null>(null);
@@ -281,6 +298,73 @@ export default function OrderDetailScreen() {
     const interval = setInterval(() => fetchOrder(true), 1000);
     return () => clearInterval(interval);
   }, [fetchOrder]);
+
+  // ─── Driver Location Subscription (realtime) ─────────────────
+  useEffect(() => {
+    if (!id || !order || order.orderType !== "delivery" || order.status !== "out_for_delivery") {
+      setDriverLocation(null);
+      return;
+    }
+
+    // Initial fetch of latest driver location
+    supabase
+      .from("driver_locations")
+      .select("latitude, longitude, heading, recorded_at")
+      .eq("order_id", id)
+      .order("recorded_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setDriverLocation({
+            latitude: data.latitude,
+            longitude: data.longitude,
+            heading: data.heading,
+            updatedAt: data.recorded_at,
+          });
+          setMapRegion({
+            latitude: data.latitude,
+            longitude: data.longitude,
+            latitudeDelta: 0.005,
+            longitudeDelta: 0.005,
+          });
+        }
+      });
+
+    // Subscribe to realtime inserts
+    const channel = supabase
+      .channel(`driver-location-${id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "driver_locations",
+          filter: `order_id=eq.${id}`,
+        },
+        (payload: any) => {
+          const loc = payload.new;
+          if (loc) {
+            setDriverLocation({
+              latitude: loc.latitude,
+              longitude: loc.longitude,
+              heading: loc.heading,
+              updatedAt: loc.recorded_at,
+            });
+            setMapRegion((prev) => ({
+              ...prev,
+              latitude: loc.latitude,
+              longitude: loc.longitude,
+            }));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id, order?.status, order?.orderType]);
 
   // ─── Cancel Order ───────────────────────────────────────────
   const handleCancelOrder = useCallback(async () => {
@@ -599,6 +683,59 @@ export default function OrderDetailScreen() {
             </View>
           </View>
         )}
+
+        {/* ─── Live Driver Tracking Map ─── */}
+        {order.orderType === "delivery" &&
+          order.status === "out_for_delivery" &&
+          driverLocation && (
+            <View style={styles.trackingCard}>
+              <Text style={styles.sectionTitle}>🛵 Live Tracking</Text>
+              <Text style={styles.trackingSub}>
+                Your driver is on the way!
+              </Text>
+              <View style={styles.mapWrap}>
+                <MapView
+                  style={styles.map}
+                  region={mapRegion}
+                  scrollEnabled={true}
+                  zoomEnabled={true}
+                >
+                  <Marker
+                    coordinate={{
+                      latitude: driverLocation.latitude,
+                      longitude: driverLocation.longitude,
+                    }}
+                    title="Driver"
+                    description={`Updated ${formatDateTime(driverLocation.updatedAt)}`}
+                  >
+                    <View style={styles.markerWrap}>
+                      <Text style={styles.markerIcon}>🛵</Text>
+                    </View>
+                  </Marker>
+                </MapView>
+              </View>
+              <Text style={styles.trackingUpdated}>
+                Last updated: {formatDateTime(driverLocation.updatedAt)}
+              </Text>
+            </View>
+          )}
+
+        {/* Show tracking info when status is out_for_delivery but no location yet */}
+        {order.orderType === "delivery" &&
+          order.status === "out_for_delivery" &&
+          !driverLocation && (
+            <View style={styles.trackingCard}>
+              <Text style={styles.sectionTitle}>🛵 Live Tracking</Text>
+              <Text style={styles.trackingWaiting}>
+                Waiting for driver's location...
+              </Text>
+              <ActivityIndicator
+                size="small"
+                color={PRIMARY}
+                style={{ marginTop: 8 }}
+              />
+            </View>
+          )}
 
         {/* ─── Order Items ─── */}
         <View style={styles.itemsCard}>
@@ -1307,6 +1444,55 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     color: "#1f2937",
+  },
+
+  // ─── Live Tracking Map ───
+  trackingCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  trackingSub: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#10b981",
+    marginBottom: 12,
+  },
+  trackingWaiting: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#9ca3af",
+    textAlign: "center",
+  },
+  trackingUpdated: {
+    fontSize: 11,
+    fontWeight: "500",
+    color: "#9ca3af",
+    textAlign: "center",
+    marginTop: 8,
+  },
+  mapWrap: {
+    borderRadius: 12,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    marginBottom: 4,
+  },
+  map: {
+    width: "100%",
+    height: 220,
+  },
+  markerWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  markerIcon: {
+    fontSize: 28,
   },
 
   // ─── Cancel Order Button ───

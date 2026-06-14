@@ -12,18 +12,26 @@ import { useRouter } from "expo-router";
 import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
 import { supabase } from "@/lib/supabase";
+import {
+  startLocationTracking,
+  stopLocationTracking,
+} from "@/lib/background-location-task";
 import { useEffect, useState, useCallback } from "react";
 
 const PRIMARY = "#dc2626";
 
 interface DriverOrder {
   id: string;
+  status: string;
   customerName: string;
   total: number;
   items: { name: string; quantity: number; price: number }[];
   placedAt: string;
   notes: string | null;
   paymentMethod: string | null;
+  customerLat: number | null;
+  customerLng: number | null;
+  customerAddress: string | null;
 }
 
 export default function DriversPanel() {
@@ -34,11 +42,27 @@ export default function DriversPanel() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
+  const openMap = useCallback(
+    (order: DriverOrder) => {
+      const label = encodeURIComponent(
+        order.customerAddress ?? order.customerName ?? "Customer"
+      );
+      router.push(
+        `/driver-map?orderId=${order.id}&customerLat=${
+          order.customerLat ?? ""
+        }&customerLng=${
+          order.customerLng ?? ""
+        }&customerLabel=${label}`
+      );
+    },
+    [router]
+  );
+
   const fetchOrders = useCallback(async () => {
     const { data: rows } = await supabase
       .from("orders")
       .select(
-        "id, status, total, notes, placed_at, payment_method, customer:profiles(full_name)"
+        "id, status, total, notes, placed_at, payment_method, customer_id, customer:profiles(full_name)"
       )
       .eq("order_type", "delivery")
       .in("status", ["prepared", "out_for_delivery"])
@@ -51,10 +75,35 @@ export default function DriversPanel() {
     }
 
     const ids = rows.map((r: any) => r.id);
+    const customerIds = [
+      ...new Set(rows.map((r: any) => r.customer_id).filter(Boolean)),
+    ] as string[];
+
     const { data: items } = await supabase
       .from("order_items")
       .select("order_id, quantity, unit_price, menu_item:menu_items(name)")
       .in("order_id", ids);
+
+    const addressMap = new Map<
+      string,
+      { lat: number; lng: number; label: string }
+    >();
+    if (customerIds.length > 0) {
+      const { data: addrs } = await supabase
+        .from("addresses")
+        .select("user_id, lat, lng, street, city")
+        .in("user_id", customerIds)
+        .eq("is_default", true);
+      if (addrs) {
+        for (const a of addrs) {
+          addressMap.set(a.user_id, {
+            lat: a.lat,
+            lng: a.lng,
+            label: `${a.street}, ${a.city}`,
+          });
+        }
+      }
+    }
 
     const itemsByOrder = new Map<
       string,
@@ -73,16 +122,22 @@ export default function DriversPanel() {
     }
 
     setOrders(
-      rows.map((r: any) => ({
-        id: r.id,
-        status: r.status,
-        customerName: (r.customer as any)?.full_name || "N/A",
-        total: r.total,
-        items: itemsByOrder.get(r.id) || [],
-        placedAt: r.placed_at,
-        notes: r.notes,
-        paymentMethod: r.payment_method,
-      }))
+      rows.map((r: any) => {
+        const addr = addressMap.get(r.customer_id);
+        return {
+          id: r.id,
+          status: r.status,
+          customerName: (r.customer as any)?.full_name || "N/A",
+          total: r.total,
+          items: itemsByOrder.get(r.id) || [],
+          placedAt: r.placed_at,
+          notes: r.notes,
+          paymentMethod: r.payment_method,
+          customerLat: addr?.lat ?? null,
+          customerLng: addr?.lng ?? null,
+          customerAddress: addr?.label ?? null,
+        };
+      })
     );
     setLoading(false);
   }, []);
@@ -99,24 +154,27 @@ export default function DriversPanel() {
 
   const handleAcceptDelivery = async (orderId: string) => {
     setActionLoading(orderId);
-    await supabase
-      .from("orders")
-      .update({ status: "out_for_delivery" })
-      .eq("id", orderId);
-    await fetchOrders();
+    try {
+      await supabase
+        .from("orders")
+        .update({ status: "out_for_delivery" })
+        .eq("id", orderId);
+      if (user) await startLocationTracking(orderId, user.id);
+      await fetchOrders();
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to accept delivery.");
+    }
     setActionLoading(null);
   };
 
   const handleMarkDelivered = async (orderId: string) => {
-    Alert.alert(
-      "Mark as Delivered",
-      "Confirm this order has been delivered?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Yes, Delivered",
-          onPress: async () => {
-            setActionLoading(orderId);
+    Alert.alert("Mark as Delivered", "Confirm this order has been delivered?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Yes, Delivered",
+        onPress: async () => {
+          setActionLoading(orderId);
+          try {
             await supabase
               .from("orders")
               .update({
@@ -125,35 +183,43 @@ export default function DriversPanel() {
                 payment_status: "paid",
               })
               .eq("id", orderId);
+            await stopLocationTracking();
             await fetchOrders();
-            setActionLoading(null);
-          },
+          } catch (err: any) {
+            Alert.alert("Error", err.message || "Failed to mark as delivered.");
+          }
+          setActionLoading(null);
         },
-      ]
-    );
+      },
+    ]);
   };
 
-  if (!user || user.role !== "admin") {
-    return null;
-  }
+  if (!user || user.role !== "admin") return null;
 
   const formatDate = (iso: string) => {
     const d = new Date(iso);
     const m = [
-      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
     ];
     const h = d.getHours();
     const mi = d.getMinutes().toString().padStart(2, "0");
     const a = h >= 12 ? "PM" : "AM";
-    return `${m[d.getMonth()]} ${d.getDate()}, ${
-      h % 12 || 12
-    }:${mi} ${a}`;
+    return `${m[d.getMonth()]} ${d.getDate()}, ${h % 12 || 12}:${mi} ${a}`;
   };
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backBtnText}>← Back</Text>
@@ -181,11 +247,18 @@ export default function DriversPanel() {
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          <Text style={styles.countText}>{orders.length} order{orders.length !== 1 ? "s" : ""} to deliver</Text>
-          {orders.map((o: any) => {
+          <Text style={styles.countText}>
+            {orders.length} order{orders.length !== 1 ? "s" : ""} to deliver
+          </Text>
+
+          {orders.map((o) => {
             const isPrepared = o.status === "prepared";
             const isOutForDelivery = o.status === "out_for_delivery";
+            const hasCustomerLocation =
+              o.customerLat != null && o.customerLng != null;
+
             return (
               <View key={o.id} style={styles.orderCard}>
                 <View style={styles.orderHeader}>
@@ -194,19 +267,33 @@ export default function DriversPanel() {
                       #{o.id.slice(0, 8).toUpperCase()}
                     </Text>
                     <Text style={styles.orderCustomer}>{o.customerName}</Text>
+                    {o.customerAddress && (
+                      <Text style={styles.customerAddr} numberOfLines={1}>
+                        📍 {o.customerAddress}
+                      </Text>
+                    )}
+                    {isOutForDelivery && !hasCustomerLocation && (
+                      <Text style={styles.noAddrWarning}>
+                        ⚠️ No delivery address saved
+                      </Text>
+                    )}
                   </View>
                   <View style={styles.orderHeaderRight}>
                     <Text style={styles.orderTotal}>₱{o.total}</Text>
                     <View
                       style={[
                         styles.statusBadge,
-                        isPrepared ? styles.statusPrepared : styles.statusOutForDelivery,
+                        isPrepared
+                          ? styles.statusPrepared
+                          : styles.statusOutForDelivery,
                       ]}
                     >
                       <Text
                         style={[
                           styles.statusBadgeText,
-                          isPrepared ? styles.statusPreparedText : styles.statusOutForDeliveryText,
+                          isPrepared
+                            ? styles.statusPreparedText
+                            : styles.statusOutForDeliveryText,
                         ]}
                       >
                         {isPrepared ? "Prepared" : "Out for Delivery"}
@@ -244,7 +331,6 @@ export default function DriversPanel() {
                   </View>
                 )}
 
-                {/* Action Buttons */}
                 <View style={styles.actionRow}>
                   {isPrepared && (
                     <TouchableOpacity
@@ -254,21 +340,44 @@ export default function DriversPanel() {
                       activeOpacity={0.7}
                     >
                       <Text style={styles.acceptBtnText}>
-                        {actionLoading === o.id ? "Accepting…" : "🛵 Accept Delivery"}
+                        {actionLoading === o.id
+                          ? "Accepting…"
+                          : "🛵 Accept Delivery"}
                       </Text>
                     </TouchableOpacity>
                   )}
                   {isOutForDelivery && (
-                    <TouchableOpacity
-                      style={styles.deliverBtn}
-                      onPress={() => handleMarkDelivered(o.id)}
-                      disabled={actionLoading === o.id}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.deliverBtnText}>
-                        {actionLoading === o.id ? "Updating…" : "✅ Mark as Delivered"}
-                      </Text>
-                    </TouchableOpacity>
+                    <View style={styles.outForDeliveryActions}>
+                      <TouchableOpacity
+                        style={styles.deliverBtn}
+                        onPress={() => handleMarkDelivered(o.id)}
+                        disabled={actionLoading === o.id}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.deliverBtnText}>
+                          {actionLoading === o.id
+                            ? "Updating…"
+                            : "✅ Mark as Delivered"}
+                        </Text>
+                      </TouchableOpacity>
+                      {hasCustomerLocation ? (
+                        <TouchableOpacity
+                          style={styles.trackBtn}
+                          onPress={() => openMap(o)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.trackBtnText}>
+                            📍 Track Position
+                          </Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <View style={styles.trackBtnDisabled}>
+                          <Text style={styles.trackBtnDisabledText}>
+                            📍 No address
+                          </Text>
+                        </View>
+                      )}
+                    </View>
                   )}
                 </View>
               </View>
@@ -278,7 +387,6 @@ export default function DriversPanel() {
         </ScrollView>
       )}
 
-      {/* Floating Footer */}
       <View style={styles.footer}>
         <TouchableOpacity
           style={styles.footerBtn}
@@ -287,7 +395,6 @@ export default function DriversPanel() {
           <Text style={styles.footerIcon}>🏠</Text>
           <Text style={styles.footerLabel}>Home</Text>
         </TouchableOpacity>
-
         <TouchableOpacity
           style={styles.footerBtn}
           onPress={() => router.replace("/menu")}
@@ -295,7 +402,6 @@ export default function DriversPanel() {
           <Text style={styles.footerIcon}>🍽️</Text>
           <Text style={styles.footerLabel}>Menu</Text>
         </TouchableOpacity>
-
         <TouchableOpacity
           style={styles.footerBtn}
           onPress={() => router.replace("/cart")}
@@ -310,7 +416,6 @@ export default function DriversPanel() {
           </View>
           <Text style={styles.footerLabel}>Cart</Text>
         </TouchableOpacity>
-
         <TouchableOpacity
           style={styles.footerBtn}
           onPress={() => router.replace("/orders")}
@@ -318,7 +423,6 @@ export default function DriversPanel() {
           <Text style={styles.footerIcon}>📋</Text>
           <Text style={styles.footerLabel}>Orders</Text>
         </TouchableOpacity>
-
         <TouchableOpacity style={styles.footerBtn}>
           <Text style={styles.footerIconActive}>🛵</Text>
           <Text style={styles.footerLabelActive}>Drivers</Text>
@@ -382,6 +486,13 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 4,
   },
+  customerAddr: { fontSize: 11, fontWeight: "500", color: "#6b7280", marginTop: 2 },
+  noAddrWarning: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#f59e0b",
+    marginTop: 2,
+  },
   orderCard: {
     backgroundColor: "#fff",
     borderRadius: 14,
@@ -406,16 +517,8 @@ const styles = StyleSheet.create({
     color: "#9ca3af",
     fontFamily: "monospace",
   },
-  orderCustomer: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#1f2937",
-  },
-  orderTotal: {
-    fontSize: 18,
-    fontWeight: "900",
-    color: PRIMARY,
-  },
+  orderCustomer: { fontSize: 15, fontWeight: "700", color: "#1f2937" },
+  orderTotal: { fontSize: 18, fontWeight: "900", color: PRIMARY },
   statusBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -426,33 +529,11 @@ const styles = StyleSheet.create({
   statusBadgeText: { fontSize: 11, fontWeight: "800" },
   statusPreparedText: { color: "#3730a3" },
   statusOutForDeliveryText: { color: "#c2410c" },
-  orderItems: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    gap: 6,
-  },
-  orderItemRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  itemQty: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#d1d5db",
-    width: 28,
-  },
-  itemName: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#374151",
-  },
-  itemPrice: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#6b7280",
-  },
+  orderItems: { paddingHorizontal: 14, paddingVertical: 10, gap: 6 },
+  orderItemRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  itemQty: { fontSize: 13, fontWeight: "700", color: "#d1d5db", width: 28 },
+  itemName: { flex: 1, fontSize: 14, fontWeight: "600", color: "#374151" },
+  itemPrice: { fontSize: 14, fontWeight: "700", color: "#6b7280" },
   orderFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -462,54 +543,49 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "#f3f4f6",
   },
-  orderPlaced: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#9ca3af",
-  },
-  orderPayment: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#6b7280",
-  },
-  orderNotes: {
-    paddingHorizontal: 14,
-    paddingBottom: 4,
-  },
+  orderPlaced: { fontSize: 12, fontWeight: "600", color: "#9ca3af" },
+  orderPayment: { fontSize: 12, fontWeight: "700", color: "#6b7280" },
+  orderNotes: { paddingHorizontal: 14, paddingBottom: 4 },
   notesText: {
     fontSize: 12,
     fontWeight: "500",
     color: "#9ca3af",
     fontStyle: "italic",
   },
-  actionRow: {
-    paddingHorizontal: 14,
-    paddingBottom: 12,
-    gap: 8,
-  },
+  actionRow: { paddingHorizontal: 14, paddingBottom: 12, gap: 8 },
+  outForDeliveryActions: { gap: 8 },
   acceptBtn: {
     backgroundColor: PRIMARY,
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: "center",
   },
-  acceptBtnText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "800",
-  },
+  acceptBtnText: { color: "#fff", fontSize: 14, fontWeight: "800" },
   deliverBtn: {
     backgroundColor: "#10b981",
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: "center",
   },
-  deliverBtnText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "800",
+  deliverBtnText: { color: "#fff", fontSize: 14, fontWeight: "800" },
+  trackBtn: {
+    backgroundColor: "#dbeafe",
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
   },
-  // Floating Footer
+  trackBtnText: { fontSize: 14, fontWeight: "800", color: "#1e40af" },
+  trackBtnDisabled: {
+    backgroundColor: "#f3f4f6",
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  trackBtnDisabledText: { fontSize: 14, fontWeight: "800", color: "#9ca3af" },
   footer: {
     flexDirection: "row",
     justifyContent: "space-around",
@@ -526,12 +602,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#f3f4f6",
   },
-  footerBtn: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: 6,
-    gap: 3,
-  },
+  footerBtn: { flex: 1, alignItems: "center", paddingVertical: 6, gap: 3 },
   footerIcon: { fontSize: 20 },
   footerIconActive: { fontSize: 20 },
   footerLabel: { fontSize: 10, fontWeight: "600", color: "#6b7280" },

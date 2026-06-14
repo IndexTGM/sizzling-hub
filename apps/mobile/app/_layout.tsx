@@ -5,8 +5,12 @@ import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { CartProvider } from "@/lib/cart-context";
 import { BannerProvider } from "@/lib/banner-context";
 import { MenuProvider } from "@/lib/menu-context";
+import { BACKGROUND_LOCATION_TASK } from "@/lib/background-location-task";
 
 const PRIMARY = "#dc2626";
+
+// Import the task file to ensure it gets registered at startup
+import "@/lib/background-location-task";
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
