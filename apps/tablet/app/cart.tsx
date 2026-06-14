@@ -325,24 +325,6 @@ export default function CartScreen() {
         </>
       )}
 
-      {/* ─── Floating Footer ─── */}
-      <View style={styles.footer}>
-        <TouchableOpacity style={styles.footerBtn} onPress={() => router.replace("/menu")}>
-          <Text style={styles.footerIcon}>🍽️</Text><Text style={styles.footerLabel}>Menu</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.footerBtn}>
-          <View>
-            <Text style={styles.footerIconActive}>🛒</Text>
-            {itemCount > 0 && (
-              <View style={styles.footerBadge}>
-                <Text style={styles.footerBadgeText}>{itemCount}</Text>
-              </View>
-            )}
-          </View>
-          <Text style={styles.footerLabelActive}>Cart</Text>
-        </TouchableOpacity>
-      </View>
-
       {/* ─── Checkout Modal ─── */}
       <Modal visible={checkoutVisible} transparent animationType="slide" onRequestClose={handleCancelCheckout}>
         <SafeAreaView style={styles.modalOverlay} edges={["top", "bottom"]}>
@@ -558,25 +540,6 @@ const styles = StyleSheet.create({
     borderRadius: 14, alignItems: "center",
   },
   checkoutBtnText: { color: "#fff", fontSize: 15, fontWeight: "800" },
-
-  footer: {
-    flexDirection: "row", justifyContent: "space-around", alignItems: "center",
-    marginHorizontal: 16, paddingVertical: 10, backgroundColor: "#fff",
-    borderRadius: 28, shadowColor: "#000", shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1, shadowRadius: 12, elevation: 8,
-    borderWidth: 1, borderColor: "#f3f4f6",
-  },
-  footerBtn: { flex: 1, alignItems: "center", paddingVertical: 6, gap: 3 },
-  footerIcon: { fontSize: 20 },
-  footerIconActive: { fontSize: 20 },
-  footerLabel: { fontSize: 10, fontWeight: "600", color: "#6b7280" },
-  footerLabelActive: { fontSize: 10, fontWeight: "700", color: PRIMARY },
-  footerBadge: {
-    position: "absolute", top: -4, right: -10, backgroundColor: PRIMARY,
-    borderRadius: 9, minWidth: 18, height: 18, alignItems: "center",
-    justifyContent: "center", paddingHorizontal: 4,
-  },
-  footerBadgeText: { color: "#fff", fontSize: 10, fontWeight: "800" },
 
   // Checkout Modal
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },

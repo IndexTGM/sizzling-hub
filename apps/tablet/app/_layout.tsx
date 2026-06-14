@@ -2,6 +2,7 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { BannerProvider } from "@/lib/banner-context";
 import { CartProvider } from "@/lib/cart-context";
 import { MenuProvider } from "@/lib/menu-context";
 
@@ -48,6 +49,7 @@ function AuthLoadingGate({ children }: { children: React.ReactNode }) {
 export default function RootLayout() {
   return (
     <AuthProvider>
+      <BannerProvider>
       <CartProvider>
         <AuthLoadingGate>
           <Stack
@@ -63,6 +65,7 @@ export default function RootLayout() {
           </Stack>
         </AuthLoadingGate>
       </CartProvider>
+      </BannerProvider>
     </AuthProvider>
   );
 }

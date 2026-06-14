@@ -59,7 +59,7 @@ function ReviewRow({ review }: { review: { id: string; customerName: string; rat
 export default function MenuItemScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { addToCart } = useCart();
+  const { addToCart, itemCount } = useCart();
   const { width: screenW, height: screenH } = useWindowDimensions();
   const [item, setItem] = useState<any>(null);
   const [reviews, setReviews] = useState<any[]>([]);
@@ -239,6 +239,21 @@ export default function MenuItemScreen() {
           <Text style={styles.fullImgClose}>Tap anywhere to close</Text>
         </TouchableOpacity>
       </Modal>
+
+      {/* Floating Cart Footer */}
+      {itemCount > 0 && (
+        <View style={styles.floatingFooter}>
+          <TouchableOpacity style={styles.footerBtn} onPress={() => router.push("/cart")} activeOpacity={0.85}>
+            <View>
+              <Text style={styles.footerIcon}>🛒</Text>
+              <View style={styles.footerBadge}>
+                <Text style={styles.footerBadgeText}>{itemCount > 99 ? "99+" : itemCount}</Text>
+              </View>
+            </View>
+            <Text style={styles.footerLabel}>Cart</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -314,4 +329,33 @@ const styles = StyleSheet.create({
   addToCartTextDisabled: { color: "#9ca3af" },
   fullImgOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.92)", alignItems: "center", justifyContent: "center", gap: 16 },
   fullImgClose: { color: "#fff", fontSize: 13, fontWeight: "600", opacity: 0.6 },
+  floatingFooter: {
+    position: "absolute",
+    bottom: 24,
+    right: 16,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 22,
+    backgroundColor: "#fff",
+    borderRadius: 28,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: "#f3f4f6",
+    zIndex: 100,
+  },
+  footerBtn: { alignItems: "center", gap: 3 },
+  footerIcon: { fontSize: 20 },
+  footerLabel: { fontSize: 10, fontWeight: "600", color: "#6b7280" },
+  footerBadge: {
+    position: "absolute", top: -4, right: -10,
+    backgroundColor: PRIMARY, borderRadius: 9, minWidth: 18, height: 18,
+    alignItems: "center", justifyContent: "center", paddingHorizontal: 4,
+  },
+  footerBadgeText: { color: "#fff", fontSize: 10, fontWeight: "800" },
 });
