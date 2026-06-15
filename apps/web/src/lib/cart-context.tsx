@@ -109,6 +109,23 @@ export function CartProvider({ children }: { children: ReactNode }) {
     })();
   }, [user, pathname]);
 
+  // Clear cart when switching branches
+  useEffect(() => {
+    if (itemCount > 0) {
+      (async () => {
+        try {
+          const sb = getSupabase();
+          const { data: { session } } = await sb.auth.getSession();
+          if (session?.user) {
+            await sb.from("cart_items").delete().eq("customer_id", session.user.id);
+          }
+        } catch { /* ignore */ }
+      })();
+      setCart([]);
+    }
+  }, [branchId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
+
   async function syncItem(menuItemId: string, quantity: number, note: string) {
     try {
       const sb = getSupabase();

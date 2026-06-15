@@ -210,6 +210,7 @@ export default function MenuScreen() {
   const { menuItems, categories, loading } = useMenu();
   const [activeCat, setActiveCat] = useState("all");
   const [search, setSearch] = useState("");
+  const [showBanners, setShowBanners] = useState(true);
   const { cols, cardW, gap } = useGridLayout();
   const catListRef = useRef<FlatList>(null);
   const catScrollX = useRef(0);
@@ -239,11 +240,18 @@ export default function MenuScreen() {
       <View style={styles.header}>
         <View style={styles.headerSpacer} />
         <Text style={styles.headerTitle}>Menu</Text>
-        <View style={styles.headerSpacer} />
+        <TouchableOpacity
+          style={styles.bannerToggle}
+          onPress={() => setShowBanners((p) => !p)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.bannerToggleText}>{showBanners ? "📢" : "🔇"}</Text>
+          <Text style={styles.bannerToggleLabel}>{showBanners ? "Hide" : "Show"}</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Promotional Banners */}
-      <BannerCarousel />
+      {showBanners && <BannerCarousel />}
 
       {loading ? (
         <View style={styles.loadingWrap}><ActivityIndicator size="large" color={PRIMARY} /></View>
@@ -328,6 +336,9 @@ const styles = StyleSheet.create({
   backIcon: { fontSize: 18, fontWeight: "700", color: "#374151" },
   headerTitle: { fontSize: 18, fontWeight: "800", color: PRIMARY, letterSpacing: -0.5 },
   headerSpacer: { width: 36 },
+  bannerToggle: { width: 44, alignItems: "center", justifyContent: "center" },
+  bannerToggleText: { fontSize: 16 },
+  bannerToggleLabel: { fontSize: 8, fontWeight: "700", color: "#6b7280", marginTop: 1 },
   loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
   listHeader: { backgroundColor: "#f5f5f5", paddingTop: 8, paddingBottom: 8 },
   searchInput: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: "#0a0a0a", marginBottom: 10 },

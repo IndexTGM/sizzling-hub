@@ -7,6 +7,7 @@ import React, {
   type ReactNode,
 } from "react";
 import { supabase } from "@/lib/supabase";
+import { useBranch } from "@/lib/branch-context";
 
 export interface MenuItem {
   id: string;
@@ -31,6 +32,7 @@ interface MenuContextType {
 const MenuContext = createContext<MenuContextType | null>(null);
 
 export function MenuProvider({ children }: { children: ReactNode }) {
+  const { branchId } = useBranch();
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [categories, setCategories] = useState<{ id: string; name: string }[]>(
     []
@@ -39,14 +41,21 @@ export function MenuProvider({ children }: { children: ReactNode }) {
 
   const fetchAll = useCallback(async () => {
     try {
-      // Fetch items, categories, and the junction table in parallel
+      let itemsQuery = supabase
+        .from("menu_items")
+        .select("id, name, price, image_url, stock, rating, description")
+        .eq("is_available", true)
+        .order("name");
+      let catsQuery = supabase.from("categories").select("id, name").order("sort_order");
+
+      if (branchId) {
+        itemsQuery = itemsQuery.eq("branch_id", branchId);
+        catsQuery = catsQuery.eq("branch_id", branchId);
+      }
+
       const [itemsRes, catsRes, junctionRes] = await Promise.all([
-        supabase
-          .from("menu_items")
-          .select("id, name, price, image_url, stock, rating, description")
-          .eq("is_available", true)
-          .order("name"),
-        supabase.from("categories").select("id, name").order("sort_order"),
+        itemsQuery,
+        catsQuery,
         supabase
           .from("menu_item_categories")
           .select("menu_item_id, category_id, categories!inner(name)"),
@@ -60,7 +69,6 @@ export function MenuProvider({ children }: { children: ReactNode }) {
       if (catsErr) console.warn("categories fetch error:", catsErr.message);
       if (jnErr) console.warn("menu_item_categories fetch error:", jnErr.message);
 
-      // Build junction map: menu_item_id → category names (mirrors apps/web)
       const junctionMap = new Map<string, string[]>();
       if (junctions) {
         for (const j of junctions as any[]) {
@@ -76,31 +84,28 @@ export function MenuProvider({ children }: { children: ReactNode }) {
 
       if (cats) setCategories(cats);
 
-      if (items && items.length > 0) {
-        const mapped = items.map((r: any) => {
-          const catNames = junctionMap.get(r.id) || ["Uncategorized"];
-          return {
-            id: r.id,
-            name: r.name,
-            price: r.price,
-            imageName: r.image_url || "",
-            stock: r.stock ?? 0,
-            description: r.description || "",
-            category: catNames[0],       // primary category for display
-            categories: catNames,        // all categories for filtering
-            categoryId: "",               // not needed with embedded names
-            rating: r.rating ?? 0,
-          };
-        });
-        console.log("[MenuProvider] Unique categories:", [...new Set(mapped.map((m) => m.category))].sort());
-        setMenuItems(mapped);
-      }
+      const mapped = (items || []).map((r: any) => {
+        const catNames = junctionMap.get(r.id) || ["Uncategorized"];
+        return {
+          id: r.id,
+          name: r.name,
+          price: r.price,
+          imageName: r.image_url || "",
+          stock: r.stock ?? 0,
+          description: r.description || "",
+          category: catNames[0],
+          categories: catNames,
+          categoryId: "",
+          rating: r.rating ?? 0,
+        };
+      });
+      setMenuItems(mapped);
     } catch (err: any) {
       console.warn("MenuProvider fetchAll error:", err?.message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [branchId]);
 
   useEffect(() => {
     fetchAll();

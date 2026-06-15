@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
+import { useBranch } from "@/lib/branch-context";
 
 export interface CartItem {
   id: string;            // menu_item_id
@@ -26,8 +27,21 @@ const CartContext = createContext<CartContextValue | null>(null);
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const { branchId } = useBranch();
   const [items, setItems] = useState<CartItem[]>([]);
   const [ready, setReady] = useState(false);
+
+  // Clear cart when switching branches
+  useEffect(() => {
+    setItems([]);
+    (async () => {
+      try {
+        if (user) {
+          await supabase.from("cart_items").delete().eq("customer_id", user.id);
+        }
+      } catch { /* ignore */ }
+    })();
+  }, [branchId]);
 
   const itemCount = items.length;
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);

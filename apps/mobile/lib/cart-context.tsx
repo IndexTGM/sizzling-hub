@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { useBranch } from "@/lib/branch-context";
 
 export interface CartItem {
   id: string;
@@ -23,7 +24,13 @@ interface CartContextValue {
 const CartContext = createContext<CartContextValue | null>(null);
 
 export function CartProvider({ children }: { children: ReactNode }) {
+  const { branchId } = useBranch();
   const [items, setItems] = useState<CartItem[]>([]);
+
+  // Clear cart when switching branches
+  useEffect(() => {
+    setItems([]);
+  }, [branchId]);
 
   const itemCount = items.length;
 
