@@ -396,12 +396,6 @@ export default function OrdersScreen() {
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       {/* ─── Header ─── */}
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => router.back()}
-        >
-          <Text style={styles.backIcon}>←</Text>
-        </TouchableOpacity>
         <Text style={styles.headerTitle}>My Orders</Text>
         <View style={styles.headerSpacer} />
       </View>
@@ -510,7 +504,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "center",
     paddingHorizontal: 14,
     paddingVertical: 12,
     backgroundColor: "#fff",

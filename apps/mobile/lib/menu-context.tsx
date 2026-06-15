@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
+import { useBranch } from "@/lib/branch-context";
 
 export interface MenuItem {
   id: string;
@@ -24,19 +25,28 @@ interface MenuContextType {
 const MenuContext = createContext<MenuContextType | null>(null);
 
 export function MenuProvider({ children }: { children: ReactNode }) {
+  const { branchId } = useBranch();
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchAll = useCallback(async () => {
     try {
+      let itemsQuery = supabase
+        .from("menu_items")
+        .select("id, name, price, image_url, stock, rating, description")
+        .eq("is_available", true)
+        .order("name");
+      let catsQuery = supabase.from("categories").select("id, name").order("sort_order");
+
+      if (branchId) {
+        itemsQuery = itemsQuery.eq("branch_id", branchId);
+        catsQuery = catsQuery.eq("branch_id", branchId);
+      }
+
       const [itemsRes, catsRes, junctionRes] = await Promise.all([
-        supabase
-          .from("menu_items")
-          .select("id, name, price, image_url, stock, rating, description")
-          .eq("is_available", true)
-          .order("name"),
-        supabase.from("categories").select("id, name").order("sort_order"),
+        itemsQuery,
+        catsQuery,
         supabase
           .from("menu_item_categories")
           .select("menu_item_id, category_id, categories!inner(name)"),
@@ -65,30 +75,28 @@ export function MenuProvider({ children }: { children: ReactNode }) {
 
       if (cats) setCategories(cats);
 
-      if (items && items.length > 0) {
-        const mapped = items.map((r: any) => {
-          const catNames = junctionMap.get(r.id) || ["Uncategorized"];
-          return {
-            id: r.id,
-            name: r.name,
-            price: r.price,
-            imageName: r.image_url || "",
-            stock: r.stock ?? 0,
-            description: r.description || "",
-            category: catNames[0],
-            categories: catNames,
-            categoryId: "",
-            rating: r.rating ?? 0,
-          };
-        });
-        setMenuItems(mapped);
-      }
+      const mapped = (items || []).map((r: any) => {
+        const catNames = junctionMap.get(r.id) || ["Uncategorized"];
+        return {
+          id: r.id,
+          name: r.name,
+          price: r.price,
+          imageName: r.image_url || "",
+          stock: r.stock ?? 0,
+          description: r.description || "",
+          category: catNames[0],
+          categories: catNames,
+          categoryId: "",
+          rating: r.rating ?? 0,
+        };
+      });
+      setMenuItems(mapped);
     } catch (err: any) {
       console.warn("MenuProvider fetchAll error:", err?.message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [branchId]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 

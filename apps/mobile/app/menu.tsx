@@ -15,6 +15,7 @@ import { useState, useMemo, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
 import { useMenu } from "@/lib/menu-context";
+import { useBranch, type Branch } from "@/lib/branch-context";
 import { getImageCandidates } from "@/lib/storage";
 
 const PRIMARY = "#dc2626";
@@ -88,8 +89,52 @@ function MenuCard({ item, cardW, gap, onPress }: { item: any; cardW: number; gap
 }
 
 /* ──────────────────────────── Main Screen ─────────────────────── */
+function BranchPicker({
+  branches,
+  selectedSlug,
+  onSelect,
+}: {
+  branches: Branch[];
+  selectedSlug: string;
+  onSelect: (slug: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  if (branches.length <= 1) return null;
+  const selected = branches.find((b) => b.slug === selectedSlug);
+  return (
+    <View style={{ marginBottom: 12 }}>
+      <TouchableOpacity style={styles.branchBtn} activeOpacity={0.7} onPress={() => setExpanded(!expanded)}>
+        <Text style={styles.branchBtnIcon}>📍</Text>
+        <Text style={styles.branchBtnText} numberOfLines={1}>{selected?.name ?? "Select Branch"}</Text>
+        <Text style={styles.branchBtnArrow}>{expanded ? "▲" : "▼"}</Text>
+      </TouchableOpacity>
+      {expanded && (
+        <View style={styles.branchList}>
+          {branches.map((b) => {
+            const isActive = b.slug === selectedSlug;
+            return (
+              <TouchableOpacity key={b.id} style={[styles.branchItem, isActive && styles.branchItemActive]} activeOpacity={0.7} onPress={() => { onSelect(b.slug); setExpanded(false); }}>
+                <View style={[styles.branchDot, isActive && styles.branchDotActive]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.branchItemText, isActive && styles.branchItemTextActive]}>{b.name}</Text>
+                  {b.address && <Text style={styles.branchItemSub} numberOfLines={1}>{b.address}</Text>}
+                </View>
+                {isActive && <Text style={styles.branchCheck}>✓</Text>}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+      {selected && (
+        <Text style={styles.branchHint}>Viewing menu for {selected.name}{selected.address ? ` · ${selected.address}` : ""}</Text>
+      )}
+    </View>
+  );
+}
+
 export default function MenuScreen() {
   const router = useRouter();
+  const { branch, allBranches, branchSlug, setBranchSlug } = useBranch();
   const { menuItems, categories, loading } = useMenu();
   const { itemCount } = useCart();
   const [activeCat, setActiveCat] = useState("all");
@@ -120,9 +165,6 @@ export default function MenuScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Text style={styles.backIcon}>←</Text>
-        </TouchableOpacity>
         <Text style={styles.headerTitle}>Menu</Text>
         <View style={styles.headerSpacer} />
       </View>
@@ -139,6 +181,7 @@ export default function MenuScreen() {
           columnWrapperStyle={cols > 1 ? { gap } : undefined}
           ListHeaderComponent={() => (
             <View style={styles.listHeader}>
+              <BranchPicker branches={allBranches} selectedSlug={branchSlug} onSelect={setBranchSlug} />
               <TextInput
                 style={styles.searchInput}
                 value={search}
@@ -208,12 +251,26 @@ export default function MenuScreen() {
 /* ──────────────────────────── Styles ──────────────────────────── */
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f5f5f5" },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 14, paddingVertical: 12, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#e5e7eb" },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingHorizontal: 14, paddingVertical: 12, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#e5e7eb" },
   backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#f3f4f6", alignItems: "center", justifyContent: "center" },
   backIcon: { fontSize: 18, fontWeight: "700", color: "#374151" },
   headerTitle: { fontSize: 18, fontWeight: "800", color: PRIMARY, letterSpacing: -0.5 },
   headerSpacer: { width: 36 },
   loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
+  branchBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#fff", borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
+  branchBtnIcon: { fontSize: 14 },
+  branchBtnText: { flex: 1, fontSize: 13, fontWeight: "600", color: "#374151" },
+  branchBtnArrow: { fontSize: 10, color: "#9ca3af", marginLeft: 4 },
+  branchList: { backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#e5e7eb", marginTop: 4, paddingVertical: 4 },
+  branchItem: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, paddingVertical: 10 },
+  branchItemActive: { backgroundColor: "#fef2f2" },
+  branchDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#d1d5db" },
+  branchDotActive: { backgroundColor: PRIMARY },
+  branchItemText: { fontSize: 13, fontWeight: "600", color: "#374151" },
+  branchItemTextActive: { color: PRIMARY, fontWeight: "700" },
+  branchItemSub: { fontSize: 11, color: "#9ca3af", marginTop: 2 },
+  branchCheck: { fontSize: 14, color: PRIMARY, fontWeight: "700" },
+  branchHint: { fontSize: 11, color: PRIMARY, marginTop: 4, paddingHorizontal: 4 },
   listHeader: { backgroundColor: "#f5f5f5", paddingTop: 12, paddingBottom: 8 },
   searchInput: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: "#0a0a0a", marginBottom: 10 },
   catList: { gap: 8, paddingBottom: 4 },

@@ -2,6 +2,7 @@ import { Stack, useSegments, useRouter } from "expo-router";
 import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { BranchProvider } from "@/lib/branch-context";
 import { CartProvider } from "@/lib/cart-context";
 import { BannerProvider } from "@/lib/banner-context";
 import { MenuProvider } from "@/lib/menu-context";
@@ -53,6 +54,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 export default function RootLayout() {
   return (
     <AuthProvider>
+      <BranchProvider>
       <BannerProvider>
       <MenuProvider>
       <CartProvider>
@@ -80,6 +82,7 @@ export default function RootLayout() {
       </CartProvider>
       </MenuProvider>
       </BannerProvider>
+      </BranchProvider>
     </AuthProvider>
   );
 }

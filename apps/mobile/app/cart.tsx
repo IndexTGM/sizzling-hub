@@ -17,6 +17,7 @@ import { useRouter } from "expo-router";
 import { useCallback, useMemo, memo, useRef, useState, useEffect } from "react";
 import { PRIMARY } from "@/lib/menu-data";
 import { useAuth } from "@/lib/auth-context";
+import { useBranch } from "@/lib/branch-context";
 import { useCart, type CartItem } from "@/lib/cart-context";
 import { supabase } from "@/lib/supabase";
 import {
@@ -176,6 +177,7 @@ const CartGridCard = memo(function CartGridCard({
 export default function CartScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const { branchId, branchLocation } = useBranch();
   const { items, itemCount, total, updateQuantity, removeFromCart, clearCart } =
     useCart();
   const { numColumns, cardWidth, gap } = useGridLayout();
@@ -216,8 +218,8 @@ export default function CartScreen() {
         const addr = data as SavedAddress;
         setDefaultAddress(addr);
         const dist = haversineDistance(
-          STORE_LOCATION.lat,
-          STORE_LOCATION.lng,
+          branchLocation.lat,
+          branchLocation.lng,
           addr.lat,
           addr.lng
         );
@@ -229,14 +231,28 @@ export default function CartScreen() {
       setAddressLoading(false);
     };
     fetchDefaultAddress();
-  }, [user, orderMethod, checkoutVisible]);
+  }, [user, orderMethod, checkoutVisible, branchLocation]);
 
   const withinRange =
-    addressDistance !== null && addressDistance <= MAX_DELIVERY_RADIUS_KM;
+    addressDistance !== null && addressDistance <= branchLocation.deliveryRadiusKm;
   const hasDeliveryAddress = orderMethod === "delivery" && defaultAddress !== null;
   const needsAddress =
     orderMethod === "delivery" && !addressLoading && defaultAddress === null;
   const outOfRange = orderMethod === "delivery" && hasDeliveryAddress && !withinRange;
+
+  // Opening hours check: Mon-Sat 11:00 AM - 11:00 PM
+  const isWithinOpeningHours = (() => {
+    const now = new Date();
+    const day = now.getDay();
+    if (day === 0) return false;
+    const hour = now.getHours();
+    const minute = now.getMinutes();
+    const timeInMinutes = hour * 60 + minute;
+    return timeInMinutes >= 11 * 60 && timeInMinutes < 23 * 60;
+  })();
+  const isAdmin = user?.role === "admin";
+  const blockedByHours = !isWithinOpeningHours && !isAdmin;
+  const showHoursWarning = !isWithinOpeningHours;
 
   // Stable refs for callbacks
   const itemsRef = useRef(items);
@@ -317,15 +333,15 @@ export default function CartScreen() {
           return;
         }
         const dist = haversineDistance(
-          STORE_LOCATION.lat,
-          STORE_LOCATION.lng,
+          branchLocation.lat,
+          branchLocation.lng,
           defaultAddress.lat,
           defaultAddress.lng
         );
-        if (dist > MAX_DELIVERY_RADIUS_KM) {
+        if (dist > branchLocation.deliveryRadiusKm) {
           Alert.alert(
             "Outside Delivery Zone",
-            `Your address is ${dist.toFixed(1)} km away. Our delivery range is ${MAX_DELIVERY_RADIUS_KM} km.`,
+            `Your address is ${dist.toFixed(1)} km away. Our delivery range is ${branchLocation.deliveryRadiusKm} km.`,
             [{ text: "OK" }]
           );
           setPlacing(false);
@@ -437,12 +453,13 @@ export default function CartScreen() {
     }
   }, [items, orderMethod, defaultAddress, clearCart, router]);
 
-  const canPlaceOrder =
+      const canPlaceOrder =
     items.length > 0 &&
     !placing &&
     !needsAddress &&
     !outOfRange &&
-    !addressLoading;
+    !addressLoading &&
+    !blockedByHours;
 
   const key = useMemo(
     () => `cart-grid-${numColumns}-${cardWidth.toFixed(0)}`,
@@ -455,12 +472,6 @@ export default function CartScreen() {
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       {/* ─── Header ─── */}
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => router.back()}
-        >
-          <Text style={styles.backIcon}>←</Text>
-        </TouchableOpacity>
         <Text style={styles.headerTitle}>Cart ({itemCount})</Text>
         <View style={styles.headerSpacer} />
       </View>
@@ -618,7 +629,27 @@ export default function CartScreen() {
               showsVerticalScrollIndicator={false}
             >
               {/* Address Section for Delivery */}
-              {orderMethod === "delivery" && (
+            {/* Opening Hours Warning */}
+            {showHoursWarning && (
+              <View style={[styles.addressSection, { marginBottom: 8 }]}>
+                <View style={[styles.addressWarning, isAdmin ? { backgroundColor: "#fffbeb", borderColor: "#fde68a" } : undefined]}>
+                  <Text style={[styles.addressWarningTitle, !isAdmin && { color: "#dc2626" }]}>
+                    {isAdmin ? "⚠️ Outside Operating Hours" : "⛔ Outside Operating Hours"}
+                  </Text>
+                  <Text style={styles.addressWarningText}>
+                    Operating hours are Monday – Saturday, 11:00 AM – 11:00 PM.
+                  </Text>
+                  <Text style={styles.addressWarningSubtext}>
+                    {isAdmin
+                      ? "You can still place this order as an admin."
+                      : "Orders can only be placed during operating hours."}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* Address Section for Delivery */}
+            {orderMethod === "delivery" && (
                 <View style={styles.addressSection}>
                   {addressLoading ? (
                     <View style={styles.addressLoadingWrap}>
@@ -904,7 +935,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "center",
     paddingHorizontal: 14,
     paddingVertical: 12,
     backgroundColor: "#fff",
