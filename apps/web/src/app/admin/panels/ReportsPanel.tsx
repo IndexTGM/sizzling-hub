@@ -216,7 +216,6 @@ export default function ReportsPanel({ branchId }: { branchId?: string | null })
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-black text-gray-900 tracking-tight">Sales Reports</h2>
           <p className="text-xs text-gray-400 mt-0.5">Live · Updates every second</p>
         </div>
       </div>

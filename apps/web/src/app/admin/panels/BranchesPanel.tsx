@@ -145,7 +145,6 @@ export default function BranchesPanel() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-black text-gray-900 tracking-tight">Branch Manager</h2>
           <p className="text-sm text-gray-400 mt-0.5">{branches.length} branches</p>
         </div>
         {!creating && !editing && (

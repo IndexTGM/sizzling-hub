@@ -37,7 +37,7 @@ export default function ProfilesPanel() {
 
   return (
     <div className="space-y-6">
-      <div><h2 className="text-xl font-black text-gray-900 tracking-tight">Profiles</h2><p className="text-sm text-gray-400 mt-0.5">{profiles.length} total users</p></div>
+      <p className="text-sm text-gray-400 mt-0.5">{profiles.length} total users</p>
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex gap-1">
           {(["all", "customer", "admin"] as const).map((r) => (

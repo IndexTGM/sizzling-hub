@@ -69,7 +69,7 @@ export default function AuditLogsPanel() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div><h2 className="text-xl font-black text-gray-900 tracking-tight">Audit Logs</h2><p className="text-sm text-gray-400 mt-0.5">Track admin and customer activity</p></div>
+        <p className="text-sm text-gray-400 mt-0.5">Track admin and customer activity</p>
         <button onClick={() => setShowDeletePanel(!showDeletePanel)} className="px-4 py-2.5 rounded-lg bg-red-600 text-white text-sm font-bold hover:bg-red-700 active:scale-95 transition-all duration-200">
           {showDeletePanel ? "Cancel Delete" : "Delete Logs"}
         </button>

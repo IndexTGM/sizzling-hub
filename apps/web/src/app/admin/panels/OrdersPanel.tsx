@@ -19,10 +19,12 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
   const [deleteOrderId, setDeleteOrderId] = useState<string | null>(null);
   const [confirmOutForDelivery, setConfirmOutForDelivery] = useState<{ orderId: string } | null>(null);
   const [confirmDeliver, setConfirmDeliver] = useState<{ orderId: string } | null>(null);
+  const [confirmWithDiscount, setConfirmWithDiscount] = useState<{ orderId: string; newStatus: OrderStatus; oldStatus: OrderStatus } | null>(null);
+  const [seniorPwdDiscount, setSeniorPwdDiscount] = useState(false);
   const hasOrdersLoaded = React.useRef(false);
   const fetchOrders = useCallback(async () => {
     const sb = createClient();
-    let query = sb.from("orders").select("id, order_type, status, subtotal, delivery_fee, discount, total, notes, placed_at, completed_at, payment_method, payment_source_id, payment_status, customer:profiles(full_name, email)");
+    let query = sb.from("orders").select("id, order_type, status, subtotal, delivery_fee, discount, total, notes, placed_at, completed_at, payment_method, payment_source_id, payment_status, senior_pwd_discount, customer:profiles(full_name, email)");
     if (branchId) query = query.eq("branch_id", branchId);
     const { data: rows, error } = await query.order("placed_at", { ascending: false });
     if (error || !rows) {
@@ -33,7 +35,7 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
     const { data: items } = await sb.from("order_items").select("order_id, quantity, unit_price, note, menu_item:menu_items(name)").in("order_id", ids);
     const itemsByOrder = new Map<string, { name: string; quantity: number; price: number; note: string }[]>();
     if (items) for (const it of items) { const arr = itemsByOrder.get(it.order_id) || []; arr.push({ name: (it.menu_item as any)?.name || "Unknown", quantity: it.quantity, price: it.unit_price, note: it.note ?? "" }); itemsByOrder.set(it.order_id, arr); }
-    setOrders(rows.map((r: any) => ({ id: r.id, customerName: (r.customer as any)?.full_name || (r.customer as any)?.email || "N/A", customerEmail: (r.customer as any)?.email || "", orderType: r.order_type as OrderType, status: r.status as OrderStatus, subtotal: r.subtotal, deliveryFee: r.delivery_fee, discount: r.discount, total: r.total, notes: r.notes, items: itemsByOrder.get(r.id) || [], placedAt: r.placed_at, completedAt: r.completed_at, paymentMethod: r.payment_method, paymentSourceId: r.payment_source_id, paymentStatus: r.payment_status })));
+    setOrders(rows.map((r: any) => ({ id: r.id, customerName: (r.customer as any)?.full_name || (r.customer as any)?.email || "N/A", customerEmail: (r.customer as any)?.email || "", orderType: r.order_type as OrderType, status: r.status as OrderStatus, subtotal: r.subtotal, deliveryFee: r.delivery_fee, discount: r.discount, total: r.total, notes: r.notes, items: itemsByOrder.get(r.id) || [], placedAt: r.placed_at, completedAt: r.completed_at, paymentMethod: r.payment_method, paymentSourceId: r.payment_source_id, paymentStatus: r.payment_status, seniorPwdDiscount: r.senior_pwd_discount ?? false })));
     if (!hasOrdersLoaded.current) setLoading(false);
     hasOrdersLoaded.current = true;
   }, [branchId]);
@@ -61,6 +63,44 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
     await fetchOrders();
     setSavingId(null);
   }
+  async function handleConfirmWithDiscount() {
+    if (!confirmWithDiscount) return;
+    const { orderId, newStatus, oldStatus } = confirmWithDiscount;
+    const oldOrder = orders.find((o) => o.id === orderId);
+    setConfirmWithDiscount(null);
+    setSavingId(orderId);
+    const sb = createClient();
+
+    let discountAmount = 0;
+    let newTotal = oldOrder?.total ?? 0;
+
+    if (seniorPwdDiscount) {
+      const items = oldOrder?.items ?? [];
+      if (items.length > 0) {
+        let maxPrice = 0;
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].price > maxPrice) maxPrice = items[i].price;
+        }
+        discountAmount = Math.round(maxPrice * 0.2 * 100) / 100;
+      }
+      newTotal = (oldOrder?.subtotal ?? 0) + (oldOrder?.deliveryFee ?? 0) - discountAmount;
+      newTotal = Math.round(newTotal * 100) / 100;
+    }
+
+    const updates: Record<string, unknown> = {
+      status: newStatus,
+      senior_pwd_discount: seniorPwdDiscount,
+      discount: discountAmount,
+      total: newTotal,
+    };
+
+    await sb.from("orders").update(updates).eq("id", orderId);
+    logAudit({ action: "update_order_status", entity_type: "order", entity_id: orderId, details: { from: oldStatus, to: newStatus, seniorPwdDiscount, discount: discountAmount } });
+    setSeniorPwdDiscount(false);
+    await fetchOrders();
+    setSavingId(null);
+  }
+
   async function handleConfirmDeliver() {
     if (!confirmDeliver) return;
     const orderId = confirmDeliver.orderId;
@@ -79,6 +119,13 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
   }
   async function handleStatusChange(orderId: string, newStatus: OrderStatus) {
     const oldOrder = orders.find((o) => o.id === orderId);
+
+    // Intercept: pending → confirmed — show discount modal for PWD/Senior discount (walk-in only)
+    if (newStatus === "confirmed" && oldOrder?.status === "pending" && isWalkIn(oldOrder)) {
+      setSeniorPwdDiscount(oldOrder.seniorPwdDiscount ?? false);
+      setConfirmWithDiscount({ orderId, newStatus, oldStatus: oldOrder.status });
+      return;
+    }
 
     // Intercept: online delivery order going from "prepared" → "out_for_delivery" needs confirmation
     if (newStatus === "out_for_delivery" && oldOrder?.status === "prepared" && oldOrder?.orderType === "delivery") {
@@ -147,7 +194,7 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <div><h2 className="text-xl font-black text-gray-900 tracking-tight">Orders</h2><p className="text-sm text-gray-400 mt-0.5">{orders.length} total</p></div>
+        <p className="text-sm text-gray-400 mt-0.5">{orders.length} total</p>
         <button onClick={() => fetchOrders()} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-bold hover:bg-red-100 transition-colors flex items-center gap-1.5">
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
           Refresh
@@ -224,7 +271,7 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
                       ) : (
                         <span className="text-xs font-semibold text-gray-400">Status: {statusLabel(o.status, o.orderType)} (final)</span>
                       )}
-                      {o.status !== "pending" && <button onClick={(e) => { e.stopPropagation(); setReceiptOrder(o); }} className="ml-auto px-3 py-1.5 rounded-md text-xs font-semibold bg-blue-50 text-blue-600 hover:bg-blue-100">Print Receipt</button>}
+                      {o.status !== "pending" && o.paymentStatus !== "unpaid" && <button onClick={(e) => { e.stopPropagation(); setReceiptOrder(o); }} className="ml-auto px-3 py-1.5 rounded-md text-xs font-semibold bg-blue-50 text-blue-600 hover:bg-blue-100">Print Receipt</button>}
                       {(o.status === "pending" || o.status === "delivered" || o.status === "cancelled") && (
                         <button onClick={(e) => { e.stopPropagation(); setDeleteOrderId(o.id); }} className="px-3 py-1.5 rounded-md text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100">Delete</button>
                       )}
@@ -301,6 +348,81 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
         onConfirm={handleConfirmDeliver}
         onCancel={() => setConfirmDeliver(null)}
       />
+      {confirmWithDiscount && (() => {
+        const order = orders.find((o) => o.id === confirmWithDiscount.orderId);
+        const items = order?.items ?? [];
+        let maxPrice = 0;
+        let maxItemName = "";
+        for (const it of items) {
+          if (it.price > maxPrice) { maxPrice = it.price; maxItemName = it.name; }
+        }
+        const discountAmount = Math.round(maxPrice * 0.2 * 100) / 100;
+        const newTotal = Math.round(((order?.subtotal ?? 0) + (order?.deliveryFee ?? 0) - (seniorPwdDiscount ? discountAmount : 0)) * 100) / 100;
+        return (
+          <>
+            <div className="fixed inset-0 bg-black/30 z-[100]" onClick={() => { setConfirmWithDiscount(null); setSeniorPwdDiscount(false); }} />
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl border border-[#e5e7eb] shadow-xl w-full max-w-sm animate-fade-in-scale">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-[#f3f4f6]">
+                  <h3 className="font-black text-base text-[#0a0a0a]">Confirm Order</h3>
+                  <button onClick={() => { setConfirmWithDiscount(null); setSeniorPwdDiscount(false); }} className="p-1.5 rounded-lg hover:bg-[#f3f4f6] transition-colors">
+                    <svg className="w-5 h-5" fill="none" stroke="#6b7280" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="px-5 py-4 space-y-4">
+                  <p className="text-sm text-[#4b5563] leading-relaxed">
+                    Confirm order <span className="font-mono font-bold text-gray-800">#{confirmWithDiscount.orderId.slice(0, 8).toUpperCase()}…</span>?
+                  </p>
+                  <div className="bg-[#f9fafb] rounded-xl p-3 border border-[#f3f4f6]">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-bold text-[#1f2937]">♿ PWD / 👴 Senior Discount (20%)</p>
+                        <p className="text-xs text-[#6b7280] mt-0.5">
+                          {seniorPwdDiscount
+                            ? `Deducts ₱${discountAmount.toFixed(2)} from "${maxItemName}" (most expensive item)`
+                            : "Toggle to apply 20% off the most expensive item"}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSeniorPwdDiscount(!seniorPwdDiscount)}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${seniorPwdDiscount ? "bg-emerald-500" : "bg-gray-300"}`}
+                      >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${seniorPwdDiscount ? "translate-x-6" : "translate-x-1"}`} />
+                      </button>
+                    </div>
+                  </div>
+                  {seniorPwdDiscount && (
+                    <div className="space-y-1 text-xs text-[#6b7280] bg-emerald-50 rounded-lg p-3 border border-emerald-100">
+                      <div className="flex justify-between"><span>Subtotal</span><span className="font-semibold">₱{order?.subtotal}</span></div>
+                      {(order?.deliveryFee ?? 0) > 0 && <div className="flex justify-between"><span>Delivery Fee</span><span className="font-semibold">₱{order?.deliveryFee}</span></div>}
+                      <div className="flex justify-between text-emerald-600 font-bold"><span>PWD/Senior Discount</span><span>-₱{discountAmount.toFixed(2)}</span></div>
+                      <div className="flex justify-between border-t border-emerald-200 pt-1 text-sm font-black text-emerald-700"><span>New Total</span><span>₱{newTotal.toFixed(2)}</span></div>
+                    </div>
+                  )}
+                </div>
+                <div className="border-t border-[#f3f4f6] px-5 py-4 flex gap-3">
+                  <button
+                    onClick={() => { setConfirmWithDiscount(null); setSeniorPwdDiscount(false); }}
+                    className="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-600 text-sm font-bold hover:bg-gray-200 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmWithDiscount}
+                    className="flex-1 py-2.5 rounded-xl text-white text-sm font-bold transition-all duration-200"
+                    style={{ backgroundColor: "#dc2626" }}
+                  >
+                    {seniorPwdDiscount ? "Confirm with Discount" : "Confirm (No Discount)"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 }

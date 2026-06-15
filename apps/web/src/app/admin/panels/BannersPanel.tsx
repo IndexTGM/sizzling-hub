@@ -38,7 +38,7 @@ export default function BannersPanel({ branchId }: { branchId?: string | null })
   if (loading) return <LoadingSkeleton />;
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between"><div><h2 className="text-xl font-black text-gray-900 tracking-tight">Banner Manager</h2><p className="text-sm text-gray-400 mt-0.5">{banners.length} banners</p></div>{!creating && !editing && <button onClick={startCreate} className="px-4 py-2.5 rounded-lg bg-red-600 text-white text-sm font-bold hover:bg-red-700 active:scale-95">+ Add Banner</button>}</div>
+      <div className="flex items-center justify-between"><p className="text-sm text-gray-400 mt-0.5">{banners.length} banners</p>{!creating && !editing && <button onClick={startCreate} className="px-4 py-2.5 rounded-lg bg-red-600 text-white text-sm font-bold hover:bg-red-700 active:scale-95">+ Add Banner</button>}</div>
       {(creating || editing) && (
         <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
           <h3 className="font-bold text-sm text-gray-900">{editing ? "Edit" : "New Banner"}</h3>

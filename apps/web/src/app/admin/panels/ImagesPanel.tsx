@@ -32,7 +32,7 @@ export default function ImagesPanel() {
   if (loading) return <LoadingSkeleton />;
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between"><div><h2 className="text-xl font-black text-gray-900 tracking-tight">Image Manager</h2><p className="text-sm text-gray-400 mt-0.5">{images.length} files</p></div>
+      <div className="flex items-center justify-between"><p className="text-sm text-gray-400 mt-0.5">{images.length} files</p>
         <div className="flex items-center gap-2">
           <button onClick={() => { clearImageCache(); alert("Image cache cleared. Pages will now look for the latest uploaded files."); }} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-600 text-xs font-semibold hover:bg-gray-200 transition-colors">🗑 Clear Cache</button>
           <label className="px-4 py-2.5 rounded-lg bg-red-600 text-white text-sm font-bold hover:bg-red-700 active:scale-95 cursor-pointer">{uploading ? "Uploading…" : "+ Upload Image"}<input type="file" accept="image/*" onChange={handleUpload} disabled={uploading} className="hidden" /></label>

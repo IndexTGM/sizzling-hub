@@ -48,6 +48,7 @@ export interface AdminOrder {
   subtotal: number; deliveryFee: number; discount: number; total: number; notes: string | null;
   items: { name: string; quantity: number; price: number }[]; placedAt: string; completedAt: string | null;
   paymentMethod: string | null; paymentSourceId: string | null; paymentStatus: string | null;
+  seniorPwdDiscount: boolean;
 }
 
 export const PAYMENT_LABEL: Record<string, string> = {

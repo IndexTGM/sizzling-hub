@@ -195,7 +195,7 @@ export default function MenuPanel({ branchId }: { branchId?: string | null }) {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div><h2 className="text-xl font-black text-gray-900 tracking-tight">Menu Items</h2><p className="text-sm text-gray-400 mt-0.5">{items.length} items</p></div>
+        <p className="text-sm text-gray-400 mt-0.5">{items.length} items</p>
         {!editing && !creating && <button onClick={startCreate} className="px-4 py-2.5 rounded-lg bg-red-600 text-white text-sm font-bold transition-all duration-200 hover:bg-red-700 active:scale-95">+ Add Item</button>}
       </div>
       {(editing || creating) && (

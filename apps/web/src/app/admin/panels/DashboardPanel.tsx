@@ -51,7 +51,7 @@ export default function DashboardPanel({ branchId }: { branchId?: string | null 
 
   return (
     <div className="space-y-8">
-      <div><h2 className="text-xl font-black text-gray-900 tracking-tight">Dashboard</h2><p className="text-sm text-gray-400 mt-0.5">Store overview</p></div>
+      <p className="text-sm text-gray-400 mt-0.5">Store overview</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       <StatCard label="Total Revenue" value={rev} sub="" color="#10b981" />
         <StatCard label="Orders" value={String(stats.totalOrders)} sub={`${stats.pendingOrders} pending`} color="#f59e0b" />
