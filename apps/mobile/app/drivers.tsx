@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { Linking } from "react-native";
 import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
 import { supabase } from "@/lib/supabase";
@@ -24,6 +25,7 @@ interface DriverOrder {
   id: string;
   status: string;
   customerName: string;
+  customerPhone: string | null;
   total: number;
   items: { name: string; quantity: number; price: number }[];
   placedAt: string;
@@ -62,7 +64,7 @@ export default function DriversPanel() {
     const { data: rows } = await supabase
       .from("orders")
       .select(
-        "id, status, total, notes, placed_at, payment_method, customer_id, customer:profiles(full_name)"
+        "id, status, total, notes, placed_at, payment_method, customer_id, customer:profiles(full_name, phone)"
       )
       .eq("order_type", "delivery")
       .in("status", ["prepared", "out_for_delivery"])
@@ -128,6 +130,7 @@ export default function DriversPanel() {
           id: r.id,
           status: r.status,
           customerName: (r.customer as any)?.full_name || "N/A",
+          customerPhone: (r.customer as any)?.phone ?? null,
           total: r.total,
           items: itemsByOrder.get(r.id) || [],
           placedAt: r.placed_at,
@@ -266,7 +269,14 @@ export default function DriversPanel() {
                     <Text style={styles.orderId}>
                       #{o.id.slice(0, 8).toUpperCase()}
                     </Text>
-                    <Text style={styles.orderCustomer}>{o.customerName}</Text>
+                    <View style={styles.customerRow}>
+                      <Text style={styles.orderCustomer}>{o.customerName}</Text>
+                      {o.customerPhone && (
+                        <View style={styles.phoneRow}>
+                          <Text style={styles.phoneText}>📱 {o.customerPhone}</Text>
+                        </View>
+                      )}
+                    </View>
                     {o.customerAddress && (
                       <Text style={styles.customerAddr} numberOfLines={1}>
                         📍 {o.customerAddress}
@@ -348,6 +358,24 @@ export default function DriversPanel() {
                   )}
                   {isOutForDelivery && (
                     <View style={styles.outForDeliveryActions}>
+                      {o.customerPhone && (
+                        <View style={styles.phoneActions}>
+                          <TouchableOpacity
+                            style={styles.callBtn}
+                            onPress={() => Linking.openURL(`tel:${o.customerPhone}`)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.callBtnText}>📞 Call</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.smsBtn}
+                            onPress={() => Linking.openURL(`sms:${o.customerPhone}`)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.smsBtnText}>💬 Text</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
                       <TouchableOpacity
                         style={styles.deliverBtn}
                         onPress={() => handleMarkDelivered(o.id)}
@@ -586,6 +614,38 @@ const styles = StyleSheet.create({
     borderColor: "#e5e7eb",
   },
   trackBtnDisabledText: { fontSize: 14, fontWeight: "800", color: "#9ca3af" },
+  customerRow: { gap: 4 },
+  phoneRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#f0fdf4",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignSelf: "flex-start",
+  },
+  phoneText: { fontSize: 12, fontWeight: "700", color: "#16a34a" },
+  phoneActions: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  callBtn: {
+    flex: 1,
+    backgroundColor: "#3b82f6",
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  callBtnText: { color: "#fff", fontSize: 14, fontWeight: "800" },
+  smsBtn: {
+    flex: 1,
+    backgroundColor: "#8b5cf6",
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  smsBtnText: { color: "#fff", fontSize: 14, fontWeight: "800" },
   footer: {
     flexDirection: "row",
     justifyContent: "space-around",

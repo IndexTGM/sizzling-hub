@@ -23,6 +23,7 @@ export default function AuthForms({ initialView }: { initialView: View }) {
   const [remail, setREmail] = useState("");
   const [rpass, setRPass] = useState("");
   const [rcpass, setRCPass] = useState("");
+  const [rphone, setRPhone] = useState("");
   const [loginTosAgreed, setLoginTosAgreed] = useState(false);
   const [registerTosAgreed, setRegisterTosAgreed] = useState(false);
 
@@ -58,7 +59,8 @@ export default function AuthForms({ initialView }: { initialView: View }) {
       return;
     }
     setLoading(true);
-    const err = await register(rusername, rname, remail, rpass, rcpass);
+    const phoneValue = rphone.trim() ? `+63${rphone.trim()}` : undefined;
+    const err = await register(rusername, rname, remail, rpass, rcpass, phoneValue);
     setLoading(false);
     if (err === "check-email") {
       setSuccess("Account created! Check your email for a confirmation link. (If email confirmation is disabled in Supabase, you can log in immediately.)");
@@ -183,6 +185,23 @@ export default function AuthForms({ initialView }: { initialView: View }) {
               <InputField label="Username" type="text" value={rusername} onChange={setRUsername} placeholder="yourname" />
               <InputField label="Full Name" type="text" value={rname} onChange={setRName} placeholder="Charles Marquez" />
               <InputField label="Email" type="email" value={remail} onChange={setREmail} placeholder="you@example.com" />
+
+              {/* Phone Number — Philippines only (+63 prefix) */}
+              <div>
+                <label className="block text-sm font-semibold text-[#0a0a0a] mb-1.5">Phone Number <span className="text-[#9ca3af] font-normal">(optional)</span></label>
+                <div className="flex">
+                  <span className="flex items-center px-3 py-2.5 rounded-l-lg border border-r-0 border-[#e5e7eb] bg-[#f9fafb] text-sm font-semibold text-[#0a0a0a]">+63</span>
+                  <input
+                    type="tel"
+                    value={rphone}
+                    onChange={(e) => setRPhone(e.target.value.replace(/[^0-9]/g, ""))}
+                    placeholder="912 345 6789"
+                    maxLength={10}
+                    className="w-full px-4 py-2.5 rounded-r-lg border border-[#e5e7eb] text-sm text-[#0a0a0a] placeholder-[#9ca3af] focus:outline-none focus:ring-2 focus:ring-[#dc2626]/30 focus:border-[#dc2626] transition-all duration-150"
+                  />
+                </div>
+              </div>
+
               <InputField label="Password" type="password" value={rpass} onChange={setRPass} placeholder="Min. 8 characters" />
               <InputField label="Confirm Password" type="password" value={rcpass} onChange={setRCPass} placeholder="Re-enter password" />
               <label className="flex items-start gap-2 cursor-pointer select-none">

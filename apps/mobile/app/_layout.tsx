@@ -29,7 +29,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     if (!isAuthenticated && !isPublicScreen) {
       router.replace("/");
     } else if (isAuthenticated && inAuthScreen) {
-      router.replace("/home");
+      router.replace("/menu");
     }
   }, [user, loading, segments]);
 

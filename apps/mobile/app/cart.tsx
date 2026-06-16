@@ -30,6 +30,11 @@ import { getImageCandidates } from "@/lib/storage";
 const PLACEHOLDER = "placeholder.png";
 
 type OrderMethod = "delivery" | "pickup";
+type PaymentMethod = "gcash" | null;
+
+const PAYMENT_OPTIONS: { value: "gcash"; label: string; icon: string }[] = [
+  { value: "gcash", label: "GCash", icon: "📱" },
+];
 
 interface SavedAddress {
   id: string;
@@ -185,6 +190,7 @@ export default function CartScreen() {
   const [checkoutVisible, setCheckoutVisible] = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [orderMethod, setOrderMethod] = useState<OrderMethod>("delivery");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(null);
   const [placing, setPlacing] = useState(false);
 
   // Address state
@@ -253,6 +259,7 @@ export default function CartScreen() {
   const isAdmin = user?.role === "admin";
   const blockedByHours = !isWithinOpeningHours && !isAdmin;
   const showHoursWarning = !isWithinOpeningHours;
+  const needsPhone = user?.role !== "admin" && !user?.phone;
 
   // Stable refs for callbacks
   const itemsRef = useRef(items);
@@ -391,18 +398,22 @@ export default function CartScreen() {
           ? `${defaultAddress.street}, ${defaultAddress.city}, ${defaultAddress.province}${defaultAddress.zip ? ` ${defaultAddress.zip}` : ""}`
           : null;
 
+      const orderNotes = addressStr ? `Address: ${addressStr}` : null;
+
       // Create order
       const { data: order, error: orderErr } = await supabase
         .from("orders")
         .insert({
           customer_id: session.user.id,
           order_type: orderMethod,
+          payment_method: paymentMethod || "cod",
+          branch_id: branchId,
           status: "pending",
           subtotal,
           delivery_fee: 0,
           discount: 0,
           total: subtotal,
-          notes: addressStr ? `Address: ${addressStr}` : null,
+          notes: orderNotes,
         })
         .select("id")
         .single();
@@ -459,7 +470,8 @@ export default function CartScreen() {
     !needsAddress &&
     !outOfRange &&
     !addressLoading &&
-    !blockedByHours;
+    !blockedByHours &&
+    !needsPhone;
 
   const key = useMemo(
     () => `cart-grid-${numColumns}-${cardWidth.toFixed(0)}`,
@@ -524,14 +536,6 @@ export default function CartScreen() {
 
       {/* ─── Floating Footer ─── */}
       <View style={styles.footer}>
-        <TouchableOpacity
-          style={styles.footerBtn}
-          onPress={() => router.replace("/home")}
-        >
-          <Text style={styles.footerIcon}>🏠</Text>
-          <Text style={styles.footerLabel}>Home</Text>
-        </TouchableOpacity>
-
         <TouchableOpacity
           style={styles.footerBtn}
           onPress={() => router.replace("/menu")}
@@ -624,11 +628,70 @@ export default function CartScreen() {
               </TouchableOpacity>
             </View>
 
+            {/* Payment Method */}
+            <View style={styles.paymentSection}>
+              <Text style={styles.paymentLabel}>Payment Method</Text>
+              <View style={styles.paymentRow}>
+                {PAYMENT_OPTIONS.map((opt) => (
+                  <TouchableOpacity
+                    key={opt.value}
+                    onPress={() => setPaymentMethod(paymentMethod === opt.value ? null : opt.value)}
+                    style={[
+                      styles.paymentBtn,
+                      paymentMethod === opt.value && styles.paymentBtnActive,
+                    ]}
+                  >
+                    <Text style={styles.paymentBtnIcon}>{opt.icon}</Text>
+                    <Text style={[styles.paymentBtnText, paymentMethod === opt.value && styles.paymentBtnTextActive]}>
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <TouchableOpacity
+                onPress={() => setPaymentMethod(null)}
+                style={[
+                  styles.paymentBtnFull,
+                  paymentMethod === null && styles.paymentBtnActive,
+                ]}
+              >
+                <Text style={styles.paymentBtnIcon}>💵</Text>
+                <Text style={[styles.paymentBtnText, paymentMethod === null && styles.paymentBtnTextActive]}>
+                  Cash on Delivery
+                </Text>
+              </TouchableOpacity>
+            </View>
+
             <ScrollView
               style={styles.modalScroll}
               showsVerticalScrollIndicator={false}
             >
               {/* Address Section for Delivery */}
+            {/* Phone Number Warning — non-admins must add phone */}
+            {needsPhone && (
+              <View style={styles.addressSection}>
+                <View style={[styles.addressWarning, { backgroundColor: "#fffbeb", borderColor: "#fde68a" }]}>
+                  <Text style={[styles.addressWarningTitle, { color: "#92400e" }]}>
+                    📞 Phone Number Required
+                  </Text>
+                  <Text style={[styles.addressWarningText, { color: "#92400e" }]}>
+                    Please add your phone number so the driver can contact you during delivery. Add it in your profile.
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.setAddressBtn, { backgroundColor: "#92400e" }]}
+                    onPress={() => {
+                      handleCancelCheckout();
+                      router.push("/profile");
+                    }}
+                  >
+                    <Text style={styles.setAddressBtnText}>
+                      Add Phone Number in Profile
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
             {/* Opening Hours Warning */}
             {showHoursWarning && (
               <View style={[styles.addressSection, { marginBottom: 8 }]}>
@@ -1475,6 +1538,63 @@ const styles = StyleSheet.create({
   },
   modalConfirmTextDisabled: {
     color: "#fff",
+  },
+
+  // ─── Payment Method ───
+  paymentSection: {
+    paddingHorizontal: 20,
+    marginBottom: 14,
+  },
+  paymentLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#9ca3af",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  paymentRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 8,
+  },
+  paymentBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: "#f3f4f6",
+    borderWidth: 2,
+    borderColor: "transparent",
+  },
+  paymentBtnActive: {
+    backgroundColor: "#fef2f2",
+    borderColor: PRIMARY,
+  },
+  paymentBtnIcon: {
+    fontSize: 16,
+  },
+  paymentBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#6b7280",
+  },
+  paymentBtnTextActive: {
+    color: PRIMARY,
+  },
+  paymentBtnFull: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: "#f3f4f6",
+    borderWidth: 2,
+    borderColor: "transparent",
   },
 
   // ─── Confirmation Prompt Modal ───

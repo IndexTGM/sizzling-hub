@@ -178,7 +178,9 @@ export default function ReportsPanel({ branchId }: { branchId?: string | null })
     } else setWeeklyTopItems([]);
 
     // ── Top Sellers (all time) ──
-    const { data: allOrders } = await sb.from("orders").select("id").in("status", ["delivered", "out_for_delivery"]);
+    let allQ = sb.from("orders").select("id").in("status", ["delivered", "out_for_delivery"]);
+    if (branchId) allQ = allQ.eq("branch_id", branchId);
+    const { data: allOrders } = await allQ;
     if (allOrders && allOrders.length > 0) {
       const allIds = allOrders.map((o: any) => o.id);
       const { data: allItems } = await sb.from("order_items").select("quantity, unit_price, menu_item:menu_items(name)").in("order_id", allIds);

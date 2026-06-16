@@ -448,14 +448,6 @@ export default function OrdersScreen() {
       <View style={styles.footer}>
         <TouchableOpacity
           style={styles.footerBtn}
-          onPress={() => router.replace("/home")}
-        >
-          <Text style={styles.footerIcon}>🏠</Text>
-          <Text style={styles.footerLabel}>Home</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.footerBtn}
           onPress={() => router.replace("/menu")}
         >
           <Text style={styles.footerIcon}>🍽️</Text>

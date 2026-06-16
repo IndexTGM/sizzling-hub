@@ -77,7 +77,8 @@ export default function AddressModal({ open, onClose, userId, branchLat, branchL
   async function handleSaveAddress() {
     if (!formStreet.trim()) { setError("Street address is required."); return; }
     if (!formCity.trim()) { setError("City is required."); return; }
-    if (formDistance > effBranchRadiusKm) { setError(`This address is ${formDistance.toFixed(1)} km away — our delivery range is ${effBranchRadiusKm} km. Please choose a closer address.`); return; }
+    // Distance badge is informational only — any address can be saved.
+    // The cart/checkout flow will validate distance at order time.
     setSaving(true);
     setError("");
 

@@ -217,11 +217,12 @@ export default function MenuScreen() {
 
   const displayCats = useMemo(() => [
     { key: "all", label: "All" },
-    ...categories.map((c) => ({ key: c.name, label: c.name })),
+    ...categories.map((c) => ({ key: c.id, label: c.name })),
   ], [categories]);
 
   const filtered = useMemo(() => {
-    let items = activeCat === "all" ? menuItems : menuItems.filter((i) => i.categories?.includes(activeCat));
+    const activeCatName = activeCat === "all" ? "all" : displayCats.find((c) => c.key === activeCat)?.label ?? activeCat;
+    let items = activeCatName === "all" ? menuItems : menuItems.filter((i) => i.categories?.includes(activeCatName));
     if (search.trim()) {
       const q = search.toLowerCase();
       items = items.filter((i) => i.name.toLowerCase().includes(q));

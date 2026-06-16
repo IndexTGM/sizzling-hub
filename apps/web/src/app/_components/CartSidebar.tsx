@@ -12,7 +12,7 @@ import StorageImage from "./StorageImage";
 import AddressModal from "./AddressModal";
 
 type OrderMethod = "delivery" | "pickup";
-type PaymentMethod = "gcash" | "paymaya" | null;
+type PaymentMethod = "gcash" | null;
 
 interface SavedAddress {
   id: string;
@@ -24,9 +24,8 @@ interface SavedAddress {
   is_default: boolean;
 }
 
-const PAYMENT_OPTIONS: { value: NonNullable<PaymentMethod>; label: string; icon: string; disabled?: boolean }[] = [
+const PAYMENT_OPTIONS: { value: NonNullable<PaymentMethod>; label: string; icon: string }[] = [
   { value: "gcash", label: "GCash", icon: "📱" },
-  { value: "paymaya", label: "PayMaya", icon: "💳", disabled: true },
 ];
 
 export default function CartSidebar({
@@ -110,6 +109,7 @@ export default function CartSidebar({
   const isAdmin = user?.role === "admin";
   const blockedByHours = !isWithinOpeningHours && !isAdmin;
   const showHoursWarning = !isWithinOpeningHours;
+  const needsPhone = user?.role !== "admin" && !user?.phone;
 
   async function handleConfirmOrder() {
     if (!user) return;
@@ -129,7 +129,7 @@ export default function CartSidebar({
             successUrl: `${origin}/payment/success`,
             failedUrl: `${origin}/payment/failed`,
             billing: user?.fullName
-              ? { name: user.fullName, email: user.email || "", phone: "" }
+              ? { name: user.fullName, email: user.email || "", phone: user?.phone || "" }
               : undefined,
           }),
         });
@@ -300,18 +300,15 @@ export default function CartSidebar({
             {/* Payment Method Selection */}
             <div className="space-y-2">
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Payment Method</p>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 {PAYMENT_OPTIONS.map((opt) => (
                   <button
                     key={opt.value}
-                    disabled={opt.disabled ?? false}
                     onClick={() => setPaymentMethod(paymentMethod === opt.value ? null : opt.value)}
                     className={`py-2 px-1 rounded-lg text-xs font-semibold border transition-all duration-200 ${
-                      opt.disabled
-                        ? "border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed"
-                        : paymentMethod === opt.value
-                          ? "border-[#dc2626] bg-red-50 text-red-600"
-                          : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                      paymentMethod === opt.value
+                        ? "border-[#dc2626] bg-red-50 text-red-600"
+                        : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
                     }`}
                   >
                     <span className="block text-lg mb-0.5">{opt.icon}</span>
@@ -324,27 +321,38 @@ export default function CartSidebar({
                   You'll be redirected to {PAYMENT_OPTIONS.find((o) => o.value === paymentMethod)?.label} to complete payment.
                 </p>
               )}
-              {/* COD only for Delivery */}
-              {orderMethod === "delivery" &&
-                <button
-                  onClick={() => setPaymentMethod(null)}
-                  className={`w-full py-2 rounded-lg text-xs font-semibold border transition-all duration-200 ${
-                    paymentMethod === null
-                      ? "border-[#dc2626] bg-red-50 text-red-600"
-                      : "border-gray-200 bg-white text-gray-400 hover:border-gray-300"
-                  }`}
-                >
-                  💵 Cash on Delivery
-                </button>
-              }
+              {/* COD — available for both delivery and pickup */}
+              <button
+                onClick={() => setPaymentMethod(null)}
+                className={`w-full py-2 rounded-lg text-xs font-semibold border transition-all duration-200 ${
+                  paymentMethod === null
+                    ? "border-[#dc2626] bg-red-50 text-red-600"
+                    : "border-gray-200 bg-white text-gray-400 hover:border-gray-300"
+                }`}
+              >
+                💵 Cash on Delivery
+              </button>
             </div>
+
+            {/* Phone Number Warning — non-admins must add phone before ordering */}
+            {needsPhone && (
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 space-y-2">
+                <p className="text-xs font-semibold text-amber-700">📞 Phone Number Required</p>
+                <p className="text-xs text-amber-500">
+                  Please add your phone number so the driver can contact you during delivery. You can add it in your profile.
+                </p>
+                <button onClick={onClose} className="w-full py-2 rounded-lg bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 transition-colors">
+                  Add Phone Number in Profile
+                </button>
+              </div>
+            )}
 
             <div className="flex items-center justify-between">
               <span className="text-sm text-[#6b7280] font-medium">Total</span>
               <span className="text-xl font-black" style={{ color: "#dc2626" }}>₱{total}</span>
             </div>
             <button
-              disabled={cart.length === 0 || placing || needsAddress || outOfRange || blockedByHours}
+              disabled={cart.length === 0 || placing || needsAddress || outOfRange || blockedByHours || needsPhone}
               className="w-full py-3 rounded-xl font-bold text-white text-sm tracking-wide transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed hover:scale-[1.02] active:scale-100"
               style={{ backgroundColor: "#dc2626" }}
               onClick={() => setConfirmOpen(true)}

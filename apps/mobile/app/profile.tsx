@@ -25,6 +25,7 @@ export default function ProfileScreen() {
   const { user, logout, updateProfile } = useAuth();
   const [editUsername, setEditUsername] = useState("");
   const [editFullName, setEditFullName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
@@ -38,6 +39,7 @@ export default function ProfileScreen() {
     if (user) {
       setEditUsername(user.username || "");
       setEditFullName(user.fullName || "");
+      setEditPhone(user.phone || "");
     }
   }, [user]);
 
@@ -70,7 +72,7 @@ export default function ProfileScreen() {
   async function handleSave() {
     setError("");
     setSaving(true);
-    const err = await updateProfile(editUsername, editFullName);
+    const err = await updateProfile(editUsername, editFullName, editPhone || undefined);
     setSaving(false);
     if (err) {
       setError(err);
@@ -113,8 +115,10 @@ export default function ProfileScreen() {
             </View>
             <Text style={styles.displayName}>{user?.fullName}</Text>
             <Text style={styles.usernameLabel}>@{user?.username}</Text>
-            <View style={[styles.roleBadge, styles.roleBadgeCustomer]}>
-              <Text style={[styles.roleText, styles.roleTextCustomer]}>👤 Customer</Text>
+            <View style={[styles.roleBadge, user?.role === "admin" ? styles.roleBadgeAdmin : styles.roleBadgeCustomer]}>
+              <Text style={[styles.roleText, user?.role === "admin" ? styles.roleTextAdmin : styles.roleTextCustomer]}>
+                {user?.role === "admin" ? "🛡️ Admin" : "👤 Customer"}
+              </Text>
             </View>
           </View>
 
@@ -143,6 +147,15 @@ export default function ProfileScreen() {
             <View style={styles.inputDisabled}>
               <Text style={styles.inputDisabledText}>{user?.email}</Text>
             </View>
+
+            <Text style={styles.label}>Phone Number (optional)</Text>
+            <TextInput
+              style={styles.input}
+              value={editPhone}
+              onChangeText={setEditPhone}
+              placeholder="+639171234567"
+              keyboardType="phone-pad"
+            />
 
             {error ? (
               <View style={styles.alertError}>
@@ -237,8 +250,10 @@ const styles = StyleSheet.create({
   usernameLabel: { fontSize: 14, fontWeight: "600", color: "#6b7280", marginBottom: 10 },
   roleBadge: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 14 },
   roleBadgeCustomer: { backgroundColor: "#f0fdf4" },
+  roleBadgeAdmin: { backgroundColor: "#fef2f2" },
   roleText: { fontSize: 13, fontWeight: "600" },
   roleTextCustomer: { color: "#16a34a" },
+  roleTextAdmin: { color: PRIMARY },
 
   // Card
   card: {

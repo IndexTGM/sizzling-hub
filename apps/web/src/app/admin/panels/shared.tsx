@@ -44,7 +44,7 @@ export const OT_ICON: Record<OrderType, string> = { dine_in: "🍽️", takeout:
 export const OT_LABEL: Record<OrderType, string> = { dine_in: "Dine In", takeout: "Takeout", delivery: "Delivery", pickup: "Pickup" };
 
 export interface AdminOrder {
-  id: string; customerName: string; customerEmail: string; orderType: OrderType; status: OrderStatus;
+  id: string; customerName: string; customerEmail: string; customerPhone: string | null; orderType: OrderType; status: OrderStatus;
   subtotal: number; deliveryFee: number; discount: number; total: number; notes: string | null;
   items: { name: string; quantity: number; price: number }[]; placedAt: string; completedAt: string | null;
   paymentMethod: string | null; paymentSourceId: string | null; paymentStatus: string | null;

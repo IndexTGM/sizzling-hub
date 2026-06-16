@@ -15,11 +15,12 @@ interface MenuItemRow {
   description: string | null;
   categoryIds: string[];
   categoryNames: string[];
+  branchId: string | null;
 }
 
 export default function MenuPanel({ branchId }: { branchId?: string | null }) {
   const [items, setItems] = useState<MenuItemRow[]>([]);
-  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  const [categories, setCategories] = useState<{ id: string; name: string; branchId: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<MenuItemRow | null>(null);
   const [creating, setCreating] = useState(false);
@@ -42,8 +43,8 @@ export default function MenuPanel({ branchId }: { branchId?: string | null }) {
     const sb = createClient();
 
     // Build branch-aware queries
-    let menuQ = sb.from("menu_items").select("id, name, price, image_url, stock, description").order("name");
-    let catQ = sb.from("categories").select("id, name").order("sort_order");
+    let menuQ = sb.from("menu_items").select("id, name, price, image_url, stock, description, branch_id").order("name");
+    let catQ = sb.from("categories").select("id, name, branch_id").order("sort_order");
     if (branchId) {
       menuQ = menuQ.eq("branch_id", branchId);
       catQ = catQ.eq("branch_id", branchId);
@@ -52,7 +53,7 @@ export default function MenuPanel({ branchId }: { branchId?: string | null }) {
     const { data: menuData } = await menuQ;
     const { data: junctions } = await sb.from("menu_item_categories").select("menu_item_id, category_id, categories(name)");
     const { data: cats } = await catQ;
-    if (cats) setCategories(cats);
+    if (cats) setCategories(cats.map((c: any) => ({ id: c.id, name: c.name, branchId: c.branch_id ?? null })));
 
     // Build map: menu_item_id → { categoryIds, categoryNames }
     const junctionMap = new Map<string, { ids: string[]; names: string[] }>();
@@ -81,6 +82,7 @@ export default function MenuPanel({ branchId }: { branchId?: string | null }) {
           description: r.description,
           categoryIds: junc?.ids || [],
           categoryNames: junc?.names || ["Uncategorized"],
+          branchId: r.branch_id ?? null,
         };
       }));
     }
@@ -162,15 +164,71 @@ export default function MenuPanel({ branchId }: { branchId?: string | null }) {
 
   async function handleDelete(id: string) {
     const sb = createClient();
-    await sb.from("menu_item_categories").delete().eq("menu_item_id", id);
-    await sb.from("menu_items").delete().eq("id", id);
+    // Delete child rows first — live schema FKs don't have ON DELETE CASCADE
+    const { error: revErr } = await sb.from("reviews").delete().eq("menu_item_id", id);
+    if (revErr) {
+      setError(`Cannot delete reviews: ${revErr.message}`);
+      await fetchItems();
+      setConfirmDelete(null);
+      return;
+    }
+    const { error: varErr } = await sb.from("item_variants").delete().eq("menu_item_id", id);
+    if (varErr) {
+      setError(`Cannot delete variants: ${varErr.message}`);
+      await fetchItems();
+      setConfirmDelete(null);
+      return;
+    }
+    const { error: cartErr } = await sb.from("cart_items").delete().eq("menu_item_id", id);
+    if (cartErr) {
+      setError(`Cannot delete cart items: ${cartErr.message}`);
+      await fetchItems();
+      setConfirmDelete(null);
+      return;
+    }
+    const { error: catErr } = await sb.from("menu_item_categories").delete().eq("menu_item_id", id);
+    if (catErr) {
+      setError(`Cannot delete categories: ${catErr.message}`);
+      await fetchItems();
+      setConfirmDelete(null);
+      return;
+    }
+    // Try hard delete first — will fail if referenced by order_items (past orders)
+    const { error: deleteErr } = await sb.from("menu_items").delete().eq("id", id);
+    if (deleteErr) {
+      // If FK constraint from order_items, soft-delete instead
+      if (deleteErr.message.includes("order_items")) {
+        const { error: softErr } = await sb.from("menu_items").update({ is_available: false }).eq("id", id);
+        if (softErr) {
+          setError(`Cannot delete: ${softErr.message}`);
+          await fetchItems();
+          setConfirmDelete(null);
+          return;
+        }
+        setError(`Item has order history. Marked as unavailable instead.`);
+        await fetchItems();
+        setConfirmDelete(null);
+        return;
+      }
+      setError(`Cannot delete: ${deleteErr.message}`);
+      await fetchItems(); // restore UI state
+      setConfirmDelete(null);
+      return;
+    }
     await fetchItems(); setConfirmDelete(null);
   }
 
   async function handleDeleteCategory(catId: string, catName: string) {
     const sb = createClient();
+    // Delete child rows first — live schema FKs don't have ON DELETE CASCADE
     await sb.from("menu_item_categories").delete().eq("category_id", catId);
-    await sb.from("categories").delete().eq("id", catId);
+    const { error: deleteErr } = await sb.from("categories").delete().eq("id", catId);
+    if (deleteErr) {
+      setError(`Cannot delete: ${deleteErr.message}`);
+      await fetchItems();
+      setConfirmDelete(null);
+      return;
+    }
     await fetchItems(); setConfirmDelete(null);
   }
 
@@ -198,6 +256,9 @@ export default function MenuPanel({ branchId }: { branchId?: string | null }) {
         <p className="text-sm text-gray-400 mt-0.5">{items.length} items</p>
         {!editing && !creating && <button onClick={startCreate} className="px-4 py-2.5 rounded-lg bg-red-600 text-white text-sm font-bold transition-all duration-200 hover:bg-red-700 active:scale-95">+ Add Item</button>}
       </div>
+      {error && !editing && !creating && (
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{error}<button onClick={() => setError("")} className="ml-2 text-red-400 hover:text-red-600 font-bold">×</button></div>
+      )}
       {(editing || creating) && (
         <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
           <h3 className="font-bold text-sm text-gray-900">{editing ? `Edit: ${editing.name}` : "New Menu Item"}</h3>
@@ -218,12 +279,16 @@ export default function MenuPanel({ branchId }: { branchId?: string | null }) {
                 <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                   {categories.length === 0 ? (
                     <div className="px-3 py-2 text-xs text-gray-400">No categories</div>
-                  ) : categories.map((c) => (
-                    <label key={c.id} className={`flex items-center gap-2 px-3 py-2 cursor-pointer text-sm transition-colors ${form.categoryIds.includes(c.id) ? "bg-red-50 text-red-700" : "text-gray-700 hover:bg-gray-50"}`}>
-                      <input type="checkbox" checked={form.categoryIds.includes(c.id)} onChange={() => toggleCategory(c.id)} className="w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500" />
-                      {c.name}
-                    </label>
-                  ))}
+                  ) : (function() {
+                    const activeBranchId = editing?.branchId ?? branchId;
+                    const filteredCats = activeBranchId ? categories.filter(c => !c.branchId || c.branchId === activeBranchId) : categories;
+                    return filteredCats.map((c) => (
+                      <label key={c.id} className={`flex items-center gap-2 px-3 py-2 cursor-pointer text-sm transition-colors ${form.categoryIds.includes(c.id) ? "bg-red-50 text-red-700" : "text-gray-700 hover:bg-gray-50"}`}>
+                        <input type="checkbox" checked={form.categoryIds.includes(c.id)} onChange={() => toggleCategory(c.id)} className="w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500" />
+                        {c.name}
+                      </label>
+                    ));
+                  })()}
                 </div>
               )}
             </div>

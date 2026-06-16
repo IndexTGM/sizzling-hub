@@ -4,10 +4,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { WebView } from "react-native-webview";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
+import { useBranch } from "@/lib/branch-context";
 import { haversineDistance, STORE_LOCATION, MAX_DELIVERY_RADIUS_KM } from "@/lib/store-config";
 
 const PRIMARY = "#dc2626";
@@ -24,7 +25,13 @@ interface SavedAddress {
   lng: number;
 }
 
-const MAP_HTML = (lat: number, lng: number) => `<!DOCTYPE html>
+interface AddrParams {
+  storeLat: number;
+  storeLng: number;
+}
+
+function mapHtml(addr: AddrParams & { lat: number; lng: number }) {
+  return `<!DOCTYPE html>
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
@@ -38,11 +45,11 @@ const MAP_HTML = (lat: number, lng: number) => `<!DOCTYPE html>
 <body>
 <div id="map"></div>
 <script>
-  var STORE_LAT = ${STORE_LOCATION.lat};
-  var STORE_LNG = ${STORE_LOCATION.lng};
+  var STORE_LAT = ${addr.storeLat};
+  var STORE_LNG = ${addr.storeLng};
   var RADIUS = ${MAX_DELIVERY_RADIUS_KM * 1000};
 
-  var map = L.map('map', { zoomControl: true, scrollWheelZoom: false, tap: true, touchZoom: true }).setView([${lat},${lng}], 16);
+  var map = L.map('map', { zoomControl: true, scrollWheelZoom: false, tap: true, touchZoom: true }).setView([${addr.lat},${addr.lng}], 16);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap'
   }).addTo(map);
@@ -56,7 +63,7 @@ const MAP_HTML = (lat: number, lng: number) => `<!DOCTYPE html>
 
   // User pin
   var userIcon = L.divIcon({ html: '<div style="background:#dc2626;width:24px;height:24px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div>', className: '', iconSize: [24,24], iconAnchor: [12,12] });
-  var marker = L.marker([${lat},${lng}], { icon: userIcon, draggable: true }).addTo(map);
+  var marker = L.marker([${addr.lat},${addr.lng}], { icon: userIcon, draggable: true }).addTo(map);
 
   function sendPos(lat, lng) {
     window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'pinMoved', lat: lat, lng: lng }));
@@ -81,28 +88,36 @@ const MAP_HTML = (lat: number, lng: number) => `<!DOCTYPE html>
 </script>
 </body>
 </html>`;
+}
 
 export default function AddressesScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const { branchLocation } = useBranch();
   const [addresses, setAddresses] = useState<SavedAddress[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  // Use branch location if available, otherwise fallback to main branch
+  const storeLat = branchLocation.lat || STORE_LOCATION.lat;
+  const storeLng = branchLocation.lng || STORE_LOCATION.lng;
+
   const [formLabel, setFormLabel] = useState("Home");
   const [formStreet, setFormStreet] = useState("");
   const [formCity, setFormCity] = useState("");
   const [formProvince, setFormProvince] = useState("Metro Manila");
   const [formZip, setFormZip] = useState("");
-  const [formLat, setFormLat] = useState(STORE_LOCATION.lat);
-  const [formLng, setFormLng] = useState(STORE_LOCATION.lng);
+  const [formLat, setFormLat] = useState(storeLat);
+  const [formLng, setFormLng] = useState(storeLng);
 
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const webRef = useRef<WebView>(null);
-  const mapSource = useRef({ html: MAP_HTML(STORE_LOCATION.lat, STORE_LOCATION.lng) }).current;
+
+  // Rebuild map HTML when branch location changes
+  const mapSource = useMemo(() => ({ html: mapHtml({ storeLat, storeLng, lat: formLat, lng: formLng }) }), [storeLat, storeLng]);
 
   async function fetchAddresses() {
     if (!user) return;
@@ -114,7 +129,13 @@ export default function AddressesScreen() {
 
   useEffect(() => { fetchAddresses(); }, [user]);
 
-  const distKm = haversineDistance(STORE_LOCATION.lat, STORE_LOCATION.lng, formLat, formLng);
+  // Update form coords when branch changes
+  useEffect(() => {
+    setFormLat(storeLat);
+    setFormLng(storeLng);
+  }, [storeLat, storeLng]);
+
+  const distKm = haversineDistance(storeLat, storeLng, formLat, formLng);
   const isOutsideRadius = distKm > MAX_DELIVERY_RADIUS_KM;
 
   function moveMapTo(lat: number, lng: number) {
@@ -179,7 +200,8 @@ export default function AddressesScreen() {
   async function handleSave() {
     if (!formStreet.trim()) { setError("Street address is required."); return; }
     if (!formCity.trim()) { setError("City is required."); return; }
-    if (isOutsideRadius) { setError(`This address is ${distKm.toFixed(1)} km away. Max delivery range is ${MAX_DELIVERY_RADIUS_KM} km.`); return; }
+    // Distance check is informational only — addresses can be saved regardless.
+    // The cart/checkout flow will validate distance at order time.
     setSaving(true); setError("");
     const hasDefault = addresses.some((a) => a.is_default);
     const { error: insertErr } = await supabase.from("addresses").insert({
@@ -196,7 +218,7 @@ export default function AddressesScreen() {
 
   function resetForm() {
     setFormLabel("Home"); setFormStreet(""); setFormCity(""); setFormProvince("Metro Manila"); setFormZip("");
-    setFormLat(STORE_LOCATION.lat); setFormLng(STORE_LOCATION.lng); setError("");
+    setFormLat(storeLat); setFormLng(storeLng); setError("");
   }
 
   async function handleSetDefault(id: string) {
@@ -328,7 +350,7 @@ export default function AddressesScreen() {
                       <Text style={styles.addrStreet}>{addr.street}</Text>
                       <Text style={styles.addrCity}>{addr.city}{addr.province ? `, ${addr.province}` : ""}{addr.zip ? ` ${addr.zip}` : ""}</Text>
                       {addr.lat && addr.lng && (
-                        <Text style={styles.addrDist}>{haversineDistance(STORE_LOCATION.lat, STORE_LOCATION.lng, addr.lat, addr.lng).toFixed(1)} km from store</Text>
+                        <Text style={styles.addrDist}>{haversineDistance(storeLat, storeLng, addr.lat, addr.lng).toFixed(1)} km from store</Text>
                       )}
                     </View>
                     <View style={{ gap: 6 }}>

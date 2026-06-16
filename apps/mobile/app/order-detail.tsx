@@ -16,7 +16,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
 import { supabase } from "@/lib/supabase";
-import MapView, { Marker, Region } from "react-native-maps";
 import { STORE_LOCATION } from "@/lib/store-config";
 
 const PRIMARY = "#dc2626";
@@ -207,17 +206,7 @@ export default function OrderDetailScreen() {
     heading: number | null;
     updatedAt: string;
   } | null>(null);
-  const [mapRegion, setMapRegion] = useState<Region>({
-    latitude: 14.5995,
-    longitude: 120.9842,
-    latitudeDelta: 0.01,
-    longitudeDelta: 0.01,
-  });
-  const mapInitialFitRef = useRef(true);
-  const [customerAddressCoords, setCustomerAddressCoords] = useState<{
-    latitude: number;
-    longitude: number;
-  } | null>(null);
+  const [customerAddress, setCustomerAddress] = useState<string | null>(null);
 
   // Review states
   const [reviewVisible, setReviewVisible] = useState(false);
@@ -309,8 +298,7 @@ export default function OrderDetailScreen() {
   useEffect(() => {
     if (!id || !order || order.orderType !== "delivery" || order.status !== "out_for_delivery") {
       setDriverLocation(null);
-      setCustomerAddressCoords(null);
-      mapInitialFitRef.current = true;
+      setCustomerAddress(null);
       return;
     }
 
@@ -318,16 +306,13 @@ export default function OrderDetailScreen() {
     (async () => {
       const { data: addrs } = await supabase
         .from("addresses")
-        .select("lat, lng")
+        .select("street, city, province")
         .eq("user_id", user?.id)
         .eq("is_default", true)
         .limit(1)
         .maybeSingle();
-      if (addrs && addrs.lat != null && addrs.lng != null) {
-        setCustomerAddressCoords({
-          latitude: addrs.lat,
-          longitude: addrs.lng,
-        });
+      if (addrs) {
+        setCustomerAddress(`${addrs.street}, ${addrs.city}, ${addrs.province}`);
       }
     })();
 
@@ -347,15 +332,6 @@ export default function OrderDetailScreen() {
             heading: data.heading,
             updatedAt: data.recorded_at,
           });
-          if (mapInitialFitRef.current) {
-            mapInitialFitRef.current = false;
-            setMapRegion({
-              latitude: data.latitude,
-              longitude: data.longitude,
-              latitudeDelta: 0.005,
-              longitudeDelta: 0.005,
-            });
-          }
         }
       });
 
@@ -630,7 +606,7 @@ export default function OrderDetailScreen() {
                 {order.status === "preparing" &&
                   "Our chefs are cooking your meal with care."}
                 {order.status === "out_for_delivery" &&
-                  "Your order is on the way. Almost there!"}
+                  "Your order is on the way."}
                 {order.status === "ready" &&
                   "Your order is ready! Come pick it up at the counter."}
               </Text>
@@ -708,8 +684,8 @@ export default function OrderDetailScreen() {
           </View>
         )}
 
-        {/* ─── Live Driver Tracking Map ─── */}
-        {order.orderType === "delivery" &&
+        {/* ─── Live Driver Tracking (text-only) ─── */}
+        {/* {order.orderType === "delivery" &&
           order.status === "out_for_delivery" &&
           driverLocation && (
             <View style={styles.trackingCard}>
@@ -717,50 +693,26 @@ export default function OrderDetailScreen() {
               <Text style={styles.trackingSub}>
                 Your driver is on the way!
               </Text>
-              <View style={styles.mapWrap}>
-                <MapView
-                  style={styles.map}
-                  region={mapRegion}
-                  scrollEnabled={true}
-                  zoomEnabled={true}
-                >
-                  {/* Store marker */}
-                  <Marker
-                    coordinate={{
-                      latitude: STORE_LOCATION.lat,
-                      longitude: STORE_LOCATION.lng,
-                    }}
-                    title="Ben's Tapsihan"
-                    pinColor="#fbbf24"
-                  />
-                  {/* Customer address marker */}
-                  {customerAddressCoords && (
-                    <Marker
-                      coordinate={customerAddressCoords}
-                      title="Your Address"
-                      pinColor="#3b82f6"
-                    />
-                  )}
-                  {/* Driver marker */}
-                  <Marker
-                    coordinate={{
-                      latitude: driverLocation.latitude,
-                      longitude: driverLocation.longitude,
-                    }}
-                    title="Driver"
-                    description={`Updated ${formatDateTime(driverLocation.updatedAt)}`}
-                  >
-                    <View style={styles.markerWrap}>
-                      <Text style={styles.markerIcon}>🛵</Text>
-                    </View>
-                  </Marker>
-                </MapView>
+              {customerAddress && (
+                <View style={styles.trackingAddressWrap}>
+                  <Text style={styles.trackingAddressLabel}>Delivering to:</Text>
+                  <Text style={styles.trackingAddressValue}>{customerAddress}</Text>
+                </View>
+              )}
+              <View style={styles.trackingStatusRow}>
+                <Text style={styles.trackingStatusIcon}>📍</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.trackingStatusTitle}>Driver is en route</Text>
+                  <Text style={styles.trackingStatusSub}>
+                    Estimated arrival: 10-15 minutes
+                  </Text>
+                </View>
               </View>
               <Text style={styles.trackingUpdated}>
                 Last updated: {formatDateTime(driverLocation.updatedAt)}
               </Text>
             </View>
-          )}
+          )*/}
 
         {/* Show tracking info when status is out_for_delivery but no location yet */}
         {order.orderType === "delivery" &&
@@ -1517,6 +1469,45 @@ const styles = StyleSheet.create({
     color: "#9ca3af",
     textAlign: "center",
     marginTop: 8,
+  },
+  trackingAddressWrap: {
+    backgroundColor: "#f9fafb",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+  },
+  trackingAddressLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#9ca3af",
+    marginBottom: 2,
+  },
+  trackingAddressValue: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#1f2937",
+  },
+  trackingStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "#ecfdf5",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
+  },
+  trackingStatusIcon: {
+    fontSize: 22,
+  },
+  trackingStatusTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#065f46",
+  },
+  trackingStatusSub: {
+    fontSize: 11,
+    color: "#047857",
+    marginTop: 2,
   },
   mapWrap: {
     borderRadius: 12,

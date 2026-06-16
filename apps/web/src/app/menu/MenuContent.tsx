@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { useMenu } from "@/lib/menu-context";
 import { useBranch } from "@/lib/branch-context";
 import { useCart } from "@/lib/cart-context";
+import { useBanners } from "@/lib/banner-context";
 import type { MenuItem } from "@/lib/menu-data";
 import AppHeader from "@/app/_components/AppHeader";
 import BranchSwitcher from "@/app/_components/BranchSwitcher";
@@ -21,12 +22,77 @@ const AMBER = "#f59e0b";
 
 type CategoryFilter = { key: string; label: string };
 
+const BANNER_COLORS = [
+  "#f59e0b", "#3b82f6", "#10b981", "#8b5cf6",
+  "#06b6d4", "#f97316", "#84cc16", "#ec4899",
+];
+
 const CATEGORIES: CategoryFilter[] = [
   { key: "all", label: "All" },
   { key: "Silog", label: "Silog" },
   { key: "Drinks", label: "Drinks" },
   { key: "Add-ons", label: "Add-ons" },
 ];
+
+function BannerCarousel() {
+  const { banners } = useBanners();
+  const [active, setActive] = useState(0);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const autoRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const goTo = useCallback((idx: number) => {
+    setActive(idx);
+    trackRef.current?.scrollTo({ left: idx * (trackRef.current?.clientWidth ?? 0), behavior: "smooth" });
+  }, []);
+
+  useEffect(() => {
+    if (banners.length === 0) return;
+    autoRef.current = setInterval(() => {
+      setActive((prev) => {
+        const next = (prev + 1) % banners.length;
+        trackRef.current?.scrollTo({ left: next * (trackRef.current?.clientWidth ?? 0), behavior: "smooth" });
+        return next;
+      });
+    }, 4000);
+    return () => { if (autoRef.current) clearInterval(autoRef.current); };
+  }, [banners.length]);
+
+  if (banners.length === 0) return null;
+
+  return (
+    <div className="w-full overflow-hidden mb-4">
+      <div ref={trackRef} className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide" style={{ scrollSnapType: "x mandatory" }}>
+        {banners.map((b, i) => {
+          const accentColor = BANNER_COLORS[i % BANNER_COLORS.length];
+          return (
+          <div key={b.id} className="w-full flex-shrink-0 snap-center" style={{ scrollSnapAlign: "center" }}>
+            <div className="px-4">
+              <div className="relative flex items-center rounded-xl p-4 gap-4 shadow-sm border border-white/50 overflow-hidden" style={{ backgroundColor: accentColor, backgroundImage: `linear-gradient(135deg, ${accentColor} 0%, ${accentColor}dd 100%)`, height: 120 }}>
+                <div className="flex-1 space-y-1.5 relative z-10">
+                  {b.tag && <span className="inline-block px-2 py-0.5 rounded bg-white/20 text-white text-[10px] font-extrabold tracking-wider uppercase">{b.tag}</span>}
+                  <h3 className="text-lg font-black text-white tracking-tight leading-tight">{b.title}</h3>
+                  <p className="text-xs text-white/70 font-medium line-clamp-1">{b.subtitle}</p>
+                </div>
+                <div className="relative z-10 flex-shrink-0">
+                  <StorageImage imageBaseName={b.image} alt={b.title} className="w-20 h-20 object-cover rounded-xl shadow-md ring-1 ring-white/20" />
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+        })}
+      </div>
+      <div className="flex justify-center gap-1.5 mt-3">
+        {banners.map((_, i) => {
+          const dotColor = BANNER_COLORS[i % BANNER_COLORS.length];
+          return (
+          <button key={i} onClick={() => goTo(i)} className="rounded-full transition-all duration-300" style={i === active ? { width: 24, height: 7, backgroundColor: dotColor } : { width: 7, height: 7, backgroundColor: "#d1d5db" }} />
+        );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export default function MenuContent() {
   const { user, loading: authLoading } = useAuth();
@@ -57,7 +123,7 @@ export default function MenuContent() {
     if (categories.length > 0) {
       return [
         { key: "all", label: "All" },
-        ...categories.map((c) => ({ key: c.name, label: c.name })),
+        ...categories.map((c) => ({ key: c.id, label: c.name })),
       ];
     }
     return CATEGORIES;
@@ -66,13 +132,16 @@ export default function MenuContent() {
   const filteredItems = useMemo(() => {
     let items = activeCategory === "all"
       ? menuItems
-      : menuItems.filter((item) => item.categories.includes(activeCategory));
+      : menuItems.filter((item) => {
+          const catLabel = displayCategories.find((c) => c.key === activeCategory)?.label ?? activeCategory;
+          return item.categories.includes(catLabel);
+        });
     if (search.trim()) {
       const q = search.toLowerCase();
       items = items.filter((item) => item.name.toLowerCase().includes(q));
     }
     return items;
-  }, [menuItems, activeCategory, search]);
+  }, [menuItems, activeCategory, search, displayCategories]);
 
   return (
     <div className="min-h-screen bg-[#fafafa] flex flex-col">
@@ -84,34 +153,21 @@ export default function MenuContent() {
 
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-6xl mx-auto px-4 pt-4 pb-20 sm:pb-0">
-          {/* Back + Branch Picker Row */}
-          <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-            <Link
-              href="/"
-              className="inline-flex items-center gap-1 text-sm font-medium text-[#6b7280] hover:text-[#dc2626] transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-              </svg>
-              Back to Home
-            </Link>
-            {allBranches.length > 1 && (
-              <BranchSwitcher />
-            )}
-          </div>
+          {/* Banner Carousel */}
+          <BannerCarousel />
 
           {/* Branch name banner when branch is selected */}
           {branch && allBranches.length > 1 && (
-            <div
-              className="mb-4 px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2"
-              style={{ backgroundColor: "#fef2f2", color: "#dc2626" }}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              Viewing menu for <span className="font-bold">{branch.name}</span>
-              {branch.address && <span className="text-gray-400 font-normal hidden sm:inline">· {branch.address}</span>}
+            <div className="mb-4 px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-between" style={{ backgroundColor: "#fef2f2", color: "#dc2626" }}>
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Viewing menu for <span className="font-bold">{branch.name}</span>
+                {branch.address && <span className="text-gray-400 font-normal hidden sm:inline">· {branch.address}</span>}
+              </div>
+              {allBranches.length > 1 && <BranchSwitcher />}
             </div>
           )}
 

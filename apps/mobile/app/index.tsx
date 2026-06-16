@@ -42,6 +42,7 @@ export default function AuthScreen() {
   const [showRPass, setShowRPass] = useState(false);
   const [rcpass, setRCPass] = useState("");
   const [showRCPass, setShowRCPass] = useState(false);
+  const [rphone, setRPhone] = useState("");
   const [registerTosAgreed, setRegisterTosAgreed] = useState(false);
 
   // OTP
@@ -75,7 +76,8 @@ export default function AuthScreen() {
       return;
     }
     setLoading(true);
-    const result = await register(rusername, rname, remail, rpass, rcpass);
+    const phoneValue = rphone.trim() ? `+63${rphone.trim()}` : undefined;
+    const result = await register(rusername, rname, remail, rpass, rcpass, phoneValue);
     setLoading(false);
     if (result === "check-email") {
       setSuccess(
@@ -297,6 +299,22 @@ export default function AuthScreen() {
                   keyboardType="email-address"
                   autoCapitalize="none"
                 />
+
+                {/* Phone Number — Philippines only (+63 prefix) */}
+                <Text style={styles.label}>Phone Number (optional)</Text>
+                <View style={styles.phoneRow}>
+                  <View style={styles.phonePrefix}>
+                    <Text style={styles.phonePrefixText}>+63</Text>
+                  </View>
+                  <TextInput
+                    style={[styles.input, styles.phoneInput]}
+                    value={rphone}
+                    onChangeText={(v) => setRPhone(v.replace(/[^0-9]/g, ""))}
+                    placeholder="912 345 6789"
+                    keyboardType="phone-pad"
+                    maxLength={10}
+                  />
+                </View>
 
                 <Text style={styles.label}>Password</Text>
                 <View style={styles.passRow}>
@@ -674,5 +692,33 @@ const styles = StyleSheet.create({
   tosLink: {
     color: "#0a0a0a",
     fontWeight: "700",
+  },
+
+  // Phone Input (Philippines only)
+  phoneRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 0,
+  },
+  phonePrefix: {
+    borderWidth: 1,
+    borderRightWidth: 0,
+    borderColor: "#e5e7eb",
+    borderRadius: 10,
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    backgroundColor: "#f9fafb",
+  },
+  phonePrefixText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#0a0a0a",
+  },
+  phoneInput: {
+    flex: 1,
+    borderTopLeftRadius: 0,
+    borderBottomLeftRadius: 0,
   },
 });

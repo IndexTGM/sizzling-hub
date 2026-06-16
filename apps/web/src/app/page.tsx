@@ -1,11 +1,19 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import AuthForms from "./_components/AuthForms";
-import HomePage from "./_components/HomePage";
 
 export default function Page() {
   const { user, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace("/menu");
+    }
+  }, [loading, user, router]);
 
   if (loading) {
     return (
@@ -22,5 +30,5 @@ export default function Page() {
   }
 
   if (!user) return <AuthForms initialView="login" />;
-  return <HomePage />;
+  return null;
 }

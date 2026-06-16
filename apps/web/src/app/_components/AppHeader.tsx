@@ -15,7 +15,7 @@ export default function AppHeader({
 }: {
   onProfileClick: () => void;
   onCartToggle: () => void;
-  activePage?: "home" | "menu";
+  activePage?: "menu";
 }) {
   const { user, logout } = useAuth();
   const { itemCount } = useCart();
@@ -61,7 +61,6 @@ export default function AppHeader({
 
         {/* Center: Desktop Nav */}
         <nav className="hidden md:flex items-center gap-1">
-          <Link href="/" className={navLinkClass("home")}>Home</Link>
           <Link href="/menu" className={navLinkClass("menu")}>Menu</Link>
         </nav>
 
@@ -161,10 +160,6 @@ export default function AppHeader({
                 </div>
               </div>
 
-              <Link href="/" onClick={closeMobile} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors ${activePage === "home" ? "text-[#dc2626] bg-[#fef2f2]" : "text-[#374151] hover:bg-[#f9fafb]"}`}>
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
-                Home
-              </Link>
               <Link href="/menu" onClick={closeMobile} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors ${activePage === "menu" ? "text-[#dc2626] bg-[#fef2f2]" : "text-[#374151] hover:bg-[#f9fafb]"}`}>
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h7" /></svg>
                 Menu

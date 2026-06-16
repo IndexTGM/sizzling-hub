@@ -242,6 +242,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
         ? `${address.street}, ${address.city}, ${address.province}${address.zip ? ` ${address.zip}` : ""}`
         : null;
 
+      const orderNotes = addressStr ? `Address: ${addressStr}` : null;
+
       const paymentFields = payment
         ? { payment_method: payment.method, payment_source_id: payment.sourceId, payment_status: "unpaid" }
         : { payment_method: "cod", payment_source_id: null, payment_status: "unpaid" };
@@ -249,7 +251,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       const { data: order, error: orderErr } = await sb.from("orders").insert({
         customer_id: session.user.id, order_type: orderType, status: "pending",
         subtotal, delivery_fee: 0, discount: 0, total: subtotal,
-        notes: addressStr ? `Address: ${addressStr}` : null,
+        notes: orderNotes,
         branch_id: branchId || null,
         ...paymentFields,
       }).select("id").single();

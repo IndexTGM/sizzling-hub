@@ -5,22 +5,132 @@ import {
   TouchableOpacity,
   Image,
   FlatList,
+  ScrollView,
   TextInput,
   useWindowDimensions,
   ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
 import { useMenu } from "@/lib/menu-context";
 import { useBranch, type Branch } from "@/lib/branch-context";
+import { useBanners } from "@/lib/banner-context";
 import { getImageCandidates } from "@/lib/storage";
 
 const PRIMARY = "#dc2626";
 const AMBER = "#f59e0b";
 const PLACEHOLDER = "placeholder.png";
+const BANNER_COLORS = [
+  "#f59e0b", "#3b82f6", "#10b981", "#8b5cf6",
+  "#06b6d4", "#f97316", "#84cc16", "#ec4899",
+];
+
+function BannerCarousel({ show }: { show: boolean }) {
+  const { banners } = useBanners();
+  const { width: screenWidth } = useWindowDimensions();
+  const scrollRef = useRef<ScrollView>(null);
+  const [active, setActive] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (!show || banners.length === 0) return;
+    timerRef.current = setInterval(() => {
+      setActive((prev) => {
+        const next = (prev + 1) % banners.length;
+        scrollRef.current?.scrollTo({ x: next * screenWidth, animated: true });
+        return next;
+      });
+    }, 4000);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [show, screenWidth, banners.length]);
+
+  const onScrollEnd = useCallback((e: any) => {
+    const idx = Math.round(e.nativeEvent.contentOffset.x / screenWidth);
+    setActive(idx);
+  }, [screenWidth]);
+
+  if (!show || banners.length === 0) return null;
+
+  return (
+    <View style={bannerStyles.section}>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={onScrollEnd}
+        scrollEventThrottle={16}
+      >
+        {banners.map((b, i) => {
+          const accent = BANNER_COLORS[i % BANNER_COLORS.length];
+          return (
+            <View key={b.id} style={{ width: screenWidth, paddingHorizontal: 12 }}>
+              <View style={[bannerStyles.card, { backgroundColor: accent, height: 100 }]}>
+                <View style={bannerStyles.textWrap}>
+                  {b.tag ? (
+                    <View style={bannerStyles.tag}>
+                      <Text style={bannerStyles.tagText}>{b.tag}</Text>
+                    </View>
+                  ) : null}
+                  <Text style={bannerStyles.title} numberOfLines={1}>{b.title}</Text>
+                  <Text style={bannerStyles.subtitle} numberOfLines={1}>{b.subtitle}</Text>
+                </View>
+                {b.image ? (
+                  <StorageImg imageBase={b.image} style={bannerStyles.img} />
+                ) : null}
+              </View>
+            </View>
+          );
+        })}
+      </ScrollView>
+      <View style={bannerStyles.dotsRow}>
+        {banners.map((_, i) => {
+          const dotColor = BANNER_COLORS[i % BANNER_COLORS.length];
+          return (
+            <TouchableOpacity
+              key={i}
+              onPress={() => {
+                setActive(i);
+                scrollRef.current?.scrollTo({ x: i * screenWidth, animated: true });
+              }}
+              style={[
+                bannerStyles.dot,
+                i === active
+                  ? { width: 24, height: 7, backgroundColor: dotColor }
+                  : { width: 7, height: 7, backgroundColor: "#d1d5db" },
+              ]}
+            />
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+const bannerStyles = StyleSheet.create({
+  section: { paddingTop: 8, paddingBottom: 4 },
+  card: {
+    flexDirection: "row", borderRadius: 14, padding: 12,
+    overflow: "hidden", gap: 8, alignItems: "center",
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1, shadowRadius: 4, elevation: 3,
+  },
+  textWrap: { flex: 1, gap: 3 },
+  tag: {
+    alignSelf: "flex-start", paddingHorizontal: 6, paddingVertical: 1,
+    borderRadius: 4, backgroundColor: "rgba(255,255,255,0.25)",
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.2)",
+  },
+  tagText: { color: "#fff", fontSize: 8, fontWeight: "800", letterSpacing: 1, textTransform: "uppercase" },
+  title: { fontSize: 14, fontWeight: "900", color: "#fff", letterSpacing: -0.5 },
+  subtitle: { fontSize: 10, fontWeight: "500", color: "rgba(255,255,255,0.85)" },
+  img: { width: 60, height: 60, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.15)" },
+  dotsRow: { flexDirection: "row", justifyContent: "center", gap: 5, paddingTop: 8 },
+  dot: { borderRadius: 4 },
+});
 
 /* ──────────────────────────── Storage Image ───────────────────── */
 function StorageImg({ imageBase, style, resizeMode }: { imageBase: string; style: any; resizeMode?: "cover" | "contain" }) {
@@ -139,16 +249,18 @@ export default function MenuScreen() {
   const { itemCount } = useCart();
   const [activeCat, setActiveCat] = useState("all");
   const [search, setSearch] = useState("");
+  const [showBanners, setShowBanners] = useState(true);
   const { cols, cardW, gap } = useGridLayout();
   const { user } = useAuth();
 
   const displayCats = useMemo(() => [
     { key: "all", label: "All" },
-    ...categories.map((c) => ({ key: c.name, label: c.name })),
+    ...categories.map((c) => ({ key: c.id, label: c.name })),
   ], [categories]);
 
   const filtered = useMemo(() => {
-    let items = activeCat === "all" ? menuItems : menuItems.filter((i) => i.categories?.includes(activeCat));
+    const activeCatLabel = activeCat === "all" ? "all" : displayCats.find((c) => c.key === activeCat)?.label ?? activeCat;
+    let items = activeCatLabel === "all" ? menuItems : menuItems.filter((i) => i.categories?.includes(activeCatLabel));
     if (search.trim()) {
       const q = search.toLowerCase();
       items = items.filter((i) => i.name.toLowerCase().includes(q));
@@ -165,9 +277,15 @@ export default function MenuScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Menu</Text>
         <View style={styles.headerSpacer} />
+        <Text style={styles.headerTitle}>Menu</Text>
+        <TouchableOpacity style={styles.bannerToggle} onPress={() => setShowBanners((p) => !p)} activeOpacity={0.7}>
+          <Text style={styles.bannerToggleText}>{showBanners ? "📢" : "🔇"}</Text>
+          <Text style={styles.bannerToggleLabel}>{showBanners ? "Hide" : "Show"}</Text>
+        </TouchableOpacity>
       </View>
+
+      <BannerCarousel show={showBanners} />
 
       {loading ? (
         <View style={styles.loadingWrap}><ActivityIndicator size="large" color={PRIMARY} /></View>
@@ -220,9 +338,6 @@ export default function MenuScreen() {
       )}
 
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.footerBtn} onPress={() => router.replace("/home")}>
-          <Text style={styles.footerIcon}>🏠</Text><Text style={styles.footerLabel}>Home</Text>
-        </TouchableOpacity>
         <TouchableOpacity style={styles.footerBtn}>
           <Text style={styles.footerIconActive}>🍽️</Text><Text style={styles.footerLabelActive}>Menu</Text>
         </TouchableOpacity>
@@ -256,6 +371,9 @@ const styles = StyleSheet.create({
   backIcon: { fontSize: 18, fontWeight: "700", color: "#374151" },
   headerTitle: { fontSize: 18, fontWeight: "800", color: PRIMARY, letterSpacing: -0.5 },
   headerSpacer: { width: 36 },
+  bannerToggle: { width: 44, alignItems: "center", justifyContent: "center" },
+  bannerToggleText: { fontSize: 16 },
+  bannerToggleLabel: { fontSize: 8, fontWeight: "700", color: "#6b7280", marginTop: 1 },
   loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
   branchBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#fff", borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
   branchBtnIcon: { fontSize: 14 },

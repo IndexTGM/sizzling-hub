@@ -16,6 +16,7 @@ import { useRouter } from "expo-router";
 import { useCallback, useMemo, memo, useRef, useState } from "react";
 const PRIMARY = "#dc2626";
 import { useCart, type CartItem } from "@/lib/cart-context";
+import { useBranch } from "@/lib/branch-context";
 import { supabase } from "@/lib/supabase";
 import { getImageCandidates } from "@/lib/storage";
 
@@ -125,6 +126,7 @@ export default function CartScreen() {
   const [checkoutVisible, setCheckoutVisible] = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [placing, setPlacing] = useState(false);
+  const { branchId } = useBranch();
   const [orderType, setOrderType] = useState<"dine_in" | "takeout">("dine_in");
   const orderTypeLabel = orderType === "dine_in" ? "Dine In" : "Takeout";
   const orderTypeIcon = orderType === "dine_in" ? "🍽️" : "🛍️";
@@ -224,6 +226,7 @@ export default function CartScreen() {
           discount: 0,
           total: subtotal,
           notes: null,
+          branch_id: branchId,
         })
         .select("id")
         .single();

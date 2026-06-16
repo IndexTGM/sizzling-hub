@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { supabase } from "@/lib/supabase";
+import { useBranch } from "@/lib/branch-context";
 
 export interface Banner {
   id: string;
@@ -26,6 +27,7 @@ interface BannerContextType {
 const BannerContext = createContext<BannerContextType | null>(null);
 
 export function BannerProvider({ children }: { children: ReactNode }) {
+  const { branchId } = useBranch();
   const [banners, setBanners] = useState<Banner[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,11 +35,15 @@ export function BannerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await supabase
+        let query = supabase
           .from("banners")
           .select("id, title, subtitle, image, tag, sort_order, is_active")
           .eq("is_active", true)
           .order("sort_order", { ascending: true });
+        if (branchId) {
+          query = query.or(`branch_id.eq.${branchId},branch_id.is.null`);
+        }
+        const { data } = await query;
         if (data) setBanners(data);
       } catch (e: any) {
         setError(e?.message || "Failed to load banners");
@@ -45,7 +51,7 @@ export function BannerProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [branchId]);
 
   return (
     <BannerContext.Provider value={{ banners, loading, error }}>

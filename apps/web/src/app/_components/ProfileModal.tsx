@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { useBranch } from "@/lib/branch-context";
 import { createClient } from "@/lib/supabase/client";
 import AddressModal from "./AddressModal";
 import ConfirmModal from "./ConfirmModal";
@@ -14,8 +15,10 @@ export default function ProfileModal({
   onClose: () => void;
 }) {
   const { user, updateProfile } = useAuth();
+  const { branchLocation } = useBranch();
   const [editUsername, setEditUsername] = useState(user?.username || "");
   const [editName, setEditName] = useState(user?.fullName || "");
+  const [editPhone, setEditPhone] = useState(user?.phone || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -88,7 +91,12 @@ export default function ProfileModal({
               {user?.fullName?.charAt(0)?.toUpperCase() || "U"}
             </div>
             <div className="min-w-0">
-              <p className="font-semibold text-sm text-[#0a0a0a] truncate">@{user?.username}</p>
+              <div className="flex items-center gap-2">
+                <p className="font-semibold text-sm text-[#0a0a0a] truncate">@{user?.username}</p>
+                <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-extrabold ${user?.role === "admin" ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-600"}`}>
+                  {user?.role === "admin" ? "🛡️ Admin" : "👤 Customer"}
+                </span>
+              </div>
               <p className="text-xs text-[#6b7280] truncate">{user?.email}</p>
             </div>
           </div>
@@ -99,7 +107,7 @@ export default function ProfileModal({
               setError("");
               setSuccess("");
               setLoading(true);
-              const err = await updateProfile(editUsername, editName);
+              const err = await updateProfile(editUsername, editName, editPhone || undefined);
               setLoading(false);
               if (err) {
                 setError(err);
@@ -125,6 +133,15 @@ export default function ProfileModal({
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
               placeholder="Your name"
+              className="w-full px-4 py-2.5 rounded-lg border border-[#e5e7eb] text-sm text-[#0a0a0a] placeholder-[#9ca3af] focus:outline-none focus:ring-2 focus:ring-[#dc2626]/30 focus:border-[#dc2626] transition-all duration-150"
+            />
+
+            <label className="block text-sm font-semibold text-[#0a0a0a]">Phone Number <span className="text-[#9ca3af] font-normal">(optional)</span></label>
+            <input
+              type="tel"
+              value={editPhone}
+              onChange={(e) => setEditPhone(e.target.value)}
+              placeholder="+639171234567"
               className="w-full px-4 py-2.5 rounded-lg border border-[#e5e7eb] text-sm text-[#0a0a0a] placeholder-[#9ca3af] focus:outline-none focus:ring-2 focus:ring-[#dc2626]/30 focus:border-[#dc2626] transition-all duration-150"
             />
 
@@ -241,6 +258,9 @@ export default function ProfileModal({
         open={addressModalOpen}
         onClose={() => setAddressModalOpen(false)}
         userId={user?.id || ""}
+        branchLat={branchLocation.lat}
+        branchLng={branchLocation.lng}
+        branchRadiusKm={branchLocation.deliveryRadiusKm}
       />
     </>
   );
