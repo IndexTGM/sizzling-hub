@@ -272,9 +272,28 @@ export default function OrderDetailPage() {
         @media print {
           body * { visibility: hidden; }
           #receipt-container, #receipt-container * { visibility: visible; }
-          #receipt-container { position: absolute; left: 0; top: 0; width: 100%; padding: 0; margin: 0; }
+          #receipt-container {
+            position: absolute; left: 0; top: 0;
+            width: 58mm; padding: 0; margin: 0;
+            font-family: monospace;
+            color: #000 !important;
+            background: #fff !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          #receipt-container * {
+            color: #000 !important;
+            background: transparent !important;
+            border-color: #000 !important;
+          }
+          #receipt-container .receipt-logo {
+            filter: grayscale(100%) !important;
+          }
+          #receipt-container .receipt-red-bar {
+            background: #000 !important;
+          }
           .no-print { display: none !important; }
-          @page { margin: 10mm; size: auto; }
+          @page { margin: 0; size: 58mm auto; }
         }
       `}</style>
 
@@ -306,9 +325,12 @@ export default function OrderDetailPage() {
             <>
               {/* ─── Receipt ─── */}
               <div ref={receiptRef} id="receipt-container" className="bg-white rounded-2xl border border-[#e5e7eb] overflow-hidden">
-                <div className="h-2" style={{ backgroundColor: PRIMARY }} />
+                <div className="h-2 receipt-red-bar" style={{ backgroundColor: PRIMARY }} />
                 <div className="p-5">
                   <div className="text-center mb-4">
+                    <div className="flex justify-center mb-3">
+                      <StorageImage imageBaseName="logo" alt="Sizzling Hub" className="w-16 h-16 object-contain receipt-logo" />
+                    </div>
                     <h2 className="text-xl font-black" style={{ color: PRIMARY }}>SIZZLING HUB</h2>
                     <p className="text-xs text-[#9ca3af] font-mono mt-0.5">Order Receipt</p>
                   </div>
