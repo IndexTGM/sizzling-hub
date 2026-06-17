@@ -274,8 +274,9 @@ export default function OrderDetailPage() {
           #receipt-container, #receipt-container * { visibility: visible; }
           #receipt-container {
             position: absolute; left: 0; top: 0;
-            width: 58mm; padding: 0; margin: 0;
+            width: 80mm; padding: 0; margin: 0;
             font-family: monospace;
+            font-size: 10px;
             color: #000 !important;
             background: #fff !important;
             -webkit-print-color-adjust: exact;
@@ -293,7 +294,7 @@ export default function OrderDetailPage() {
             background: #000 !important;
           }
           .no-print { display: none !important; }
-          @page { margin: 0; size: 58mm auto; }
+          @page { margin: 0; size: 80mm 210mm; }
         }
       `}</style>
 
