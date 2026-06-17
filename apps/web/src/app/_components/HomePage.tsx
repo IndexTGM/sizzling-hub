@@ -292,7 +292,7 @@ export default function HomePage() {
       <AppHeader
         onProfileClick={() => setProfileOpen(true)}
         onCartToggle={() => setCartOpen(!cartOpen)}
-        activePage="home"
+        activePage="menu"
       />
 
       {/* ─── Scrollable Content ─── */}
