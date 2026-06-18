@@ -134,7 +134,6 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const hasLoadedRef = useRef(false);
-
   // Review states
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewItem, setReviewItem] = useState<OrderItem | null>(null);
@@ -274,9 +273,13 @@ export default function OrderDetailPage() {
           #receipt-container, #receipt-container * { visibility: visible; }
           #receipt-container {
             position: absolute; left: 0; top: 0;
-            width: 80mm; padding: 0; margin: 0;
+            width: auto; max-width: auto;
+            padding: 2mm; margin: 0;
+            box-sizing: border-box;
+            overflow: hidden;
             font-family: monospace;
-            font-size: 10px;
+            font-size: 11px;
+            line-height: 1.3;
             color: #000 !important;
             background: #fff !important;
             -webkit-print-color-adjust: exact;
@@ -294,7 +297,7 @@ export default function OrderDetailPage() {
             background: #000 !important;
           }
           .no-print { display: none !important; }
-          @page { margin: 0; size: 80mm 210mm; }
+          @page { margin: 0; size: auto auto; }
         }
       `}</style>
 
@@ -329,9 +332,6 @@ export default function OrderDetailPage() {
                 <div className="h-2 receipt-red-bar" style={{ backgroundColor: PRIMARY }} />
                 <div className="p-5">
                   <div className="text-center mb-4">
-                    <div className="flex justify-center mb-3">
-                      <StorageImage imageBaseName="logo" alt="Sizzling Hub" className="w-16 h-16 object-contain receipt-logo" />
-                    </div>
                     <h2 className="text-xl font-black" style={{ color: PRIMARY }}>SIZZLING HUB</h2>
                     <p className="text-xs text-[#9ca3af] font-mono mt-0.5">Order Receipt</p>
                   </div>
@@ -342,7 +342,7 @@ export default function OrderDetailPage() {
                     {order.paymentMethod && <div className="flex justify-between text-sm"><span className="text-[#6b7280] font-medium">Payment</span><span className="font-semibold text-[#0a0a0a]">{PAYMENT_ICON_MAP[order.paymentMethod] || order.paymentMethod}{order.paymentStatus && <span className={`ml-2 px-1.5 py-0.5 rounded-full text-xs font-semibold ${order.paymentStatus === "paid" ? "text-emerald-600 bg-emerald-50" : order.paymentStatus === "failed" ? "text-red-600 bg-red-50" : "text-amber-600 bg-amber-50"}`}>{order.paymentStatus}</span>}</span></div>}
                     <div className="flex justify-between text-sm"><span className="text-[#6b7280] font-medium">Placed</span><span className="font-semibold text-[#0a0a0a]">{formatDateTime(order.placedAt)}</span></div>
                     {order.completedAt && <div className="flex justify-between text-sm"><span className="text-[#6b7280] font-medium">Completed</span><span className="font-semibold text-[#0a0a0a]">{formatDateTime(order.completedAt)}</span></div>}
-                    {order.notes && <div className="flex justify-between text-sm"><span className="text-[#6b7280] font-medium">Notes</span><span className="font-semibold text-[#0a0a0a] italic max-w-[60%] text-right">{order.notes}</span></div>}
+                    {order.notes && <div className="flex justify-between text-sm"><span className="text-[#6b7280] font-medium">Notes</span><span className="font-semibold text-[#0a0a0a] italic" style={{ maxWidth: "60%", textAlign: "right", overflowWrap: "break-word" }}>{order.notes}</span></div>}
                   </div>
 
                   <div className="py-3 space-y-2">
@@ -373,7 +373,7 @@ export default function OrderDetailPage() {
                   </div>
                   <div className="text-center mt-4 pt-3 border-t border-dashed border-[#e5e7eb]">
                     <p className="text-xs text-[#9ca3af]">Thank you for your order!</p>
-                    <p className="text-xs text-[#d1d5db] mt-0.5">Receipt • {formatDateTime(order.placedAt)}</p>
+                    <p className="text-xs text-[#d1d5db] mt-0.5" style={{ overflowWrap: "break-word" }}>Receipt • {formatDateTime(order.placedAt)}</p>
                   </div>
                 </div>
               </div>

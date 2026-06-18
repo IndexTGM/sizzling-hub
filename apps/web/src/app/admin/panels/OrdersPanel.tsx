@@ -237,7 +237,7 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
                     {/* Customer Phone */}
                     {o.customerPhone && (
                       <div className="pt-1.5 border-t border-gray-200 mt-1.5 flex items-center gap-2">
-                        <span className="text-xs font-semibold text-gray-400">�</span>
+                        <span className="text-xs font-semibold text-gray-400">📱</span>
                         <span className="text-xs font-semibold text-gray-700">{o.customerPhone}</span>
                       </div>
                     )}
@@ -295,9 +295,9 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
           <div className="fixed inset-0 bg-black/30 z-50" onClick={() => setReceiptOrder(null)} />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl border border-gray-200 shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-              <style jsx global>{`@media print { body * { visibility: hidden; } .receipt-popup, .receipt-popup * { visibility: visible; } .receipt-popup { position: absolute; left: 0; top: 0; width: 80mm; padding: 0; margin: 0; max-height: none !important; font-family: monospace; font-size: 10px; color: #000 !important; background: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } .receipt-popup * { color: #000 !important; background: transparent !important; border-color: #000 !important; } .receipt-popup .receipt-logo { filter: grayscale(100%) !important; } .no-print { display: none !important; } @page { margin: 0; size: 80mm 210mm; } }`}</style>
+              <style jsx global>{`@media print { body * { visibility: hidden; } .receipt-popup, .receipt-popup * { visibility: visible; } .receipt-popup { position: absolute; left: 0; top: 0; width: auto; max-width: auto; padding: 2mm; margin: 0; box-sizing: border-box; overflow: hidden; max-height: none !important; font-family: monospace; font-size: 11px; line-height: 1.3; color: #000 !important; background: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } .receipt-popup * { color: #000 !important; background: transparent !important; border-color: #000 !important; } .no-print { display: none !important; } @page { margin: 0; size: auto auto; } html, body { margin: 0 !important; padding: 0 !important; } }`}</style>
               <div className="receipt-popup p-5">
-<div className="text-center mb-4"><div className="flex justify-center mb-3"><img src="/logo.png" alt="Sizzling Hub" className="w-16 h-16 object-contain receipt-logo" /></div><h2 className="text-xl font-black text-red-600">SIZZLING HUB</h2><p className="text-xs text-gray-400 font-mono mt-0.5">Order Receipt</p></div>
+<div className="text-center mb-4"><h2 className="text-xl font-black text-red-600">SIZZLING HUB</h2><p className="text-xs text-gray-400 font-mono mt-0.5">Order Receipt</p></div>
                 <div className="border-t border-b border-dashed border-gray-200 py-3 space-y-1.5">
                   <div className="flex justify-between text-sm"><span className="text-gray-500 font-medium">Order #</span><span className="font-mono font-bold text-gray-900">{receiptOrder.id.slice(0, 8).toUpperCase()}</span></div>
                   <div className="flex justify-between text-sm"><span className="text-gray-500 font-medium">Customer</span><span className="font-semibold text-gray-800">{receiptOrder.customerName}</span></div>
