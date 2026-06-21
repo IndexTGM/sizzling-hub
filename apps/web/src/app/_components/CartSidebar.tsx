@@ -128,8 +128,8 @@ export default function CartSidebar({
             type: paymentMethod,
             successUrl: `${origin}/payment/success`,
             failedUrl: `${origin}/payment/failed`,
-            billing: user?.fullName
-              ? { name: user.fullName, email: user.email || "", phone: user?.phone || "" }
+            billing: user
+              ? { name: `${user.first_name} ${user.last_name}`, email: user.email || "", phone: user?.phone || "" }
               : undefined,
           }),
         });

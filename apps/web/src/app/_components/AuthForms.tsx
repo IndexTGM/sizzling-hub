@@ -19,7 +19,8 @@ export default function AuthForms({ initialView }: { initialView: View }) {
   const [lpass, setLPass] = useState("");
 
   const [rusername, setRUsername] = useState("");
-  const [rname, setRName] = useState("");
+  const [rfirstname, setRFirstname] = useState("");
+  const [rlastname, setRLastname] = useState("");
   const [remail, setREmail] = useState("");
   const [rpass, setRPass] = useState("");
   const [rcpass, setRCPass] = useState("");
@@ -59,11 +60,16 @@ export default function AuthForms({ initialView }: { initialView: View }) {
       return;
     }
     setLoading(true);
-    const phoneValue = rphone.trim() ? `+63${rphone.trim()}` : undefined;
-    const err = await register(rusername, rname, remail, rpass, rcpass, phoneValue);
+    if (!rphone.trim()) {
+      setError("Phone number is required.");
+      setLoading(false);
+      return;
+    }
+    const phoneValue = `+63${rphone.trim()}`;
+    const err = await register(rusername, rfirstname, rlastname, remail, rpass, rcpass, phoneValue);
     setLoading(false);
     if (err === "check-email") {
-      setSuccess("Account created! Check your email for a confirmation link. (If email confirmation is disabled in Supabase, you can log in immediately.)");
+      setSuccess("Account created! Check your email for a confirmation link.");
     } else if (err) {
       setError(err);
     }
@@ -183,12 +189,13 @@ export default function AuthForms({ initialView }: { initialView: View }) {
           {view === "register" && (
             <form onSubmit={handleRegister} className="space-y-4">
               <InputField label="Username" type="text" value={rusername} onChange={setRUsername} placeholder="yourname" />
-              <InputField label="Full Name" type="text" value={rname} onChange={setRName} placeholder="Charles Marquez" />
+              <InputField label="First Name" type="text" value={rfirstname} onChange={setRFirstname} placeholder="Charles" />
+              <InputField label="Last Name" type="text" value={rlastname} onChange={setRLastname} placeholder="Marquez" />
               <InputField label="Email" type="email" value={remail} onChange={setREmail} placeholder="you@example.com" />
 
               {/* Phone Number — Philippines only (+63 prefix) */}
               <div>
-                <label className="block text-sm font-semibold text-[#0a0a0a] mb-1.5">Phone Number <span className="text-[#9ca3af] font-normal">(optional)</span></label>
+                <label className="block text-sm font-semibold text-[#0a0a0a] mb-1.5">Phone Number</label>
                 <div className="flex">
                   <span className="flex items-center px-3 py-2.5 rounded-l-lg border border-r-0 border-[#e5e7eb] bg-[#f9fafb] text-sm font-semibold text-[#0a0a0a]">+63</span>
                   <input

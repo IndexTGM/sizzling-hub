@@ -8,12 +8,13 @@ RETURNS trigger AS $$
 BEGIN
   -- Only create profile when email is confirmed
   IF new.email_confirmed_at IS NOT NULL THEN
-    INSERT INTO public.profiles (id, email, username, full_name, role)
+    INSERT INTO public.profiles (id, email, username, first_name, last_name, role)
     VALUES (
       new.id,
       new.email,
       new.raw_user_meta_data->>'username',
-      new.raw_user_meta_data->>'full_name',
+      new.raw_user_meta_data->>'first_name',
+      new.raw_user_meta_data->>'last_name',
       'customer'
     );
   END IF;
@@ -26,12 +27,13 @@ CREATE OR REPLACE FUNCTION public.handle_user_confirmed()
 RETURNS trigger AS $$
 BEGIN
   IF new.email_confirmed_at IS NOT NULL AND old.email_confirmed_at IS NULL THEN
-    INSERT INTO public.profiles (id, email, username, full_name, role)
+    INSERT INTO public.profiles (id, email, username, first_name, last_name, role)
     VALUES (
       new.id,
       new.email,
       new.raw_user_meta_data->>'username',
-      new.raw_user_meta_data->>'full_name',
+      new.raw_user_meta_data->>'first_name',
+      new.raw_user_meta_data->>'last_name',
       'customer'
     )
     ON CONFLICT (id) DO NOTHING;

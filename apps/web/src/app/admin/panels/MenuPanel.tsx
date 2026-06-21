@@ -103,8 +103,12 @@ export default function MenuPanel({ branchId }: { branchId?: string | null }) {
     if (reviewsItem?.id === item.id) { setReviewsItem(null); return; }
     setReviewsItem(item); setReviewsLoading(true);
     const sb = createClient();
-    const { data } = await sb.from("reviews").select("id, rating, comment, created_at, profiles:customer_id(full_name)").eq("menu_item_id", item.id).order("created_at", { ascending: false }).limit(50);
-    setReviews((data || []).map((r: any) => ({ id: r.id, customerName: r.profiles?.full_name || "Anonymous", rating: r.rating, comment: r.comment, createdAt: r.created_at })));
+    const { data } = await sb.from("reviews").select("id, rating, comment, created_at, profiles:customer_id(first_name, last_name)").eq("menu_item_id", item.id).order("created_at", { ascending: false }).limit(50);
+    setReviews((data || []).map((r: any) => {
+      const p = r.profiles;
+      const custName = p?.first_name && p?.last_name ? `${p.first_name} ${p.last_name}` : "Anonymous";
+      return { id: r.id, customerName: custName, rating: r.rating, comment: r.comment, createdAt: r.created_at };
+    }));
     setReviewsLoading(false);
   }
 

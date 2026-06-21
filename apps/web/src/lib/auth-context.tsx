@@ -17,7 +17,7 @@ function isValidEmail(email: string): boolean {
 }
 
 function validatePhone(phone?: string): string | null {
-  if (!phone || !phone.trim()) return null; // phone is optional
+  if (!phone || !phone.trim()) return "Phone number is required.";
   const cleaned = phone.replace(/[\s\-\(\)\.]/g, "");
   if (cleaned.length < 7) return "Phone number is too short.";
   if (cleaned.length > 15) return "Phone number is too long.";
@@ -28,10 +28,11 @@ function validatePhone(phone?: string): string | null {
 export interface User {
   id: string;
   username: string;
-  fullName: string;
+  first_name: string;
+  last_name: string;
   email: string;
   role: string;
-  phone: string | null;
+  phone?: string | null;
 }
 
 interface AuthContextType {
@@ -40,16 +41,17 @@ interface AuthContextType {
   login: (username: string, password: string) => Promise<string | null>;
   register: (
     username: string,
-    fullName: string,
+    firstName: string,
+    lastName: string,
     email: string,
     password: string,
     confirmPassword: string,
-    phone?: string
+    phone: string
   ) => Promise<string | null>;
   logout: () => Promise<void>;
   signInWithOtp: (email: string) => Promise<string | null>;
   verifySignInOtp: (email: string, token: string) => Promise<string | null>;
-  updateProfile: (username: string, fullName: string, phone?: string) => Promise<string | null>;
+  updateProfile: (username: string, firstName: string, lastName: string, phone?: string) => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -65,7 +67,7 @@ function getSupabase() {
 function buildUser(
   id: string,
   sessionUser: { email?: string; user_metadata?: Record<string, unknown> },
-  profile?: { username?: string; full_name?: string; role?: string; phone?: string | null } | null
+  profile?: { username?: string; first_name?: string; last_name?: string; role?: string; phone?: string | null } | null
 ): User {
   return {
     id,
@@ -74,10 +76,13 @@ function buildUser(
       (sessionUser.user_metadata?.username as string) ||
       sessionUser.email?.split("@")[0] ||
       "",
-    fullName:
-      profile?.full_name ||
-      (sessionUser.user_metadata?.full_name as string) ||
-      sessionUser.email ||
+    first_name:
+      profile?.first_name ||
+      (sessionUser.user_metadata?.first_name as string) ||
+      "",
+    last_name:
+      profile?.last_name ||
+      (sessionUser.user_metadata?.last_name as string) ||
       "",
     email: sessionUser.email || "",
     role: (profile?.role as string) || "customer",
@@ -101,7 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (session?.user) {
           const { data: profile } = await sb
             .from("profiles")
-            .select("username, full_name, role, phone")
+            .select("username, first_name, last_name, role, phone")
             .eq("id", session.user.id)
             .maybeSingle();
           const u = buildUser(session.user.id, session.user, profile);
@@ -134,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .eq("username", username.trim().toLowerCase())
         .maybeSingle();
 
-      if (!profile?.email) return "No account found with that username.";
+      if (!profile?.email) return "Incorrect username or password. Please try again.";
 
       const { data, error } = await sb.auth.signInWithPassword({
         email: profile.email,
@@ -152,7 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data.session?.user) {
         const { data: fullProfile } = await sb
           .from("profiles")
-          .select("username, full_name, role, phone")
+          .select("username, first_name, last_name, role, phone")
           .eq("id", data.session.user.id)
           .maybeSingle();
         const u = buildUser(data.session.user.id, data.session.user, fullProfile);
@@ -167,21 +172,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = useCallback(
     async (
       username: string,
-      fullName: string,
+      firstName: string,
+      lastName: string,
       email: string,
       password: string,
       confirmPassword: string,
-      phone?: string
+      phone: string,
     ): Promise<string | null> => {
       if (!username.trim()) return "Username is required.";
       if (username.trim().length < 3)
         return "Username must be at least 3 characters.";
       if (!/^[a-zA-Z0-9_]+$/.test(username.trim()))
         return "Username can only contain letters, numbers, and underscores.";
-      if (!fullName.trim()) return "Full name is required.";
+      if (!firstName.trim()) return "First name is required.";
+      if (!lastName.trim()) return "Last name is required.";
       if (!email.trim()) return "Email is required.";
       if (!isValidEmail(email))
         return "Please enter a valid email address.";
+      const phoneErr = validatePhone(phone);
+      if (phoneErr) return phoneErr;
       if (password.length < 8)
         return "Password must be at least 8 characters long.";
       if (!/[A-Z]/.test(password))
@@ -193,12 +202,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!/[^A-Za-z0-9]/.test(password))
         return "Password must contain at least one special character.";
       if (password !== confirmPassword) return "Passwords do not match.";
-      const phoneErr = validatePhone(phone);
-      if (phoneErr) return phoneErr;
 
       const sb = getSupabase();
       const usernameLower = username.trim().toLowerCase();
-      const phoneClean = phone?.trim() || null;
+      const phoneClean = phone.trim();
 
       // Check if username is taken
       const { data: existingUsername } = await sb
@@ -224,7 +231,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         options: {
           data: {
             username: usernameLower,
-            full_name: fullName.trim(),
+            first_name: firstName.trim(),
+            last_name: lastName.trim(),
             phone: phoneClean,
           },
         },
@@ -239,15 +247,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const u: User = {
           id: data.session.user.id,
           username: usernameLower,
-          fullName: fullName.trim(),
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
           email: data.session.user.email || email.toLowerCase(),
           role: "customer",
           phone: phoneClean,
         };
-        // Update profile with phone if provided
-        if (phoneClean) {
-          await sb.from("profiles").update({ phone: phoneClean }).eq("id", u.id);
-        }
+        // Update profile with phone
+        await sb.from("profiles").update({ phone: phoneClean }).eq("id", u.id);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
         setUser(u);
         return null;
@@ -266,9 +273,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateProfile = useCallback(
-    async (username: string, fullName: string, phone?: string): Promise<string | null> => {
+    async (username: string, firstName: string, lastName: string, phone?: string): Promise<string | null> => {
       if (!username.trim()) return "Username cannot be empty.";
-      if (!fullName.trim()) return "Name cannot be empty.";
+      if (!firstName.trim()) return "First name cannot be empty.";
+      if (!lastName.trim()) return "Last name cannot be empty.";
       const phoneErr = validatePhone(phone);
       if (phoneErr) return phoneErr;
 
@@ -294,7 +302,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const updateData: Record<string, unknown> = {
         username: usernameLower,
-        full_name: fullName.trim(),
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
       };
       if (phoneClean !== undefined) {
         updateData.phone = phoneClean;
@@ -310,7 +319,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const updated: User = {
         id: session.user.id,
         username: usernameLower,
-        fullName: fullName.trim(),
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
         email: session.user.email || user?.email || "",
         role: user?.role || "customer",
         phone: phoneClean,
@@ -366,7 +376,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data?.session?.user) {
         const { data: profile } = await sb
           .from("profiles")
-          .select("username, full_name, role, phone")
+          .select("username, first_name, last_name, role, phone")
           .eq("id", data.session.user.id)
           .maybeSingle();
         const u = buildUser(data.session.user.id, data.session.user, profile);

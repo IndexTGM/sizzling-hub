@@ -90,9 +90,9 @@ export default function AppHeader({
               style={{ backgroundColor: dropdownOpen ? "#fef2f2" : "transparent", color: dropdownOpen ? "#dc2626" : "#6b7280" }}
             >
               <span className="w-7 h-7 rounded-full bg-[#dc2626] flex items-center justify-center text-white text-xs font-bold">
-                {user?.fullName?.charAt(0)?.toUpperCase() || "U"}
+                {user?.first_name?.charAt(0)?.toUpperCase() || "U"}
               </span>
-              <span className="hidden lg:inline">{user?.fullName}</span>
+              <span className="hidden lg:inline">{user ? `${user.first_name} ${user.last_name}` : ""}</span>
               <svg className={`w-4 h-4 transition-transform duration-200 ${dropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
               </svg>
@@ -100,7 +100,7 @@ export default function AppHeader({
             {dropdownOpen && (
               <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-[#e5e7eb] py-1.5 z-50 animate-fade-in">
                 <div className="px-4 py-2.5 border-b border-[#f3f4f6]">
-                  <p className="text-sm font-semibold text-[#0a0a0a] truncate">{user?.fullName}</p>
+                  <p className="text-sm font-semibold text-[#0a0a0a] truncate">{user ? `${user.first_name} ${user.last_name}` : ""}</p>
                   <p className="text-xs text-[#9ca3af] truncate">{user?.email}</p>
                 </div>
                 <button onClick={() => { setDropdownOpen(false); onProfileClick(); }} className="w-full text-left px-4 py-2.5 text-sm font-medium text-[#374151] hover:bg-[#f9fafb] hover:text-[#dc2626] transition-colors flex items-center gap-2">
@@ -152,10 +152,10 @@ export default function AppHeader({
             <div className="px-4 py-3 space-y-1">
               <div className="flex items-center gap-3 px-2 py-2 mb-2 bg-[#f9fafb] rounded-xl">
                 <span className="w-9 h-9 rounded-full bg-[#dc2626] flex items-center justify-center text-white text-sm font-bold shrink-0">
-                  {user?.fullName?.charAt(0)?.toUpperCase() || "U"}
+                  {user?.first_name?.charAt(0)?.toUpperCase() || "U"}
                 </span>
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-[#0a0a0a] truncate">{user?.fullName}</p>
+                  <p className="text-sm font-semibold text-[#0a0a0a] truncate">{user ? `${user.first_name} ${user.last_name}` : ""}</p>
                   <p className="text-xs text-[#9ca3af] truncate">{user?.email}</p>
                 </div>
               </div>

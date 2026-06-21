@@ -72,14 +72,16 @@ export default function MenuItemPage() {
       setReviewsLoading(true);
       const sb = createClient();
       sb.from("reviews")
-        .select("id, rating, comment, created_at, profiles:customer_id(full_name)")
+        .select("id, rating, comment, created_at, profiles:customer_id(first_name, last_name)")
         .eq("menu_item_id", item.id)
         .order("created_at", { ascending: false })
         .limit(20)
         .then(({ data }) => {
           const mapped: Review[] = (data || []).map((r: any) => ({
             id: r.id,
-            customerName: r.profiles?.full_name || "Anonymous",
+            customerName: r.profiles?.first_name && r.profiles?.last_name
+              ? `${r.profiles.first_name} ${r.profiles.last_name}`
+              : "Anonymous",
             rating: r.rating,
             comment: r.comment,
             createdAt: r.created_at,

@@ -6,7 +6,7 @@ import { logAudit } from "@/lib/audit-log";
 import { LoadingSkeleton, EmptyState } from "./shared";
 
 interface Profile {
-  id: string; full_name: string; email: string; role: string; phone: string | null; created_at: string;
+  id: string; first_name: string; last_name: string; email: string; role: string; phone: string | null; created_at: string;
 }
 
 export default function ProfilesPanel() {
@@ -17,7 +17,7 @@ export default function ProfilesPanel() {
   const [search, setSearch] = useState("");
   const fetchProfiles = useCallback(async () => {
     const sb = createClient();
-    const { data } = await sb.from("profiles").select("id, full_name, email, role, phone, created_at").order("created_at", { ascending: false });
+    const { data } = await sb.from("profiles").select("id, first_name, last_name, email, role, phone, created_at").order("created_at", { ascending: false });
     if (data) setProfiles(data as Profile[]);
     setLoading(false);
   }, []);
@@ -32,7 +32,7 @@ export default function ProfilesPanel() {
     logAudit({ action: "update_role", entity_type: "profile", entity_id: profileId, details: { from: prev?.role, to: newRole } });
   }
   let filtered = roleFilter === "all" ? profiles : profiles.filter((p) => p.role === roleFilter);
-  if (search) { const q = search.toLowerCase(); filtered = filtered.filter((p) => p.full_name?.toLowerCase().includes(q) || p.email.toLowerCase().includes(q)); }
+  if (search) { const q = search.toLowerCase(); filtered = filtered.filter((p) => `${p.first_name} ${p.last_name}`.toLowerCase().includes(q) || p.email.toLowerCase().includes(q)); }
   if (loading) return <LoadingSkeleton />;
 
   return (
@@ -54,7 +54,7 @@ export default function ProfilesPanel() {
             <tbody className="divide-y divide-gray-100">
               {filtered.map((p) => (
                 <tr key={p.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3 font-semibold text-gray-800">{p.full_name || "—"}</td>
+                  <td className="px-4 py-3 font-semibold text-gray-800">{`${p.first_name || ""} ${p.last_name || ""}`.trim() || "—"}</td>
                   <td className="px-4 py-3 text-gray-500">{p.email}</td>
                   <td className="px-4 py-3">{savingRoleId === p.id ? <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-400">Saving…</span> : (
                     <select value={p.role} onChange={(e) => handleRoleChange(p.id, e.target.value)} className={`text-xs font-semibold px-2 py-1 rounded-full border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-500/30 ${p.role === "admin" ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-600"}`}>
@@ -73,7 +73,7 @@ export default function ProfilesPanel() {
               <div key={p.id} className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex-1 min-w-0">
-                    <p className="font-bold text-sm text-gray-900 truncate">{p.full_name || "—"}</p>
+                    <p className="font-bold text-sm text-gray-900 truncate">{`${p.first_name || ""} ${p.last_name || ""}`.trim() || "—"}</p>
                     <p className="text-xs text-gray-400 truncate mt-0.5">{p.email}</p>
                   </div>
                   {savingRoleId === p.id ? (

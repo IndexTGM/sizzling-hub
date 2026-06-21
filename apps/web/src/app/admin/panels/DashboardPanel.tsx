@@ -32,7 +32,7 @@ export default function DashboardPanel({ branchId }: { branchId?: string | null 
       sb.from("profiles").select("*", { count: "exact", head: true }).eq("role", "customer"),
       branchId ? sb.from("menu_items").select("*", { count: "exact", head: true }).eq("branch_id", branchId) : sb.from("menu_items").select("*", { count: "exact", head: true }),
       maybeEq(sb.from("orders").select("*", { count: "exact", head: true }).eq("status", "pending")),
-      maybeEq(sb.from("orders").select("id, total, status, placed_at, order_type, customer:profiles(full_name)").order("placed_at", { ascending: false }).limit(5)),
+      maybeEq(sb.from("orders").select("id, total, status, placed_at, order_type, customer:profiles(first_name, last_name)").order("placed_at", { ascending: false }).limit(5)),
     ]);
     setStats({
       totalOrders: orderCount ?? 0,

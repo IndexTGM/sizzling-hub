@@ -24,7 +24,7 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
   const hasOrdersLoaded = React.useRef(false);
   const fetchOrders = useCallback(async () => {
     const sb = createClient();
-    let query = sb.from("orders").select("id, order_type, status, subtotal, delivery_fee, discount, total, notes, placed_at, completed_at, payment_method, payment_source_id, payment_status, senior_pwd_discount, customer:profiles(full_name, email, phone)");
+    let query = sb.from("orders").select("id, order_type, status, subtotal, delivery_fee, discount, total, notes, placed_at, completed_at, payment_method, payment_source_id, payment_status, senior_pwd_discount, customer:profiles(first_name, last_name, email, phone)");
     if (branchId) query = query.eq("branch_id", branchId);
     const { data: rows, error } = await query.order("placed_at", { ascending: false });
     if (error || !rows) {
@@ -35,7 +35,13 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
     const { data: items } = await sb.from("order_items").select("order_id, quantity, unit_price, note, menu_item:menu_items(name)").in("order_id", ids);
     const itemsByOrder = new Map<string, { name: string; quantity: number; price: number; note: string }[]>();
     if (items) for (const it of items) { const arr = itemsByOrder.get(it.order_id) || []; arr.push({ name: (it.menu_item as any)?.name || "Unknown", quantity: it.quantity, price: it.unit_price, note: it.note ?? "" }); itemsByOrder.set(it.order_id, arr); }
-    setOrders(rows.map((r: any) => ({ id: r.id, customerName: (r.customer as any)?.full_name || (r.customer as any)?.email || "N/A", customerEmail: (r.customer as any)?.email || "", customerPhone: (r.customer as any)?.phone || null, orderType: r.order_type as OrderType, status: r.status as OrderStatus, subtotal: r.subtotal, deliveryFee: r.delivery_fee, discount: r.discount, total: r.total, notes: r.notes, items: itemsByOrder.get(r.id) || [], placedAt: r.placed_at, completedAt: r.completed_at, paymentMethod: r.payment_method, paymentSourceId: r.payment_source_id, paymentStatus: r.payment_status, seniorPwdDiscount: r.senior_pwd_discount ?? false })));
+    setOrders(rows.map((r: any) => {
+      const cust = r.customer as any;
+      const custName = cust?.first_name && cust?.last_name
+        ? `${cust.first_name} ${cust.last_name}`
+        : cust?.email || "N/A";
+      return { id: r.id, customerName: custName, customerEmail: cust?.email || "", customerPhone: cust?.phone || null, orderType: r.order_type as OrderType, status: r.status as OrderStatus, subtotal: r.subtotal, deliveryFee: r.delivery_fee, discount: r.discount, total: r.total, notes: r.notes, items: itemsByOrder.get(r.id) || [], placedAt: r.placed_at, completedAt: r.completed_at, paymentMethod: r.payment_method, paymentSourceId: r.payment_source_id, paymentStatus: r.payment_status, seniorPwdDiscount: r.senior_pwd_discount ?? false };
+    }));
     if (!hasOrdersLoaded.current) setLoading(false);
     hasOrdersLoaded.current = true;
   }, [branchId]);

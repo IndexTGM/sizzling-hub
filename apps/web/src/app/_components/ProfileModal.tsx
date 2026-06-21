@@ -17,7 +17,8 @@ export default function ProfileModal({
   const { user, updateProfile } = useAuth();
   const { branchLocation } = useBranch();
   const [editUsername, setEditUsername] = useState(user?.username || "");
-  const [editName, setEditName] = useState(user?.fullName || "");
+  const [editFirstName, setEditFirstName] = useState(user?.first_name || "");
+  const [editLastName, setEditLastName] = useState(user?.last_name || "");
   const [editPhone, setEditPhone] = useState(user?.phone || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -88,7 +89,7 @@ export default function ProfileModal({
 
           <div className="flex items-center gap-3 mb-5 p-4 bg-[#f9fafb] rounded-xl">
             <div className="w-12 h-12 rounded-full bg-[#dc2626] flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
-              {user?.fullName?.charAt(0)?.toUpperCase() || "U"}
+              {user?.first_name?.charAt(0)?.toUpperCase() || "U"}
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
@@ -107,7 +108,7 @@ export default function ProfileModal({
               setError("");
               setSuccess("");
               setLoading(true);
-              const err = await updateProfile(editUsername, editName, editPhone || undefined);
+              const err = await updateProfile(editUsername, editFirstName, editLastName, editPhone || undefined);
               setLoading(false);
               if (err) {
                 setError(err);
@@ -127,12 +128,21 @@ export default function ProfileModal({
               className="w-full px-4 py-2.5 rounded-lg border border-[#e5e7eb] text-sm text-[#0a0a0a] placeholder-[#9ca3af] focus:outline-none focus:ring-2 focus:ring-[#dc2626]/30 focus:border-[#dc2626] transition-all duration-150"
             />
 
-            <label className="block text-sm font-semibold text-[#0a0a0a]">Display Name</label>
+            <label className="block text-sm font-semibold text-[#0a0a0a]">First Name</label>
             <input
               type="text"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              placeholder="Your name"
+              value={editFirstName}
+              onChange={(e) => setEditFirstName(e.target.value)}
+              placeholder="Charles"
+              className="w-full px-4 py-2.5 rounded-lg border border-[#e5e7eb] text-sm text-[#0a0a0a] placeholder-[#9ca3af] focus:outline-none focus:ring-2 focus:ring-[#dc2626]/30 focus:border-[#dc2626] transition-all duration-150"
+            />
+
+            <label className="block text-sm font-semibold text-[#0a0a0a]">Last Name</label>
+            <input
+              type="text"
+              value={editLastName}
+              onChange={(e) => setEditLastName(e.target.value)}
+              placeholder="Marquez"
               className="w-full px-4 py-2.5 rounded-lg border border-[#e5e7eb] text-sm text-[#0a0a0a] placeholder-[#9ca3af] focus:outline-none focus:ring-2 focus:ring-[#dc2626]/30 focus:border-[#dc2626] transition-all duration-150"
             />
 
