@@ -106,10 +106,10 @@ export default function CartSidebar({
     return timeInMinutes >= 11 * 60 && timeInMinutes < 23 * 60; // 11:00 AM to 11:00 PM
   })();
 
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role === "admin" || user?.role === "dev";
   const blockedByHours = !isWithinOpeningHours && !isAdmin;
   const showHoursWarning = !isWithinOpeningHours;
-  const needsPhone = user?.role !== "admin" && !user?.phone;
+  const needsPhone = user?.role !== "admin" && user?.role !== "dev" && !user?.phone;
 
   async function handleConfirmOrder() {
     if (!user) return;

@@ -314,15 +314,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (error) return error.message;
 
-      const updated: User = {
-        id: session.user.id,
-        username: usernameLower,
-        first_name: firstName.trim(),
-        last_name: lastName.trim(),
-        email: session.user.email || user?.email || "",
-        role: user?.role || "customer",
-        phone: phoneClean,
-      };
+      // Re-fetch the full profile from DB to get the authoritative role
+      const { data: freshProfile } = await sb
+        .from("profiles")
+        .select("username, first_name, last_name, role, phone")
+        .eq("id", session.user.id)
+        .maybeSingle();
+
+      const updated = buildUser(session.user.id, session.user, freshProfile);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
       setUser(updated);
       return null;

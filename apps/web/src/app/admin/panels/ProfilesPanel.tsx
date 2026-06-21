@@ -40,8 +40,8 @@ export default function ProfilesPanel() {
       <p className="text-sm text-gray-400 mt-0.5">{profiles.length} total users</p>
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex gap-1">
-          {(["all", "customer", "admin"] as const).map((r) => (
-            <button key={r} onClick={() => setRoleFilter(r)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${roleFilter === r ? "bg-red-600 text-white" : "bg-gray-100 text-gray-500 hover:text-gray-900 hover:bg-gray-200"}`}>{r === "all" ? "All" : r === "customer" ? "Customers" : "Admins"}</button>
+          {(["all", "customer", "admin", "dev"] as const).map((r) => (
+            <button key={r} onClick={() => setRoleFilter(r)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${roleFilter === r ? "bg-red-600 text-white" : "bg-gray-100 text-gray-500 hover:text-gray-900 hover:bg-gray-200"}`}>{r === "all" ? "All" : r === "customer" ? "Customers" : r === "admin" ? "Admins" : "Devs"}</button>
           ))}
         </div>
         <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or email..." className="px-3 py-1.5 rounded-lg bg-gray-100 border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500/30 focus:border-red-300" />
@@ -57,8 +57,8 @@ export default function ProfilesPanel() {
                   <td className="px-4 py-3 font-semibold text-gray-800">{`${p.first_name || ""} ${p.last_name || ""}`.trim() || "—"}</td>
                   <td className="px-4 py-3 text-gray-500">{p.email}</td>
                   <td className="px-4 py-3">{savingRoleId === p.id ? <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-400">Saving…</span> : (
-                    <select value={p.role} onChange={(e) => handleRoleChange(p.id, e.target.value)} className={`text-xs font-semibold px-2 py-1 rounded-full border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-500/30 ${p.role === "admin" ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-600"}`}>
-                      <option value="customer" className="bg-white">Customer</option><option value="admin" className="bg-white">Admin</option>
+                    <select value={p.role} onChange={(e) => handleRoleChange(p.id, e.target.value)} className={`text-xs font-semibold px-2 py-1 rounded-full border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-500/30 ${p.role === "dev" ? "bg-violet-50 text-violet-600" : p.role === "admin" ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-600"}`}>
+                      <option value="customer" className="bg-white">Customer</option><option value="admin" className="bg-white">Admin</option><option value="dev" className="bg-white">Dev</option>
                     </select>
                   )}</td>
                   <td className="px-4 py-3 text-gray-400 hidden sm:table-cell">{p.phone || "—"}</td>
@@ -79,9 +79,10 @@ export default function ProfilesPanel() {
                   {savingRoleId === p.id ? (
                     <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-400">Saving…</span>
                   ) : (
-                    <select value={p.role} onChange={(e) => handleRoleChange(p.id, e.target.value)} className={`text-xs font-semibold px-2 py-1 rounded-full border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-500/30 ${p.role === "admin" ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-600"}`}>
+                    <select value={p.role} onChange={(e) => handleRoleChange(p.id, e.target.value)} className={`text-xs font-semibold px-2 py-1 rounded-full border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-500/30 ${p.role === "dev" ? "bg-violet-50 text-violet-600" : p.role === "admin" ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-600"}`}>
                       <option value="customer" className="bg-white">Customer</option>
                       <option value="admin" className="bg-white">Admin</option>
+                      <option value="dev" className="bg-white">Dev</option>
                     </select>
                   )}
                 </div>
