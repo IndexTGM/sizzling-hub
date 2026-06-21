@@ -132,17 +132,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const sb = getSupabase();
 
-      // Look up email by username from profiles
-      const { data: profile } = await sb
-        .from("profiles")
-        .select("email")
-        .eq("username", username.trim().toLowerCase())
-        .maybeSingle();
+      // Look up email by username via RPC (bypasses RLS)
+      const { data: email } = await sb.rpc("get_email_by_username", {
+        p_username: username.trim().toLowerCase(),
+      });
 
-      if (!profile?.email) return "Incorrect username or password. Please try again.";
+      if (!email) return "Incorrect username or password. Please try again.";
 
       const { data, error } = await sb.auth.signInWithPassword({
-        email: profile.email,
+        email,
         password,
       });
 
