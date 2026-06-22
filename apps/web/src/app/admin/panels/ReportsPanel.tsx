@@ -74,6 +74,247 @@ function EmptyChart({ msg }: { msg: string }) {
 }
 
 /* ──────────────────────────────────────────────────
+   Expense Form Modal
+   ────────────────────────────────────────────────── */
+const EXPENSE_CATEGORIES = ["Ingredients", "Utilities", "Rent", "Salaries", "Marketing", "Supplies", "Maintenance", "Other"];
+
+function AddExpenseModal({
+  open,
+  onClose,
+  onSaved,
+  branchId,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+  branchId: string | null;
+}) {
+  const [amount, setAmount] = useState("");
+  const [description, setDescription] = useState("");
+  const [category, setCategory] = useState("Other");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0) { setError("Enter a valid amount."); return; }
+
+    setSaving(true);
+    const sb = createClient();
+    const payload: Record<string, unknown> = {
+      amount: amt,
+      description: description.trim(),
+      category,
+    };
+    if (branchId) payload.branch_id = branchId;
+
+    const { error: insertErr, status, statusText } = await sb.from("expenses").insert(payload);
+    setSaving(false);
+
+    if (insertErr) {
+      console.error("Insert expense error:", insertErr, status, statusText);
+      setError(insertErr.message || String(statusText || "Unknown error"));
+      return;
+    }
+    setAmount("");
+    setDescription("");
+    setCategory("Other");
+    onSaved();
+    onClose();
+  };
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md mx-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-lg font-extrabold text-gray-900 mb-4">Add Expense</h3>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Amount (₱)</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0.01"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+              placeholder="0.00"
+              required
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Category</label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+            >
+              {EXPENSE_CATEGORIES.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Description</label>
+            <input
+              type="text"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+              placeholder="e.g., Chicken supply"
+            />
+          </div>
+          {error && <p className="text-xs font-semibold text-red-600">{error}</p>}
+          <div className="flex gap-3 justify-end pt-2">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
+            <button type="submit" disabled={saving} className="px-4 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50">
+              {saving ? "Saving…" : "Add Expense"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────
+   Expense Interface
+   ────────────────────────────────────────────────── */
+interface Expense {
+  id: string;
+  amount: number;
+  description: string;
+  category: string;
+  created_at: string;
+}
+
+/* ──────────────────────────────────────────────────
+   All Expenses Modal (date range filterable)
+   ────────────────────────────────────────────────── */
+function AllExpensesModal({
+  open,
+  onClose,
+  expenses,
+  loading,
+  dateFrom,
+  dateTo,
+  onDateFromChange,
+  onDateToChange,
+  onApply,
+  onDelete,
+  deletingId,
+}: {
+  open: boolean;
+  onClose: () => void;
+  expenses: Expense[];
+  loading: boolean;
+  dateFrom: string;
+  dateTo: string;
+  onDateFromChange: (v: string) => void;
+  onDateToChange: (v: string) => void;
+  onApply: () => void;
+  onDelete: (id: string) => void;
+  deletingId: string | null;
+}) {
+  if (!open) return null;
+
+  const total = expenses.reduce((s, e) => s + e.amount, 0);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-2xl mx-4 shadow-xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-extrabold text-gray-900">All Expenses</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        {/* Date Range Controls */}
+        <div className="flex flex-wrap items-end gap-3 mb-4">
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">From</label>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => onDateFromChange(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">To</label>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => onDateToChange(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+            />
+          </div>
+          <button
+            onClick={onApply}
+            className="px-4 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+          >
+            Apply
+          </button>
+          <div className="ml-auto text-right">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Total in Range</p>
+            <p className="text-lg font-black text-gray-900">{fmtPHP(total)}</p>
+          </div>
+        </div>
+
+        {/* Expense List */}
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="w-8 h-8 border-4 border-gray-200 rounded-full animate-spin" style={{ borderTopColor: RED }} />
+          </div>
+        ) : expenses.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-12">No expenses found in this range.</p>
+        ) : (
+          <div className="flex-1 overflow-y-auto space-y-1">
+            <div className="flex items-center gap-3 px-2 py-1 sticky top-0 bg-white z-10">
+              <span className="text-xs font-bold text-gray-300 uppercase w-28">Date</span>
+              <span className="text-xs font-bold text-gray-300 uppercase flex-1">Description</span>
+              <span className="text-xs font-bold text-gray-300 uppercase w-20 text-right">Category</span>
+              <span className="text-xs font-bold text-gray-300 uppercase w-24 text-right">Amount</span>
+              <span className="w-8" />
+            </div>
+            {expenses.map((exp) => (
+              <div key={exp.id} className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-gray-50 transition-colors">
+                <span className="text-xs text-gray-400 font-mono w-28">
+                  {new Date(exp.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" })}
+                </span>
+                <span className="flex-1 text-sm font-semibold text-gray-800 truncate" title={exp.description || "—"}>
+                  {exp.description || "—"}
+                </span>
+                <span className="text-xs text-gray-500 w-20 text-right truncate">{exp.category}</span>
+                <span className="text-sm font-bold text-red-600 w-24 text-right tabular-nums">{fmtPHP(exp.amount)}</span>
+                <button
+                  onClick={() => onDelete(exp.id)}
+                  disabled={deletingId === exp.id}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-30"
+                  title="Delete expense"
+                >
+                  {deletingId === exp.id ? (
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                  )}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────
    Reports Panel
    ────────────────────────────────────────────────── */
 export default function ReportsPanel({ branchId }: { branchId?: string | null }) {
@@ -93,6 +334,19 @@ export default function ReportsPanel({ branchId }: { branchId?: string | null })
   // Top Sellers (all time)
   const [topByRevenue, setTopByRevenue] = useState<{ name: string; sold: number; revenue: number }[]>([]);
   const [topByQuantity, setTopByQuantity] = useState<{ name: string; sold: number; revenue: number }[]>([]);
+  // Expenses
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [totalExpenses, setTotalExpenses] = useState(0);
+  const [expenseModalOpen, setExpenseModalOpen] = useState(false);
+  const [allExpensesModalOpen, setAllExpensesModalOpen] = useState(false);
+  const [deletingExpenseId, setDeletingExpenseId] = useState<string | null>(null);
+  // Date range for "All Expenses" modal
+  const [expDateFrom, setExpDateFrom] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10);
+  });
+  const [expDateTo, setExpDateTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [allExpenses, setAllExpenses] = useState<Expense[]>([]);
+  const [allExpensesLoading, setAllExpensesLoading] = useState(false);
 
   const fetchAll = useCallback(async () => {
     const sb = createClient();
@@ -198,6 +452,20 @@ export default function ReportsPanel({ branchId }: { branchId?: string | null })
       }
     }
 
+    // ── Expenses (30 days) ──
+    let exQuery = sb.from("expenses").select("id, amount, description, category, created_at")
+      .gte("created_at", thirtyDaysAgo.toISOString())
+      .order("created_at", { ascending: false });
+    if (branchId) exQuery = exQuery.eq("branch_id", branchId);
+    const { data: expenseData } = await exQuery;
+    if (expenseData) {
+      setExpenses(expenseData as Expense[]);
+      setTotalExpenses(expenseData.reduce((s: number, e: any) => s + Number(e.amount), 0));
+    } else {
+      setExpenses([]);
+      setTotalExpenses(0);
+    }
+
     setLoading(false);
   }, [branchId]);
 
@@ -207,11 +475,43 @@ export default function ReportsPanel({ branchId }: { branchId?: string | null })
     return () => clearInterval(interval);
   }, [fetchAll]);
 
+  const fetchAllExpenses = useCallback(async () => {
+    setAllExpensesLoading(true);
+    const sb = createClient();
+    const fromISO = new Date(expDateFrom).toISOString();
+    const toISO = new Date(expDateTo + "T23:59:59.999").toISOString();
+    let q = sb.from("expenses").select("id, amount, description, category, created_at")
+      .gte("created_at", fromISO)
+      .lte("created_at", toISO)
+      .order("created_at", { ascending: false });
+    if (branchId) q = q.eq("branch_id", branchId);
+    const { data } = await q;
+    setAllExpenses(data as Expense[] ?? []);
+    setAllExpensesLoading(false);
+  }, [expDateFrom, expDateTo, branchId]);
+
+  // Fetch all expenses when modal opens
+  useEffect(() => {
+    if (allExpensesModalOpen) fetchAllExpenses();
+  }, [allExpensesModalOpen, fetchAllExpenses]);
+
+  const deleteExpense = async (id: string) => {
+    setDeletingExpenseId(id);
+    const sb = createClient();
+    await sb.from("expenses").delete().eq("id", id);
+    setDeletingExpenseId(null);
+    fetchAll();
+    if (allExpensesModalOpen) fetchAllExpenses();
+  };
+
   if (loading) return <LoadingSkeleton />;
 
   const pctChange = todayRevenue > 0 && yesterdayRevenue > 0
     ? (((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100)
     : null;
+
+  const profitLoss = totalRevenue - totalExpenses;
+  const margin = totalRevenue > 0 ? ((profitLoss / totalRevenue) * 100) : 0;
 
   return (
     <div className="space-y-6 max-w-[1400px]">
@@ -234,7 +534,86 @@ export default function ReportsPanel({ branchId }: { branchId?: string | null })
         />
       </div>
 
-      {/* ── Row 2: Revenue Trend (full-width area) ── */}
+      {/* ── Row 2: Profit & Loss ── */}
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <CardTitle>Profit & Loss · Last 30 Days</CardTitle>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setAllExpensesModalOpen(true)}
+              className="px-3 py-1.5 text-xs font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+            >
+              View All Expenses
+            </button>
+            <button
+              onClick={() => setExpenseModalOpen(true)}
+              className="px-3 py-1.5 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+            >
+              + Add Expense
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+          <div className="bg-gray-50 rounded-lg p-4">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Revenue</p>
+            <p className="text-xl font-black text-gray-900 mt-1">{fmtPHP(totalRevenue)}</p>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-4">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Expenses</p>
+            <p className="text-xl font-black text-gray-900 mt-1">{fmtPHP(totalExpenses)}</p>
+          </div>
+          <div className={`rounded-lg p-4 ${profitLoss >= 0 ? "bg-emerald-50" : "bg-red-50"}`}>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Profit / Loss</p>
+            <p className={`text-xl font-black mt-1 ${profitLoss >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+              {profitLoss < 0 ? "-" : ""}{fmtPHP(Math.abs(profitLoss))}
+            </p>
+          </div>
+          <div className={`rounded-lg p-4 ${margin >= 0 ? "bg-emerald-50" : "bg-red-50"}`}>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Margin</p>
+            <p className={`text-xl font-black mt-1 ${margin >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+              {margin >= 0 ? "+" : ""}{margin.toFixed(1)}%
+            </p>
+          </div>
+        </div>
+
+        {/* Expense List */}
+        {expenses.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-4">No expenses recorded in the last 30 days.</p>
+        ) : (
+          <div className="space-y-1 max-h-60 overflow-y-auto">
+            <div className="flex items-center gap-3 px-2 py-1">
+              <span className="text-xs font-bold text-gray-300 uppercase flex-1">Description</span>
+              <span className="text-xs font-bold text-gray-300 uppercase w-20 text-right">Category</span>
+              <span className="text-xs font-bold text-gray-300 uppercase w-24 text-right">Amount</span>
+              <span className="w-8" />
+            </div>
+            {expenses.map((exp) => (
+              <div key={exp.id} className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-gray-50 transition-colors">
+                <span className="flex-1 text-sm font-semibold text-gray-800 truncate" title={exp.description || "—"}>
+                  {exp.description || "—"}
+                </span>
+                <span className="text-xs text-gray-500 w-20 text-right truncate">{exp.category}</span>
+                <span className="text-sm font-bold text-red-600 w-24 text-right tabular-nums">{fmtPHP(exp.amount)}</span>
+                <button
+                  onClick={() => deleteExpense(exp.id)}
+                  disabled={deletingExpenseId === exp.id}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-30"
+                  title="Delete expense"
+                >
+                  {deletingExpenseId === exp.id ? (
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                  )}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {/* ── Row 3: Revenue Trend (full-width area) ── */}
       <Card>
         <CardTitle>Revenue Trend · Last 30 Days</CardTitle>
         {revenueTrend.length === 0 ? <EmptyChart msg="No data yet." /> : (
@@ -256,7 +635,7 @@ export default function ReportsPanel({ branchId }: { branchId?: string | null })
         )}
       </Card>
 
-      {/* ── Row 3: Hourly Revenue + Today Top 5 ── */}
+      {/* ── Row 4: Hourly Revenue + Today Top 5 ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardTitle>Hourly Revenue · Today</CardTitle>
@@ -282,7 +661,7 @@ export default function ReportsPanel({ branchId }: { branchId?: string | null })
         </Card>
       </div>
 
-      {/* ── Row 4: Weekly Top + All-Time Top Sellers ── */}
+      {/* ── Row 5: Weekly Top + All-Time Top Sellers ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardTitle>Top 10 Items · This Week</CardTitle>
@@ -308,7 +687,7 @@ export default function ReportsPanel({ branchId }: { branchId?: string | null })
         </Card>
       </div>
 
-      {/* ── Row 5: Top by Quantity All Time ── */}
+      {/* ── Row 6: Top by Quantity All Time ── */}
       <Card>
         <CardTitle>Top by Quantity Sold · All Time</CardTitle>
         {topByQuantity.length === 0 ? <EmptyChart msg="No data." /> : (
@@ -323,6 +702,29 @@ export default function ReportsPanel({ branchId }: { branchId?: string | null })
           </ResponsiveContainer>
         )}
       </Card>
+
+      {/* Add Expense Modal */}
+      <AddExpenseModal
+        open={expenseModalOpen}
+        onClose={() => setExpenseModalOpen(false)}
+        onSaved={fetchAll}
+        branchId={branchId ?? null}
+      />
+
+      {/* All Expenses Modal */}
+      <AllExpensesModal
+        open={allExpensesModalOpen}
+        onClose={() => setAllExpensesModalOpen(false)}
+        expenses={allExpenses}
+        loading={allExpensesLoading}
+        dateFrom={expDateFrom}
+        dateTo={expDateTo}
+        onDateFromChange={setExpDateFrom}
+        onDateToChange={setExpDateTo}
+        onApply={fetchAllExpenses}
+        onDelete={deleteExpense}
+        deletingId={deletingExpenseId}
+      />
     </div>
   );
 }

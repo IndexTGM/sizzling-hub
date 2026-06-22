@@ -33,7 +33,7 @@ function BannerCarousel({
   banners,
   onOrderNow,
 }: {
-  banners: { id: string; title: string; subtitle: string; image: string; tag: string | null }[];
+  banners: { id: string; title: string; subtitle: string; image: string }[];
   onOrderNow: () => void;
 }) {
   const [active, setActive] = useState(0);
@@ -98,11 +98,6 @@ function BannerCarousel({
                   }}
                 />
                 <div className="flex-1 space-y-3 text-center sm:text-left relative z-10">
-                  {b.tag && (
-                    <span className="inline-block px-3 py-1 rounded-md bg-white/20 backdrop-blur-sm text-white text-xs font-extrabold tracking-widest uppercase border border-white/20">
-                      {b.tag}
-                    </span>
-                  )}
                   <h3 className="text-2xl sm:text-4xl font-black text-white tracking-tight leading-tight drop-shadow-sm">
                     {b.title}
                   </h3>
