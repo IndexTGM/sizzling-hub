@@ -44,8 +44,12 @@ function isValidEmail(email: string): boolean {
 function buildUser(
   id: string,
   sessionUser: { email?: string; user_metadata?: Record<string, unknown> },
-  profile?: { username?: string; full_name?: string; role?: string } | null
+  profile?: { username?: string; first_name?: string; last_name?: string; role?: string } | null
 ): User {
+  const firstName = profile?.first_name || (sessionUser.user_metadata?.first_name as string) || "";
+  const lastName = profile?.last_name || (sessionUser.user_metadata?.last_name as string) || "";
+  const fullName = (firstName + " " + lastName).trim() || sessionUser.email || "";
+
   return {
     id,
     username:
@@ -53,11 +57,7 @@ function buildUser(
       (sessionUser.user_metadata?.username as string) ||
       sessionUser.email?.split("@")[0] ||
       "",
-    fullName:
-      profile?.full_name ||
-      (sessionUser.user_metadata?.full_name as string) ||
-      sessionUser.email ||
-      "",
+    fullName,
     email: sessionUser.email || "",
     role: (profile?.role as string) || "customer",
   };
@@ -69,76 +69,13 @@ const TABLET_PASSWORD = "Kimcheese!07";
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const loginCalledRef = useRef(false);
+  const autoLoginRanRef = useRef(false);
 
-  useEffect(() => {
-    if (loginCalledRef.current) return;
-    loginCalledRef.current = true;
-
-    (async () => {
-      try {
-        // Try existing session first
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (session?.user) {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("username, full_name, role")
-            .eq("id", session.user.id)
-            .maybeSingle();
-          setUser(buildUser(session.user.id, session.user, profile));
-          setLoading(false);
-          return;
-        }
-
-        // No session — auto-login with tablet kiosk credentials
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("email")
-          .eq("username", TABLET_USERNAME)
-          .maybeSingle();
-
-        if (profile?.email) {
-          const { data, error } = await supabase.auth.signInWithPassword({
-            email: profile.email,
-            password: TABLET_PASSWORD,
-          });
-
-          if (!error && data?.session?.user) {
-            const { data: fullProfile } = await supabase
-              .from("profiles")
-              .select("username, full_name, role")
-              .eq("id", data.session.user.id)
-              .maybeSingle();
-            setUser(
-              buildUser(data.session.user.id, data.session.user, fullProfile)
-            );
-          }
-        }
-      } catch {
-        // auto-login failed — tablet will still work with limited features
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  const login = useCallback(
-    async (username: string, password: string): Promise<string | null> => {
-      if (!username.trim()) return "Username is required.";
-      if (!password) return "Password is required.";
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("email")
-        .eq("username", username.trim().toLowerCase())
-        .maybeSingle();
-
-      if (!profile?.email) return "No account found with that username.";
-
+  // Shared helper: authenticate with email + password, fetch profile, set user
+  const authenticateWithPassword = useCallback(
+    async (email: string, password: string): Promise<string | null> => {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: profile.email,
+        email,
         password,
       });
 
@@ -153,7 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data.session?.user) {
         const { data: fullProfile } = await supabase
           .from("profiles")
-          .select("username, full_name, role")
+          .select("username, first_name, last_name, role")
           .eq("id", data.session.user.id)
           .maybeSingle();
         setUser(buildUser(data.session.user.id, data.session.user, fullProfile));
@@ -161,6 +98,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return null;
     },
     []
+  );
+
+  // Auto-login on mount
+  useEffect(() => {
+    if (autoLoginRanRef.current) return;
+    autoLoginRanRef.current = true;
+
+    (async () => {
+      try {
+        // Try existing session first
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (session?.user) {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("username, first_name, last_name, role")
+            .eq("id", session.user.id)
+            .maybeSingle();
+          setUser(buildUser(session.user.id, session.user, profile));
+          setLoading(false);
+          return;
+        }
+
+        // No session — auto-login with tablet kiosk credentials via RPC (bypasses RLS)
+        const { data: email } = await supabase.rpc("get_email_by_username", {
+          p_username: TABLET_USERNAME,
+        });
+
+        if (email) {
+          await authenticateWithPassword(email, TABLET_PASSWORD);
+        }
+      } catch (err: any) {
+        console.error("Auto-login failed:", err?.message || err);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [authenticateWithPassword]);
+
+  const login = useCallback(
+    async (username: string, password: string): Promise<string | null> => {
+      if (!username.trim()) return "Username is required.";
+      if (!password) return "Password is required.";
+
+      // Look up email by username via RPC (bypasses RLS)
+      const { data: email } = await supabase.rpc("get_email_by_username", {
+        p_username: username.trim().toLowerCase(),
+      });
+
+      if (!email) return "Incorrect username or password. Please try again.";
+
+      return authenticateWithPassword(email, password);
+    },
+    [authenticateWithPassword]
   );
 
   const register = useCallback(
@@ -193,19 +185,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const usernameLower = username.trim().toLowerCase();
 
-      const { data: existingUsername } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("username", usernameLower)
-        .maybeSingle();
-      if (existingUsername) return "That username is already taken.";
+      // Use RPC for lookups to bypass RLS
+      const { data: existingEmail } = await supabase.rpc("get_email_by_username", {
+        p_username: usernameLower,
+      });
+      if (existingEmail) return "That username is already taken.";
 
-      const { data: existingEmail } = await supabase
+      const { data: existingByEmail } = await supabase
         .from("profiles")
         .select("id")
         .eq("email", email.trim().toLowerCase())
         .maybeSingle();
-      if (existingEmail) return "An account with this email already exists.";
+      if (existingByEmail) return "An account with this email already exists.";
 
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -284,7 +275,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data?.session?.user) {
         const { data: profile } = await supabase
           .from("profiles")
-          .select("username, full_name, role")
+          .select("username, first_name, last_name, role")
           .eq("id", data.session.user.id)
           .maybeSingle();
         setUser(buildUser(data.session.user.id, data.session.user, profile));
@@ -306,19 +297,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const usernameLower = username.trim().toLowerCase();
 
-      const { data: existing } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("username", usernameLower)
-        .neq("id", session.user.id)
-        .maybeSingle();
-      if (existing) return "That username is already taken.";
+      // Use RPC to check existing username (bypasses RLS)
+      const { data: existingEmail } = await supabase.rpc("get_email_by_username", {
+        p_username: usernameLower,
+      });
+      if (existingEmail && session.user.email !== existingEmail) {
+        return "That username is already taken.";
+      }
 
       const { error } = await supabase
         .from("profiles")
         .update({
           username: usernameLower,
-          full_name: fullName.trim(),
+          first_name: fullName.trim().split(" ")[0] || "",
+          last_name: fullName.trim().split(" ").slice(1).join(" ") || "",
         })
         .eq("id", session.user.id);
       if (error) return error.message;

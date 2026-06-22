@@ -47,8 +47,9 @@ interface CartGridCardProps {
 }
 
 function StorageImg({ imageBase, style }: { imageBase: string; style: any }) {
+  const { branchId } = useBranch();
   const [tryIdx, setTryIdx] = useState(0);
-  const candidates = useMemo(() => [...getImageCandidates(imageBase), PLACEHOLDER], [imageBase]);
+  const candidates = useMemo(() => [...getImageCandidates(imageBase, branchId), PLACEHOLDER], [imageBase, branchId]);
   return (
     <Image
       source={{ uri: candidates[tryIdx] || PLACEHOLDER }}
@@ -120,13 +121,12 @@ const CartGridCard = memo(function CartGridCard({
 // ─── Main Screen ────────────────────────────────────────────────
 export default function CartScreen() {
   const router = useRouter();
-  const { items, itemCount, total, updateQuantity, removeFromCart, clearCart } = useCart();
+  const { items, itemCount, total, updateQuantity, removeFromCart, clearCart, placeOrder } = useCart();
   const { numColumns, cardWidth, gap } = useGridLayout();
 
   const [checkoutVisible, setCheckoutVisible] = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [placing, setPlacing] = useState(false);
-  const { branchId } = useBranch();
   const [orderType, setOrderType] = useState<"dine_in" | "takeout">("dine_in");
   const orderTypeLabel = orderType === "dine_in" ? "Dine In" : "Takeout";
   const orderTypeIcon = orderType === "dine_in" ? "🍽️" : "🛍️";
@@ -180,100 +180,19 @@ export default function CartScreen() {
   const handlePlaceOrder = useCallback(async () => {
     setConfirmVisible(false);
     setPlacing(true);
-    try {
-      if (items.length === 0) {
-        setPlacing(false);
-        return;
-      }
-
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) {
-        Alert.alert("Error", "Not logged in. Please restart the app.");
-        setPlacing(false);
-        return;
-      }
-
-      const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
-
-      // Validate stock
-      for (const item of items) {
-        const { data: current } = await supabase
-          .from("menu_items")
-          .select("stock, name")
-          .eq("id", item.id)
-          .single();
-        if (!current) {
-          Alert.alert("Item Unavailable", `"${item.name}" is no longer available.`);
-          setPlacing(false);
-          return;
-        }
-        if (current.stock < item.quantity) {
-          Alert.alert("Insufficient Stock", `Not enough stock for "${current.name}". Only ${current.stock} left.`);
-          setPlacing(false);
-          return;
-        }
-      }
-
-      // Create order
-      const { data: order, error: orderErr } = await supabase
-        .from("orders")
-        .insert({
-          customer_id: session.user.id,
-          order_type: orderType,
-          status: "pending",
-          subtotal,
-          delivery_fee: 0,
-          discount: 0,
-          total: subtotal,
-          notes: null,
-          branch_id: branchId,
-        })
-        .select("id")
-        .single();
-
-      if (orderErr || !order) {
-        Alert.alert("Error", orderErr?.message || "Failed to create order.");
-        setPlacing(false);
-        return;
-      }
-
-      const orderItems = items.map((item) => ({
-        order_id: order.id,
-        menu_item_id: item.id,
-        quantity: item.quantity,
-        unit_price: item.price,
-        subtotal: item.price * item.quantity,
-        note: item.note ?? "",
-      }));
-
-      const { error: itemsErr } = await supabase.from("order_items").insert(orderItems);
-      if (itemsErr) {
-        Alert.alert("Error", itemsErr.message);
-        setPlacing(false);
-        return;
-      }
-
-      // Decrement stock
-      for (const item of items) {
-        await supabase.rpc("decrement_stock", {
-          p_menu_item_id: item.id,
-          p_quantity: item.quantity,
-        });
-      }
-
-      await clearCart();
+    const error = await placeOrder(orderType);
+    setPlacing(false);
+    if (error) {
+      Alert.alert("Error", error);
+    } else {
       setCheckoutVisible(false);
-      setPlacing(false);
       Alert.alert(
         "Order Placed! 🍳",
         "Your order has been submitted. Please wait for your name to be called.",
         [{ text: "OK", onPress: () => router.replace("/menu") }]
       );
-    } catch (err: any) {
-      Alert.alert("Error", err?.message || "Something went wrong.");
-      setPlacing(false);
     }
-  }, [items, clearCart, router, orderType]);
+  }, [placeOrder, orderType, router]);
 
   const canPlaceOrder = items.length > 0 && !placing;
   const totalQty = items.reduce((sum, i) => sum + i.quantity, 0);

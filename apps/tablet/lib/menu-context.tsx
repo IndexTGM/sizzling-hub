@@ -43,8 +43,7 @@ export function MenuProvider({ children }: { children: ReactNode }) {
     try {
       let itemsQuery = supabase
         .from("menu_items")
-        .select("id, name, price, image_url, stock, rating, description")
-        .eq("is_available", true)
+        .select("id, name, price, stock, description")
         .order("name");
       let catsQuery = supabase.from("categories").select("id, name").order("sort_order");
 
@@ -90,13 +89,13 @@ export function MenuProvider({ children }: { children: ReactNode }) {
           id: r.id,
           name: r.name,
           price: r.price,
-          imageName: r.image_url || "",
+          imageName: r.name || "",
           stock: r.stock ?? 0,
           description: r.description || "",
           category: catNames[0],
           categories: catNames,
           categoryId: "",
-          rating: r.rating ?? 0,
+          rating: 0,
         };
       });
       setMenuItems(mapped);

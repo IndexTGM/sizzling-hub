@@ -43,7 +43,7 @@ function BranchCard({ branch, onSelect }: { branch: Branch; onSelect: () => void
 }
 
 export default function IndexScreen() {
-  const { allBranches, setBranchSlug, loading, error } = useBranch();
+  const { allBranches, setBranchId, loading, error } = useBranch();
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
@@ -76,7 +76,7 @@ export default function IndexScreen() {
           renderItem={({ item }) => (
             <BranchCard
               branch={item}
-              onSelect={() => setBranchSlug(item.slug)}
+              onSelect={() => setBranchId(item.id)}
             />
           )}
         />

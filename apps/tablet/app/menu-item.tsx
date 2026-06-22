@@ -7,51 +7,20 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 import { useCart } from "@/lib/cart-context";
+import { useBranch } from "@/lib/branch-context";
 import { getImageCandidates } from "@/lib/storage";
 
 const PRIMARY = "#dc2626";
-const AMBER = "#f59e0b";
 const PLACEHOLDER = "placeholder.png";
 
 /* ──────────────────────────── Storage Image ───────────────────── */
 function StorageImg({ imageBase, style, resizeMode }: { imageBase: string; style: any; resizeMode?: "cover" | "contain" }) {
+  const { branchId } = useBranch();
   const [tryIdx, setTryIdx] = useState(0);
-  const candidates = useMemo(() => [...getImageCandidates(imageBase), PLACEHOLDER], [imageBase]);
+  const candidates = useMemo(() => [...getImageCandidates(imageBase, branchId), PLACEHOLDER], [imageBase, branchId]);
   return (
     <Image source={{ uri: candidates[tryIdx] || PLACEHOLDER }} style={style} resizeMode={resizeMode || "cover"}
       onError={() => { if (tryIdx < candidates.length - 1) setTryIdx(tryIdx + 1); }} />
-  );
-}
-
-/* ──────────────────────────── Stars ───────────────────────────── */
-function Stars({ rating }: { rating: number }) {
-  const full = Math.floor(rating);
-  const half = rating - full >= 0.5;
-  const empty = 5 - full - (half ? 1 : 0);
-  return (
-    <View style={styles.starsRow}>
-      {Array.from({ length: full }).map((_, i) => <Text key={`f${i}`} style={styles.starFull}>★</Text>)}
-      {half && <Text style={styles.starHalf}>★</Text>}
-      {Array.from({ length: empty }).map((_, i) => <Text key={`e${i}`} style={styles.starEmpty}>★</Text>)}
-    </View>
-  );
-}
-
-/* ──────────────────────────── Review Item ─────────────────────── */
-function ReviewRow({ review }: { review: { id: string; customerName: string; rating: number; comment: string | null; createdAt: string } }) {
-  return (
-    <View style={styles.reviewCard}>
-      <View style={styles.reviewHeader}>
-        <Text style={styles.reviewName}>{review.customerName}</Text>
-        <View style={styles.reviewStars}>
-          {[1, 2, 3, 4, 5].map((s) => (
-            <Text key={s} style={{ fontSize: 12, color: s <= review.rating ? AMBER : "#d1d5db" }}>★</Text>
-          ))}
-        </View>
-      </View>
-      {review.comment && <Text style={styles.reviewComment}>{review.comment}</Text>}
-      <Text style={styles.reviewDate}>{new Date(review.createdAt).toLocaleDateString()}</Text>
-    </View>
   );
 }
 
@@ -62,8 +31,6 @@ export default function MenuItemScreen() {
   const { addToCart, itemCount } = useCart();
   const { width: screenW, height: screenH } = useWindowDimensions();
   const [item, setItem] = useState<any>(null);
-  const [reviews, setReviews] = useState<any[]>([]);
-  const [avgRating, setAvgRating] = useState(0);
   const [loading, setLoading] = useState(true);
   const [qty, setQty] = useState(1);
   const [note, setNote] = useState("");
@@ -71,33 +38,18 @@ export default function MenuItemScreen() {
 
   useEffect(() => {
     (async () => {
-      const { data: row } = await supabase.from("menu_items").select("id, name, price, image_url, stock, description, menu_item_categories(categories(name))").eq("id", id).maybeSingle();
+      const { data: row } = await supabase.from("menu_items").select("id, name, price, stock, description, menu_item_categories(categories(name))").eq("id", id).maybeSingle();
       if (row) {
         const junction = (row as any).menu_item_categories;
         const catNames: string[] = Array.isArray(junction)
           ? junction.map((j: any) => j.categories?.name || "Uncategorized")
           : ["Uncategorized"];
         setItem({
-          id: row.id, name: row.name, price: row.price, imageName: row.image_url || "",
+          id: row.id, name: row.name, price: row.price, imageName: row.name || "",
           stock: row.stock ?? 0, description: row.description || "",
           category: catNames[0] || "Uncategorized",
           categories: catNames,
         });
-
-        // Fetch reviews
-        const { data: revData } = await supabase.from("reviews").select("id, rating, comment, created_at, profiles:customer_id(full_name)").eq("menu_item_id", row.id).order("created_at", { ascending: false }).limit(20);
-        if (revData) {
-          setReviews(revData.map((r: any) => ({
-            id: r.id, customerName: r.profiles?.full_name || "Anonymous",
-            rating: r.rating, comment: r.comment, createdAt: r.created_at,
-          })));
-          if (revData.length > 0) setAvgRating(revData.reduce((s: number, r: any) => s + r.rating, 0) / revData.length);
-        }
-        // Also get rating from RPC
-        try {
-          const { data: rpcRating } = await supabase.rpc("recalc_menu_item_rating", { p_menu_item_id: row.id });
-          if (rpcRating != null) setAvgRating(Number(rpcRating));
-        } catch {}
       }
       setLoading(false);
     })();
@@ -151,15 +103,8 @@ export default function MenuItemScreen() {
           </TouchableOpacity>
 
           <View style={styles.infoSection}>
-            {/* Name + Rating */}
-            <View style={styles.nameRow}>
-              <Text style={styles.itemName}>{item.name}</Text>
-              <View style={styles.ratingBadge}>
-                <Text style={styles.ratingStar}>★</Text>
-                <Text style={styles.ratingText}>{avgRating.toFixed(1)}</Text>
-              </View>
-            </View>
-            <Stars rating={avgRating} />
+            {/* Name */}
+            <Text style={styles.itemName}>{item.name}</Text>
             <Text style={styles.price}>₱{item.price}</Text>
 
             <View style={styles.divider} />
@@ -201,16 +146,6 @@ export default function MenuItemScreen() {
             <TextInput style={styles.noteInput} placeholder="e.g., less ice, no onions…" placeholderTextColor="#9ca3af"
               value={note} onChangeText={setNote} multiline maxLength={200} textAlignVertical="top" />
             <Text style={styles.noteCount}>{note.length}/200</Text>
-
-            <View style={styles.divider} />
-
-            {/* Reviews */}
-            <Text style={styles.sectionLabel}>Reviews ({reviews.length})</Text>
-            {reviews.length === 0 ? (
-              <Text style={styles.noReviews}>No reviews yet.</Text>
-            ) : (
-              reviews.map((r) => <ReviewRow key={r.id} review={r} />)
-            )}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -282,15 +217,7 @@ const styles = StyleSheet.create({
   lowStockBadge: { position: "absolute", top: 12, left: 12, backgroundColor: "#fef2f2", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
   lowStockText: { fontSize: 12, fontWeight: "700", color: PRIMARY },
   infoSection: { paddingHorizontal: 20, paddingTop: 20, gap: 12 },
-  nameRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  itemName: { flex: 1, fontSize: 22, fontWeight: "800", color: "#1f2937" },
-  ratingBadge: { flexDirection: "row", alignItems: "center", backgroundColor: "#fef3c7", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, gap: 4 },
-  ratingStar: { fontSize: 14, color: AMBER },
-  ratingText: { fontSize: 14, fontWeight: "800", color: "#92400e" },
-  starsRow: { flexDirection: "row", gap: 2 },
-  starFull: { fontSize: 18, color: AMBER },
-  starHalf: { fontSize: 18, color: AMBER, opacity: 0.5 },
-  starEmpty: { fontSize: 18, color: "#d1d5db" },
+  itemName: { fontSize: 22, fontWeight: "800", color: "#1f2937" },
   price: { fontSize: 26, fontWeight: "800", color: PRIMARY },
   divider: { height: 1, backgroundColor: "#f3f4f6", marginVertical: 4 },
   sectionLabel: { fontSize: 13, fontWeight: "700", color: "#9ca3af", textTransform: "uppercase", letterSpacing: 0.5 },
@@ -312,13 +239,6 @@ const styles = StyleSheet.create({
   qtyValue: { fontSize: 20, fontWeight: "800", color: "#1f2937", minWidth: 28, textAlign: "center" },
   noteInput: { backgroundColor: "#f9fafb", borderWidth: 1.5, borderColor: "#e5e7eb", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, fontWeight: "500", color: "#1f2937", minHeight: 70, lineHeight: 20 },
   noteCount: { fontSize: 11, fontWeight: "500", color: "#9ca3af", textAlign: "right", marginTop: -4 },
-  noReviews: { fontSize: 14, color: "#9ca3af", textAlign: "center", paddingVertical: 12 },
-  reviewCard: { backgroundColor: "#f9fafb", borderRadius: 10, padding: 12, gap: 6 },
-  reviewHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  reviewName: { fontSize: 14, fontWeight: "700", color: "#1f2937" },
-  reviewStars: { flexDirection: "row", gap: 1 },
-  reviewComment: { fontSize: 13, color: "#4b5563", lineHeight: 19 },
-  reviewDate: { fontSize: 11, color: "#9ca3af" },
   bottomBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 14, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#f3f4f6", paddingBottom: 30, gap: 12 },
   totalWrap: { flex: 1 },
   totalLabel: { fontSize: 12, fontWeight: "600", color: "#9ca3af", textTransform: "uppercase" },

@@ -1,13 +1,13 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
-import { useAuth } from "@/lib/auth-context";
 import { useBranch } from "@/lib/branch-context";
+import { useAuth } from "@/lib/auth-context";
 
 export interface CartItem {
-  id: string;            // menu_item_id
+  id: string;
   name: string;
   price: number;
-  image: string;         // image_url base name
+  image: string;
   quantity: number;
   note: string;
   stock: number;
@@ -20,159 +20,124 @@ interface CartContextValue {
   removeFromCart: (id: string) => void;
   updateQuantity: (id: string, quantity: number) => void;
   total: number;
-  clearCart: () => Promise<void>;
+  clearCart: () => void;
+  placeOrder: (orderType: "dine_in" | "takeout") => Promise<string | null>;
 }
 
 const CartContext = createContext<CartContextValue | null>(null);
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
   const { branchId } = useBranch();
+  const { user } = useAuth();
   const [items, setItems] = useState<CartItem[]>([]);
-  const [ready, setReady] = useState(false);
 
-  // Clear cart when switching branches
-  useEffect(() => {
-    setItems([]);
-    (async () => {
-      try {
-        if (user) {
-          await supabase.from("cart_items").delete().eq("customer_id", user.id);
-        }
-      } catch { /* ignore */ }
-    })();
-  }, [branchId]);
-
-  const itemCount = items.length;
+  const itemCount = items.reduce((s, i) => s + i.quantity, 0);
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
-  // Fetch cart from DB when user is ready
-  const fetchCart = useCallback(async () => {
-    if (!user?.id) return;
-    const { data } = await supabase
-      .from("cart_items")
-      .select("menu_item_id, quantity, note, menu_items(name, price, image_url, stock)")
-      .eq("customer_id", user.id);
-    if (data && Array.isArray(data)) {
-      const mapped: CartItem[] = data
-        .filter((r: any) => r.menu_items) // skip deleted items
-        .map((r: any) => ({
-          id: r.menu_item_id,
-          name: r.menu_items?.name || "Unknown",
-          price: Number(r.menu_items?.price ?? 0),
-          image: r.menu_items?.image_url || "",
-          quantity: r.quantity,
-          note: r.note || "",
-          stock: r.menu_items?.stock ?? 0,
-        }));
-      setItems(mapped);
-    }
-    setReady(true);
-  }, [user]);
-
-  useEffect(() => {
-    if (user?.id) {
-      fetchCart();
-    } else {
-      setItems([]);
-      setReady(true);
-    }
-  }, [user, fetchCart]);
-
-  const clearCart = useCallback(async () => {
-    if (!user?.id) return;
-    await supabase.from("cart_items").delete().eq("customer_id", user.id);
-    setItems([]);
-  }, [user]);
-
   const addToCart = useCallback(
-    async (newItem: Omit<CartItem, "id"> & { id: string }) => {
-      if (!user?.id) return;
-      const note = newItem.note || "";
-
-      // Check current DB quantity for this (customer, menu_item_id)
-      const { data: existing } = await supabase
-        .from("cart_items")
-        .select("quantity")
-        .eq("customer_id", user.id)
-        .eq("menu_item_id", newItem.id)
-        .maybeSingle();
-
-      if (existing) {
-        const newQty = existing.quantity + newItem.quantity;
-        await supabase
-          .from("cart_items")
-          .update({ quantity: newQty, note })
-          .eq("customer_id", user.id)
-          .eq("menu_item_id", newItem.id);
-      } else {
-        await supabase
-          .from("cart_items")
-          .insert({
-            customer_id: user.id,
-            menu_item_id: newItem.id,
-            quantity: newItem.quantity,
-            note,
-          });
-      }
-
-      // Refresh local state from DB
-      await fetchCart();
+    (newItem: Omit<CartItem, "id"> & { id: string }) => {
+      setItems((prev) => {
+        const existing = prev.find((i) => i.id === newItem.id);
+        if (existing) {
+          return prev.map((i) =>
+            i.id === newItem.id
+              ? { ...i, quantity: Math.min(i.quantity + newItem.quantity, i.stock), note: newItem.note || i.note }
+              : i
+          );
+        }
+        return [...prev, { ...newItem, id: newItem.id }];
+      });
     },
-    [user, fetchCart]
+    []
   );
 
-  const removeFromCart = useCallback(
-    async (id: string) => {
-      if (!user?.id) return;
-      await supabase
-        .from("cart_items")
-        .delete()
-        .eq("customer_id", user.id)
-        .eq("menu_item_id", id);
+  const removeFromCart = useCallback((id: string) => {
+    setItems((prev) => prev.filter((i) => i.id !== id));
+  }, []);
+
+  const updateQuantity = useCallback((id: string, quantity: number) => {
+    if (quantity <= 0) {
       setItems((prev) => prev.filter((i) => i.id !== id));
-    },
-    [user]
-  );
-
-  const updateQuantity = useCallback(
-    async (id: string, quantity: number) => {
-      if (!user?.id) return;
-      if (quantity <= 0) {
-        await supabase
-          .from("cart_items")
-          .delete()
-          .eq("customer_id", user.id)
-          .eq("menu_item_id", id);
-        setItems((prev) => prev.filter((i) => i.id !== id));
-        return;
-      }
-      await supabase
-        .from("cart_items")
-        .update({ quantity })
-        .eq("customer_id", user.id)
-        .eq("menu_item_id", id);
-      setItems((prev) =>
-        prev.map((i) => (i.id === id ? { ...i, quantity } : i))
-      );
-    },
-    [user]
-  );
-
-  if (!ready) {
-    // Return empty cart while loading to avoid flash
-    return (
-      <CartContext.Provider
-        value={{ items: [], itemCount: 0, addToCart: () => {}, removeFromCart: () => {}, updateQuantity: () => {}, total: 0, clearCart: async () => {} }}
-      >
-        {children}
-      </CartContext.Provider>
+      return;
+    }
+    setItems((prev) =>
+      prev.map((i) => (i.id === id ? { ...i, quantity: Math.min(quantity, i.stock) } : i))
     );
-  }
+  }, []);
+
+  const clearCart = useCallback(() => {
+    setItems([]);
+  }, []);
+
+  const placeOrder = useCallback(
+    async (orderType: "dine_in" | "takeout"): Promise<string | null> => {
+      if (items.length === 0) return "Cart is empty";
+
+      const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+
+      // Validate stock
+      for (const item of items) {
+        const { data: current } = await supabase
+          .from("menu_items")
+          .select("stock, name")
+          .eq("id", item.id)
+          .single();
+        if (!current) return `"${item.name}" is no longer available.`;
+        if (current.stock < item.quantity)
+          return `Not enough stock for "${current.name}". Only ${current.stock} left.`;
+      }
+
+      // Use the authenticated user's ID (walk_in)
+      if (!user?.id) return "Please log in to place an order.";
+
+      // Create order
+      const { data: order, error: orderErr } = await supabase
+        .from("orders")
+        .insert({
+          customer_id: user.id,
+          order_type: orderType,
+          status: "pending",
+          subtotal,
+          delivery_fee: 0,
+          discount: 0,
+          total: subtotal,
+          notes: null,
+          branch_id: branchId,
+        })
+        .select("id")
+        .single();
+
+      if (orderErr || !order) return orderErr?.message || "Failed to create order.";
+
+      const orderItems = items.map((item) => ({
+        order_id: order.id,
+        menu_item: item.name,
+        quantity: item.quantity,
+        unit_price: item.price,
+        subtotal: item.price * item.quantity,
+        note: item.note || "",
+      }));
+
+      const { error: itemsErr } = await supabase.from("order_items").insert(orderItems);
+      if (itemsErr) return itemsErr.message;
+
+      // Decrement stock
+      for (const item of items) {
+        await supabase.rpc("decrement_stock", {
+          p_menu_item_id: item.id,
+          p_quantity: item.quantity,
+        });
+      }
+
+      clearCart();
+      return null; // success
+    },
+    [items, branchId, clearCart, user]
+  );
 
   return (
     <CartContext.Provider
-      value={{ items, itemCount, addToCart, removeFromCart, updateQuantity, total, clearCart }}
+      value={{ items, itemCount, addToCart, removeFromCart, updateQuantity, total, clearCart, placeOrder }}
     >
       {children}
     </CartContext.Provider>

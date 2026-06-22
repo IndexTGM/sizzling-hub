@@ -15,6 +15,7 @@ import { useRouter } from "expo-router";
 import { useRef, useState, useMemo, useCallback, useEffect } from "react";
 import { useCart } from "@/lib/cart-context";
 import { useMenu } from "@/lib/menu-context";
+import { useBranch } from "@/lib/branch-context";
 import { getImageCandidates } from "@/lib/storage";
 import { useBanners } from "@/lib/banner-context";
 
@@ -24,8 +25,9 @@ const PLACEHOLDER = "placeholder.png";
 
 /* ──────────────────────────── Storage Image ───────────────────── */
 function StorageImg({ imageBase, style, resizeMode }: { imageBase: string; style: any; resizeMode?: "cover" | "contain" }) {
+  const { branchId } = useBranch();
   const [tryIdx, setTryIdx] = useState(0);
-  const candidates = useMemo(() => [...getImageCandidates(imageBase), PLACEHOLDER], [imageBase]);
+  const candidates = useMemo(() => [...getImageCandidates(imageBase, branchId), PLACEHOLDER], [imageBase, branchId]);
 
   return (
     <Image
@@ -67,10 +69,6 @@ function MenuCard({ item, cardW, gap, onPress }: { item: any; cardW: number; gap
         <Text style={styles.cardName} numberOfLines={2}>{item.name}</Text>
         <View style={styles.cardRow}>
           <Text style={styles.cardPrice}>₱{item.price}</Text>
-          <View style={styles.ratingBadge}>
-            <Text style={styles.ratingStar}>★</Text>
-            <Text style={styles.ratingText}>{(item.rating ?? 0).toFixed(1)}</Text>
-          </View>
         </View>
         <TouchableOpacity
           style={[styles.addBtn, soldOut && styles.addBtnDisabled]}
@@ -101,7 +99,6 @@ function BannerCarousel() {
   const [active, setActive] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Banner height: ~12% of screen height, min 100, max 160
   const bannerHeight = Math.min(160, Math.max(100, screenHeight * 0.12));
 
   useEffect(() => {
@@ -139,11 +136,6 @@ function BannerCarousel() {
             <View key={b.id} style={{ width: screenWidth, paddingHorizontal: 12 }}>
               <View style={[bannerStyles.card, { backgroundColor: accent, height: bannerHeight }]}>
                 <View style={bannerStyles.textWrap}>
-                  {b.tag ? (
-                    <View style={bannerStyles.tag}>
-                      <Text style={bannerStyles.tagText}>{b.tag}</Text>
-                    </View>
-                  ) : null}
                   <Text style={bannerStyles.title}>{b.title}</Text>
                   <Text style={bannerStyles.subtitle} numberOfLines={3}>{b.subtitle}</Text>
                 </View>
@@ -190,12 +182,6 @@ const bannerStyles = StyleSheet.create({
     shadowOpacity: 0.12, shadowRadius: 6, elevation: 4,
   },
   textWrap: { flex: 1, gap: 3 },
-  tag: {
-    alignSelf: "flex-start", paddingHorizontal: 6, paddingVertical: 1,
-    borderRadius: 5, backgroundColor: "rgba(255,255,255,0.25)",
-    borderWidth: 1, borderColor: "rgba(255,255,255,0.2)",
-  },
-  tagText: { color: "#fff", fontSize: 8, fontWeight: "800", letterSpacing: 1, textTransform: "uppercase" },
   title: { fontSize: 16, fontWeight: "900", color: "#fff", letterSpacing: -0.5 },
   subtitle: { fontSize: 11, fontWeight: "500", color: "rgba(255,255,255,0.85)", lineHeight: 12 },
   img: { width: 72, height: 72, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.15)" },
@@ -333,8 +319,6 @@ export default function MenuScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f5f5f5" },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 14, paddingVertical: 12, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#e5e7eb" },
-  backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#f3f4f6", alignItems: "center", justifyContent: "center" },
-  backIcon: { fontSize: 18, fontWeight: "700", color: "#374151" },
   headerTitle: { fontSize: 18, fontWeight: "800", color: PRIMARY, letterSpacing: -0.5 },
   headerSpacer: { width: 36 },
   bannerToggle: { width: 44, alignItems: "center", justifyContent: "center" },
@@ -355,9 +339,6 @@ const styles = StyleSheet.create({
   cardRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   cardName: { fontSize: 13, fontWeight: "700", color: "#1f2937", letterSpacing: -0.3 },
   cardPrice: { fontSize: 14, fontWeight: "800", color: PRIMARY },
-  ratingBadge: { flexDirection: "row", alignItems: "center", backgroundColor: "#fef3c7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, gap: 3 },
-  ratingStar: { fontSize: 10, color: AMBER },
-  ratingText: { fontSize: 11, fontWeight: "700", color: "#92400e" },
   stockBadge: { position: "absolute", top: 6, left: 6, backgroundColor: "#fef2f2", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   stockBadgeText: { fontSize: 10, fontWeight: "700", color: "#dc2626" },
   soldOutOverlay: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center" },

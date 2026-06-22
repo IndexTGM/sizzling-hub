@@ -12,7 +12,6 @@ export interface Banner {
   title: string;
   subtitle: string;
   image: string;
-  tag: string | null;
   sort_order: number;
   is_active: boolean;
 }
@@ -35,7 +34,7 @@ export function BannerProvider({ children }: { children: ReactNode }) {
       try {
         const { data } = await supabase
           .from("banners")
-          .select("id, title, subtitle, image, tag, sort_order, is_active")
+          .select("id, title, subtitle, image, sort_order, is_active")
           .eq("is_active", true)
           .order("sort_order", { ascending: true });
         if (data) setBanners(data);

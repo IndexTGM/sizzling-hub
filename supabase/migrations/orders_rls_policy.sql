@@ -9,6 +9,7 @@ DROP POLICY IF EXISTS "Customers read own orders" ON public.orders;
 DROP POLICY IF EXISTS "Customers insert own orders" ON public.orders;
 DROP POLICY IF EXISTS "Devs full access orders" ON public.orders;
 DROP POLICY IF EXISTS "Admins manage own branch orders" ON public.orders;
+DROP POLICY IF EXISTS "Kiosk insert orders" ON public.orders;
 
 -- Helper functions (reuse from expenses migration, but define if missing)
 CREATE OR REPLACE FUNCTION profiles_role(p_role text)
@@ -32,7 +33,12 @@ CREATE POLICY "Customers read own orders" ON public.orders
 CREATE POLICY "Customers insert own orders" ON public.orders
   FOR INSERT WITH CHECK (customer_id = auth.uid());
 
--- 3. Devs: full access
+-- 3. Customers: update own orders (e.g., cancel)
+CREATE POLICY "Customers update own orders" ON public.orders
+  FOR UPDATE USING (customer_id = auth.uid())
+  WITH CHECK (customer_id = auth.uid());
+
+-- 4. Devs: full access
 CREATE POLICY "Devs select orders" ON public.orders FOR SELECT
   USING (profiles_role('dev'));
 CREATE POLICY "Devs insert orders" ON public.orders FOR INSERT
@@ -42,7 +48,7 @@ CREATE POLICY "Devs update orders" ON public.orders FOR UPDATE
 CREATE POLICY "Devs delete orders" ON public.orders FOR DELETE
   USING (profiles_role('dev'));
 
--- 4. Admins: own branch only
+-- 5. Admins: own branch only
 CREATE POLICY "Admins select orders" ON public.orders FOR SELECT
   USING (profiles_role('admin') AND profiles_branch_id() = orders.branch_id);
 CREATE POLICY "Admins insert orders" ON public.orders FOR INSERT
@@ -51,3 +57,9 @@ CREATE POLICY "Admins update orders" ON public.orders FOR UPDATE
   USING (profiles_role('admin') AND profiles_branch_id() = orders.branch_id);
 CREATE POLICY "Admins delete orders" ON public.orders FOR DELETE
   USING (profiles_role('admin') AND profiles_branch_id() = orders.branch_id);
+
+-- 6. Tablet kiosk: unauthenticated inserts for walk_in user
+CREATE POLICY "Kiosk insert orders" ON public.orders
+  FOR INSERT WITH CHECK (
+    customer_id = 'd9f8c709-f2db-4021-9501-660ac77a6d22'
+  );
