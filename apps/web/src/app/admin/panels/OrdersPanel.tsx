@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import ConfirmModal from "@/app/_components/ConfirmModal";
 import { LoadingSkeleton, EmptyState } from "./shared";
 import type { OrderStatus, OrderType, AdminOrder } from "./shared";
 import { STATUS_OPTIONS, STATUS_BG, getNextStatuses, OT_ICON, OT_LABEL, PAYMENT_LABEL, PAYMENT_ICON, PAYMENT_STATUS_BG, SOURCE_OPTIONS, SOURCE_FILTER, SOURCE_BG, type OrderSource } from "./shared";
 import { useBranch } from "@/lib/branch-context";
+import { useReactToPrint } from "react-to-print";
 
 export default function OrdersPanel({ branchId }: { branchId?: string | null }) {
   const [orders, setOrders] = useState<AdminOrder[]>([]);
@@ -22,6 +23,11 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
   const [confirmDeliver, setConfirmDeliver] = useState<{ orderId: string } | null>(null);
   const [confirmWithDiscount, setConfirmWithDiscount] = useState<{ orderId: string; newStatus: OrderStatus; oldStatus: OrderStatus } | null>(null);
   const [seniorPwdDiscount, setSeniorPwdDiscount] = useState(false);
+  const receiptRef = useRef<HTMLDivElement>(null);
+  const handlePrint = useReactToPrint({
+    contentRef: receiptRef,
+    pageStyle: `@page { size: 80mm auto; margin: 0; }`,
+  });
   const hasOrdersLoaded = React.useRef(false);
   const fetchOrders = useCallback(async () => {
     const sb = createClient();
@@ -298,7 +304,7 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
               <div className="bg-white rounded-2xl border border-gray-200 shadow-xl w-full max-w-sm max-h-[90vh] overflow-y-auto receipt-outer">
                 <style jsx global>{`@media print { @page { size: 80mm auto; margin: 0; } body { background: white; } body * { visibility: hidden; } .receipt-wrapper, .receipt-wrapper *, .receipt-outer, .receipt-outer *, .receipt-popup, .receipt-popup * { visibility: visible; } .receipt-wrapper { position: absolute !important; top: 0 !important; left: 0 !important; width: 100% !important; padding: 0 !important; display: block !important; } .receipt-wrapper .no-print { display: none !important; } .receipt-outer { position: static !important; width: 100% !important; max-width: none !important; border: none !important; border-radius: 0 !important; box-shadow: none !important; overflow: visible !important; max-height: none !important; background: transparent !important; padding: 0 !important; } .receipt-outer .no-print { display: none !important; } .receipt-popup { display: block; width: 280px; margin: 0 auto; padding: 0; box-sizing: border-box; overflow: hidden; font-family: monospace; font-size: 11px; line-height: 1.4; color: #000 !important; background: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } .receipt-popup * { color: #000 !important; background: transparent !important; border-color: #000 !important; } html, body { margin: 0 !important; padding: 0 !important; } }`}</style>
                 {/* 80mm Thermal Receipt */}
-                <div className="receipt-popup bg-white p-3 text-xs font-mono text-black w-[280px] mx-auto">
+                <div ref={receiptRef} className="receipt-popup bg-white p-3 text-xs font-mono text-black w-[280px] mx-auto">
                   {/* Header */}
                   <div className="text-center mb-3 border-b border-dashed border-black pb-3">
                     {logoUrl && <img src={logoUrl} alt="Logo" className="w-12 h-12 object-contain mx-auto mb-1" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />}
@@ -383,7 +389,7 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
                 </div>
                 {/* Print Button */}
                 <div className="flex gap-2 p-4 no-print">
-                  <button onClick={() => window.print()} className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700">🖨 Print Receipt</button>
+                  <button onClick={() => handlePrint()} className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700">🖨 Print Receipt</button>
                   <button onClick={() => setReceiptOrder(null)} className="px-4 py-2.5 rounded-xl bg-gray-100 text-gray-600 text-sm font-medium hover:bg-gray-200">Close</button>
                 </div>
               </div>
