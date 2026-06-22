@@ -26,7 +26,11 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
   const receiptRef = useRef<HTMLDivElement>(null);
   const handlePrint = useReactToPrint({
     contentRef: receiptRef,
-    pageStyle: `@page { size: 80mm auto; margin: 0; }`,
+    pageStyle: `
+      @page { size: 80mm 210mm; margin: 0; }
+      @media print { html, body { margin: 0 !important; padding: 0 !important; } }
+    `,
+    onAfterPrint: () => setReceiptOrder(null),
   });
   const hasOrdersLoaded = React.useRef(false);
   const fetchOrders = useCallback(async () => {
@@ -302,7 +306,6 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
             <div className="fixed inset-0 bg-black/30 z-50 no-print" onClick={() => setReceiptOrder(null)} />
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 receipt-wrapper">
               <div className="bg-white rounded-2xl border border-gray-200 shadow-xl w-full max-w-sm max-h-[90vh] overflow-y-auto receipt-outer">
-                <style jsx global>{`@media print { @page { size: 80mm auto; margin: 0; } body { background: white; } body * { visibility: hidden; } .receipt-wrapper, .receipt-wrapper *, .receipt-outer, .receipt-outer *, .receipt-popup, .receipt-popup * { visibility: visible; } .receipt-wrapper { position: absolute !important; top: 0 !important; left: 0 !important; width: 100% !important; padding: 0 !important; display: block !important; } .receipt-wrapper .no-print { display: none !important; } .receipt-outer { position: static !important; width: 100% !important; max-width: none !important; border: none !important; border-radius: 0 !important; box-shadow: none !important; overflow: visible !important; max-height: none !important; background: transparent !important; padding: 0 !important; } .receipt-outer .no-print { display: none !important; } .receipt-popup { display: block; width: 280px; margin: 0 auto; padding: 0; box-sizing: border-box; overflow: hidden; font-family: monospace; font-size: 11px; line-height: 1.4; color: #000 !important; background: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } .receipt-popup * { color: #000 !important; background: transparent !important; border-color: #000 !important; } html, body { margin: 0 !important; padding: 0 !important; } }`}</style>
                 {/* 80mm Thermal Receipt */}
                 <div ref={receiptRef} className="receipt-popup bg-white p-3 text-xs font-mono text-black w-[280px] mx-auto">
                   {/* Header */}
