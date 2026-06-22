@@ -53,36 +53,47 @@ export default function ProfilesPanel({
     fetchProfiles();
   }, [fetchProfiles]);
 
-  // Fetch branches for assignment dropdown (dev only)
+  const isDev = currentUserRole === "dev";
+  const isAdmin = currentUserRole === "admin";
+
+  // Fetch branches for assignment dropdown (dev) and branch name display (admin)
   useEffect(() => {
-    if (showBranchAssignment) {
+    if (showBranchAssignment || isAdmin) {
       (async () => {
         const sb = createClient();
         const { data } = await sb.from("branches").select("id, name").order("name");
         if (data) setBranches(data);
       })();
     }
-  }, [showBranchAssignment]);
+  }, [showBranchAssignment, isAdmin]);
 
-  const isDev = currentUserRole === "dev";
-  const isAdmin = currentUserRole === "admin";
+  // Admin can see the branch column (read-only) in addition to dev seeing it as editable
+  const showBranchColumn = showBranchAssignment || isAdmin;
 
   function getRoleOptions(profile: Profile): string[] {
     if (isDev) return ["customer", "admin", "dev"];
-    // Admin: can only manage users in their own branch, only customer ↔ admin
-    if (isAdmin && profile.branch_id === currentUserBranchId) {
+    if (!isAdmin) return [profile.role];
+    // Admin viewing a dev — no options
+    if (profile.role === "dev") return ["dev"];
+    // Admin viewing a customer (any branch or no branch) — can promote to admin
+    if (profile.role === "customer") return ["customer", "admin"];
+    // Admin viewing another admin — only editable if same branch
+    if (profile.role === "admin" && profile.branch_id === currentUserBranchId) {
       return ["customer", "admin"];
     }
-    // Admin viewing users in other branches — no role options
-    if (isAdmin && profile.branch_id !== currentUserBranchId) {
-      return [profile.role]; // only current role (locked)
-    }
-    return ["customer", "admin", "dev"]; // fallback (shouldn't happen)
+    // Admin viewing another admin in different branch — locked
+    return ["admin"];
   }
 
   function canChangeRole(profile: Profile): boolean {
     if (isDev) return true;
-    if (isAdmin && profile.branch_id === currentUserBranchId) return true;
+    if (!isAdmin) return false;
+    // Dev role is never editable by admin
+    if (profile.role === "dev") return false;
+    // Customers are always editable by admins (can promote)
+    if (profile.role === "customer") return true;
+    // Other admins: only editable if same branch
+    if (profile.role === "admin" && profile.branch_id === currentUserBranchId) return true;
     return false;
   }
 
@@ -91,13 +102,40 @@ export default function ProfilesPanel({
     if (!profile) return;
     // Safety: prevent admins from setting dev role
     if (isAdmin && newRole === "dev") return;
-    // Safety: prevent changing roles outside own branch
-    if (isAdmin && profile.branch_id !== currentUserBranchId) return;
+    // Safety: prevent admins from changing other branch admins
+    if (isAdmin && profile.role === "admin" && profile.branch_id !== currentUserBranchId) return;
+    // Prevent changing devs
+    if (isAdmin && profile.role === "dev") return;
 
     setSavingRoleId(profileId);
     const sb = createClient();
-    await sb.from("profiles").update({ role: newRole }).eq("id", profileId);
-    setProfiles((prev) => prev.map((p) => (p.id === profileId ? { ...p, role: newRole } : p)));
+
+    // When admin promotes a customer to admin, auto-assign to the admin's branch
+    if (isAdmin && newRole === "admin" && profile.role === "customer") {
+      await sb.from("profiles").update({
+        role: newRole,
+        branch_id: currentUserBranchId,
+      }).eq("id", profileId);
+      setProfiles((prev) =>
+        prev.map((p) =>
+          p.id === profileId ? { ...p, role: newRole, branch_id: currentUserBranchId ?? null } : p
+        )
+      );
+    // When admin demotes an admin to customer, remove branch assignment
+    } else if (isAdmin && newRole === "customer" && profile.role === "admin") {
+      await sb.from("profiles").update({
+        role: newRole,
+        branch_id: null,
+      }).eq("id", profileId);
+      setProfiles((prev) =>
+        prev.map((p) =>
+          p.id === profileId ? { ...p, role: newRole, branch_id: null } : p
+        )
+      );
+    } else {
+      await sb.from("profiles").update({ role: newRole }).eq("id", profileId);
+      setProfiles((prev) => prev.map((p) => (p.id === profileId ? { ...p, role: newRole } : p)));
+    }
     setSavingRoleId(null);
   }
 
@@ -172,7 +210,7 @@ export default function ProfilesPanel({
                     <th className="px-4 py-3 font-semibold">Name</th>
                     <th className="px-4 py-3 font-semibold">Email</th>
                     <th className="px-4 py-3 font-semibold">Role</th>
-                    {showBranchAssignment && <th className="px-4 py-3 font-semibold">Branch</th>}
+                     {showBranchColumn && <th className="px-4 py-3 font-semibold">Branch</th>}
                     <th className="px-4 py-3 font-semibold hidden sm:table-cell">Phone</th>
                     <th className="px-4 py-3 font-semibold hidden md:table-cell">Joined</th>
                   </tr>
@@ -212,11 +250,11 @@ export default function ProfilesPanel({
                           </select>
                         )}
                       </td>
-                      {showBranchAssignment && (
+                      {showBranchColumn && (
                         <td className="px-4 py-3">
                           {savingBranchId === p.id ? (
                             <span className="text-xs text-gray-400">Saving…</span>
-                          ) : (
+                          ) : showBranchAssignment ? (
                             <select
                               value={p.branch_id || ""}
                               onChange={(e) =>
@@ -231,6 +269,12 @@ export default function ProfilesPanel({
                                 </option>
                               ))}
                             </select>
+                          ) : (
+                            <span className="text-xs text-gray-500">
+                              {p.branch_id
+                                ? (branches.find((b) => b.id === p.branch_id)?.name || p.branch_id)
+                                : "—"}
+                            </span>
                           )}
                         </td>
                       )}
@@ -284,12 +328,12 @@ export default function ProfilesPanel({
                     </select>
                   )}
                 </div>
-                {showBranchAssignment && (
+                {showBranchColumn && (
                   <div className="flex items-center justify-between pt-1 border-t border-gray-100">
                     <span className="text-xs text-gray-400">Branch:</span>
                     {savingBranchId === p.id ? (
                       <span className="text-xs text-gray-400">Saving…</span>
-                    ) : (
+                    ) : showBranchAssignment ? (
                       <select
                         value={p.branch_id || ""}
                         onChange={(e) => handleBranchChange(p.id, e.target.value || null)}
@@ -302,6 +346,12 @@ export default function ProfilesPanel({
                           </option>
                         ))}
                       </select>
+                    ) : (
+                      <span className="text-xs text-gray-500">
+                        {p.branch_id
+                          ? (branches.find((b) => b.id === p.branch_id)?.name || p.branch_id)
+                          : "—"}
+                      </span>
                     )}
                   </div>
                 )}
