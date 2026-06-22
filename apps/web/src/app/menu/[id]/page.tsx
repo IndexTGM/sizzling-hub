@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { useMenu } from "@/lib/menu-context";
 import { useCart } from "@/lib/cart-context";
-import { createClient } from "@/lib/supabase/client";
+import { useBranch } from "@/lib/branch-context";
 import AppHeader from "@/app/_components/AppHeader";
 import CartSidebar from "@/app/_components/CartSidebar";
 import ProfileModal from "@/app/_components/ProfileModal";
@@ -14,38 +14,13 @@ import PlaceholderImage from "@/app/_components/PlaceholderImage";
 import StorageImage from "@/app/_components/StorageImage";
 
 const PRIMARY = "#dc2626";
-const AMBER = "#f59e0b";
-
-interface Review {
-  id: string;
-  customerName: string;
-  rating: number;
-  comment: string | null;
-  createdAt: string;
-}
-
-function Stars({ rating }: { rating: number }) {
-  const full = Math.floor(rating);
-  const half = rating - full >= 0.5;
-  const empty = 5 - full - (half ? 1 : 0);
-  return (
-    <div className="flex gap-0.5">
-      {Array.from({ length: full }).map((_, i) => (
-        <span key={`f-${i}`} className="text-lg" style={{ color: AMBER }}>★</span>
-      ))}
-      {half && <span className="text-lg" style={{ color: AMBER, opacity: 0.5 }}>★</span>}
-      {Array.from({ length: empty }).map((_, i) => (
-        <span key={`e-${i}`} className="text-lg text-[#d1d5db]">★</span>
-      ))}
-    </div>
-  );
-}
 
 export default function MenuItemPage() {
   const { id } = useParams<{ id: string }>();
   const { user, loading: authLoading } = useAuth();
   const { menuItems } = useMenu();
   const { cart, addToCart } = useCart();
+  const { branchId } = useBranch();
   const router = useRouter();
 
   // Redirect to home (login) if not authenticated
@@ -61,36 +36,8 @@ export default function MenuItemPage() {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [note, setNote] = useState("");
-  const [reviews, setReviews] = useState<Review[]>([]);
-  const [reviewsLoading, setReviewsLoading] = useState(true);
 
   const item = useMemo(() => menuItems.find((m) => m.id === id), [menuItems, id]);
-
-  // Handle when the menu refreshes (e.g. after a new review updates rating)
-  useEffect(() => {
-    if (item) {
-      setReviewsLoading(true);
-      const sb = createClient();
-      sb.from("reviews")
-        .select("id, rating, comment, created_at, profiles:customer_id(first_name, last_name)")
-        .eq("menu_item_id", item.id)
-        .order("created_at", { ascending: false })
-        .limit(20)
-        .then(({ data }) => {
-          const mapped: Review[] = (data || []).map((r: any) => ({
-            id: r.id,
-            customerName: r.profiles?.first_name && r.profiles?.last_name
-              ? `${r.profiles.first_name} ${r.profiles.last_name}`
-              : "Anonymous",
-            rating: r.rating,
-            comment: r.comment,
-            createdAt: r.created_at,
-          }));
-          setReviews(mapped);
-          setReviewsLoading(false);
-        });
-    }
-  }, [item, menuItems]);
 
   // Stable transform refs so StorageImage doesn't reset on every render
   const heroTransform = useRef({ width: 800, quality: 80, format: "webp" as const });
@@ -115,17 +62,18 @@ export default function MenuItemPage() {
   }
 
   const description = item.description || "A delicious item from Sizzling Hub's kitchen. Made fresh to order with quality ingredients.";
-  const rating = item.rating ?? 0;
   const stock = item.stock ?? 999;
   const isSoldOut = stock === 0;
   const isLowStock = stock > 0 && stock <= 5;
   const totalPrice = item.price * quantity;
 
-  function handleAddToCart() {
+  async function handleAddToCart() {
     const trimmedNote = note.trim();
-    addToCart(item!, trimmedNote);
-    for (let i = 1; i < quantity; i++) addToCart(item!, trimmedNote);
-    if (typeof window !== "undefined") window.history.back();
+    // Optimistically add to cart, then navigate back
+    addToCart(item!, trimmedNote, quantity);
+    // Brief delay so syncItem has time to write to DB before page unloads
+    await new Promise((r) => setTimeout(r, 300));
+    router.back();
   }
 
   return (
@@ -148,6 +96,7 @@ export default function MenuItemPage() {
                   className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                   priority
                   transform={heroTransform.current}
+                  branchId={branchId}
                   onError={() => setImgError(true)}
                 />
                 {/* Hover overlay */}
@@ -174,15 +123,7 @@ export default function MenuItemPage() {
               Back to Menu
             </Link>
 
-            <div className="flex items-start justify-between gap-4">
-              <h1 className="text-2xl font-extrabold text-[#1f2937] flex-1">{item.name}</h1>
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#fef3c7] shrink-0">
-                <span className="text-sm" style={{ color: AMBER }}>★</span>
-                <span className="text-sm font-extrabold text-[#92400e]">{rating.toFixed(1)}</span>
-              </div>
-            </div>
-
-            <Stars rating={rating} />
+            <h1 className="text-2xl font-extrabold text-[#1f2937]">{item.name}</h1>
             <p className="text-2xl font-extrabold" style={{ color: PRIMARY }}>₱{item.price}</p>
             <hr className="border-[#f3f4f6]" />
 
@@ -214,48 +155,6 @@ export default function MenuItemPage() {
               <p className="text-xs font-bold text-[#9ca3af] uppercase tracking-wide mb-2">Order Note (optional)</p>
               <textarea value={note} onChange={(e) => setNote(e.target.value.slice(0, 200))} placeholder="e.g., less ice, no onions, extra spicy..." className="w-full px-4 py-3 rounded-xl border border-[#e5e7eb] bg-[#f9fafb] text-sm font-medium text-[#1f2937] placeholder-[#9ca3af] focus:outline-none focus:ring-2 focus:ring-[#dc2626]/30 focus:border-[#dc2626] transition-all resize-none" rows={3} maxLength={200} />
               <p className="text-xs font-medium text-[#9ca3af] text-right mt-1">{note.length}/200</p>
-            </div>
-
-            <hr className="border-[#f3f4f6]" />
-
-            {/* ─── Reviews Section ─── */}
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-bold text-[#9ca3af] uppercase tracking-wide">
-                  Reviews ({reviews.length})
-                </p>
-                {reviews.length > 0 && (
-                  <span className="text-xs font-semibold text-[#9ca3af]">{rating.toFixed(1)} avg</span>
-                )}
-              </div>
-              {reviewsLoading ? (
-                <p className="text-sm text-[#9ca3af]">Loading reviews…</p>
-              ) : reviews.length === 0 ? (
-                <p className="text-sm text-[#9ca3af]">No reviews yet. Be the first to review after your order!</p>
-              ) : (
-                <div className="space-y-3">
-                  {reviews.map((r) => (
-                    <div key={r.id} className="p-3 rounded-xl bg-[#f9fafb]">
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-[#1f2937]">{r.customerName}</span>
-                          <div className="flex gap-0.5">
-                            {[1, 2, 3, 4, 5].map((star) => (
-                              <span key={star} className="text-xs" style={{ color: star <= r.rating ? AMBER : "#d1d5db" }}>★</span>
-                            ))}
-                          </div>
-                        </div>
-                        <span className="text-xs text-[#9ca3af]">
-                          {new Date(r.createdAt).toLocaleDateString()}
-                        </span>
-                      </div>
-                      {r.comment && (
-                        <p className="text-sm text-[#4b5563] leading-relaxed">{r.comment}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -296,6 +195,7 @@ export default function MenuItemPage() {
               className="w-full h-auto max-h-[90vh] object-contain bg-[#0a0a0a]"
               priority
               transform={lightboxTransform.current}
+              branchId={branchId}
             />
           </div>
         </div>

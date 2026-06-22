@@ -57,17 +57,17 @@ export function isWithinDeliveryRange(
   return { valid: distance <= branchRadiusKm, distanceKm: distance };
 }
 
-// Cache branch location lookups
+// Cache branch location lookups by branch ID
 const branchLocationCache = new Map<string, BranchLocation>();
 
 /**
- * Fetch branch location data from the database.
+ * Fetch branch location data from the database by branch ID.
  * Falls back to DEFAULT_STORE_LOCATION if branch not found.
  */
 export async function getBranchLocation(
-  branchSlug: string
+  branchId: string
 ): Promise<BranchLocation> {
-  const cached = branchLocationCache.get(branchSlug);
+  const cached = branchLocationCache.get(branchId);
   if (cached) return cached;
 
   try {
@@ -75,7 +75,7 @@ export async function getBranchLocation(
     const { data } = await sb
       .from("branches")
       .select("lat, lng, delivery_radius_km")
-      .eq("slug", branchSlug)
+      .eq("id", branchId)
       .eq("is_active", true)
       .maybeSingle();
 
@@ -85,7 +85,7 @@ export async function getBranchLocation(
         lng: data.lng,
         deliveryRadiusKm: data.delivery_radius_km ?? 3,
       };
-      branchLocationCache.set(branchSlug, result);
+      branchLocationCache.set(branchId, result);
       return result;
     }
   } catch {

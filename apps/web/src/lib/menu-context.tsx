@@ -16,7 +16,6 @@ import { useBranch } from "@/lib/branch-context";
 interface Category {
   id: string;
   name: string;
-  slug: string;
 }
 
 interface MenuContextType {
@@ -39,8 +38,8 @@ async function fetchMenuData(branchId: string | null): Promise<{ menuItems: Menu
   try {
     const sb = getSupabase();
 
-    let catsQuery = sb.from("categories").select("id, name, slug").eq("is_active", true).order("sort_order");
-    let itemsQuery = sb.from("menu_items").select("id, name, price, image_url, stock, rating").eq("is_available", true).order("name");
+    let catsQuery = sb.from("categories").select("id, name").order("sort_order");
+    let itemsQuery = sb.from("menu_items").select("id, name, price, description, stock").order("name");
 
     if (branchId) {
       catsQuery = catsQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
@@ -73,9 +72,9 @@ async function fetchMenuData(branchId: string | null): Promise<{ menuItems: Menu
       id: row.id,
       name: row.name,
       price: row.price,
-      imageName: row.image_url || "",
+      imageName: row.name,
+      description: row.description,
       stock: row.stock ?? 0,
-      rating: row.rating ?? 0,
       categories: junctionMap.get(row.id) || ["Uncategorized"],
     }));
 

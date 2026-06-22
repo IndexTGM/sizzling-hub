@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { logAudit } from "@/lib/audit-log";
-
 export async function POST(request: NextRequest) {
   try {
     const sb = await createClient();
@@ -86,7 +84,6 @@ export async function POST(request: NextRequest) {
         total: subtotal,
         notes: addressStr ? `Address: ${addressStr}` : null,
         payment_method: paymentMethod,
-        payment_source_id: paymentSourceId,
         payment_status: "paid",
       })
       .select("id")
@@ -99,10 +96,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Read branch_id from cart_items before clearing
+    const { data: cartRow } = await sb.from("cart_items")
+      .select("branch_id")
+      .eq("customer_id", user.id)
+      .limit(1)
+      .maybeSingle();
+
+    const orderBranchId = cartRow?.branch_id || null;
+
+    // Update order with branch_id
+    if (orderBranchId) {
+      await sb.from("orders").update({ branch_id: orderBranchId }).eq("id", order.id);
+    }
+
     // Create order items
     const orderItems = cartRows.map((row: any) => ({
       order_id: order.id,
-      menu_item_id: row.menu_item_id,
+      menu_item: menuMap.get(row.menu_item_id)?.name || "Unknown",
       quantity: row.quantity,
       unit_price: menuMap.get(row.menu_item_id)?.price || 0,
       subtotal:
@@ -128,25 +139,6 @@ export async function POST(request: NextRequest) {
         p_quantity: row.quantity,
       });
     }
-
-    // Audit log
-    logAudit({
-      source: "customer",
-      action: "place_order",
-      entity_type: "order",
-      entity_id: order.id,
-      details: {
-        order_type: orderType,
-        total: subtotal,
-        payment_method: paymentMethod,
-        items: cartRows.map((row: any) => ({
-          name: menuMap.get(row.menu_item_id)?.name || "Unknown",
-          quantity: row.quantity,
-          price: menuMap.get(row.menu_item_id)?.price || 0,
-          note: row.note ?? "",
-        })),
-      },
-    }).catch(() => { /* best-effort */ });
 
     return NextResponse.json({
       success: true,

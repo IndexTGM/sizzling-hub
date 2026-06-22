@@ -18,6 +18,8 @@ interface StorageImageProps {
   priority?: boolean;
   /** Override default transform options (width=600, quality=75, format=webp) */
   transform?: ImageTransformOptions;
+  /** Branch ID for folder-scoped image lookup */
+  branchId?: string | null;
   onLoad?: () => void;
   onError?: () => void;
 }
@@ -36,9 +38,10 @@ export default function StorageImage({
   imageBaseName,
   alt,
   className,
-  fallbackSrc = getImagePath("placeholder.png"),
+  fallbackSrc = getImagePath("global/placeholder.png"),
   priority = false,
   transform,
+  branchId,
   onLoad,
   onError,
 }: StorageImageProps) {
@@ -52,7 +55,7 @@ export default function StorageImage({
   useEffect(() => {
     setLoaded(false);
     setErrored(false);
-    candidatesRef.current = getImageCandidates(imageBaseName, transform);
+    candidatesRef.current = getImageCandidates(imageBaseName, transform, branchId);
     indexRef.current = 0;
     // If only 1 candidate, it's a cached URL — flag it so we can retry on failure
     wasCachedRef.current = candidatesRef.current.length === 1;
@@ -61,7 +64,7 @@ export default function StorageImage({
     } else {
       setSrc(fallbackSrc);
     }
-  }, [imageBaseName, fallbackSrc, transform]);
+  }, [imageBaseName, fallbackSrc, transform, branchId]);
 
   function handleError() {
     indexRef.current++;
@@ -71,7 +74,7 @@ export default function StorageImage({
       // Cached URL failed (file was deleted/replaced) — clear cache & retry all
       clearImageCache();
       wasCachedRef.current = false;
-      candidatesRef.current = getImageCandidates(imageBaseName, transform);
+      candidatesRef.current = getImageCandidates(imageBaseName, transform, branchId);
       indexRef.current = 0;
       if (candidatesRef.current.length > 0) {
         setSrc(candidatesRef.current[0]);

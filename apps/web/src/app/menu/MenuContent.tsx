@@ -27,14 +27,7 @@ const BANNER_COLORS = [
   "#06b6d4", "#f97316", "#84cc16", "#ec4899",
 ];
 
-const CATEGORIES: CategoryFilter[] = [
-  { key: "all", label: "All" },
-  { key: "Silog", label: "Silog" },
-  { key: "Drinks", label: "Drinks" },
-  { key: "Add-ons", label: "Add-ons" },
-];
-
-function BannerCarousel() {
+function BannerCarousel({ branchId }: { branchId: string | null }) {
   const { banners } = useBanners();
   const [active, setActive] = useState(0);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -69,12 +62,11 @@ function BannerCarousel() {
             <div className="px-4">
               <div className="relative flex items-center rounded-xl p-4 gap-4 shadow-sm border border-white/50 overflow-hidden" style={{ backgroundColor: accentColor, backgroundImage: `linear-gradient(135deg, ${accentColor} 0%, ${accentColor}dd 100%)`, height: 120 }}>
                 <div className="flex-1 space-y-1.5 relative z-10">
-                  {b.tag && <span className="inline-block px-2 py-0.5 rounded bg-white/20 text-white text-[10px] font-extrabold tracking-wider uppercase">{b.tag}</span>}
                   <h3 className="text-lg font-black text-white tracking-tight leading-tight">{b.title}</h3>
                   <p className="text-xs text-white/70 font-medium line-clamp-1">{b.subtitle}</p>
                 </div>
                 <div className="relative z-10 flex-shrink-0">
-                  <StorageImage imageBaseName={b.image} alt={b.title} className="w-20 h-20 object-cover rounded-xl shadow-md ring-1 ring-white/20" />
+                  <StorageImage imageBaseName={b.image} alt={b.title} className="w-20 h-20 object-cover rounded-xl shadow-md ring-1 ring-white/20" branchId={branchId} />
                 </div>
               </div>
             </div>
@@ -96,7 +88,7 @@ function BannerCarousel() {
 
 export default function MenuContent() {
   const { user, loading: authLoading } = useAuth();
-  const { branch, branchId, allBranches, setBranchSlug } = useBranch();
+  const { branch, branchId, allBranches, setBranchId } = useBranch();
   const { menuItems, categories, loading: menuLoading } = useMenu();
   const { cart, addToCart } = useCart();
   const router = useRouter();
@@ -120,13 +112,10 @@ export default function MenuContent() {
   }
 
   const displayCategories: CategoryFilter[] = useMemo(() => {
-    if (categories.length > 0) {
-      return [
-        { key: "all", label: "All" },
-        ...categories.map((c) => ({ key: c.id, label: c.name })),
-      ];
-    }
-    return CATEGORIES;
+    return [
+      { key: "all", label: "All" },
+      ...categories.map((c) => ({ key: c.id, label: c.name })),
+    ];
   }, [categories]);
 
   const filteredItems = useMemo(() => {
@@ -154,7 +143,7 @@ export default function MenuContent() {
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-6xl mx-auto px-4 pt-4 pb-20 sm:pb-0">
           {/* Banner Carousel */}
-          <BannerCarousel />
+          <BannerCarousel branchId={branchId} />
 
           {/* Branch name banner when branch is selected */}
           {branch && allBranches.length > 1 && (
@@ -240,6 +229,7 @@ export default function MenuContent() {
                         className={`w-full h-full object-cover transition-transform duration-300 ${
                           soldOut ? "" : "group-hover:scale-105"
                         }`}
+                        branchId={branchId}
                         onError={() => onImgError(item.imageName)}
                       />
                     )}
@@ -252,11 +242,7 @@ export default function MenuContent() {
                   <div className="p-4">
                     <h3 className="font-bold text-[#0a0a0a] text-base">{item.name}</h3>
                     <p className="text-[#6b7280] text-sm">{item.categories.join(", ")}</p>
-                    <div className="flex items-center gap-1.5 mt-1 mb-3">
-                      <span className="text-xs" style={{ color: AMBER }}>★</span>
-                      <span className="text-xs font-bold text-[#92400e]">{item.rating?.toFixed(1)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between mt-1">
                       <span className="text-lg font-black" style={{ color: PRIMARY }}>₱{item.price}</span>
                       <button
                         onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (!soldOut) addToCart(item); }}

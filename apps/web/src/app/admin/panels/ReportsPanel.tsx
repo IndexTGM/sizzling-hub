@@ -141,11 +141,11 @@ export default function ReportsPanel({ branchId }: { branchId?: string | null })
 
       if (todayOrdersData.length > 0) {
         const ids = todayOrdersData.map((o: any) => o.id);
-        const { data: todayItems } = await sb.from("order_items").select("quantity, unit_price, menu_item:menu_items(name)").in("order_id", ids);
+        const { data: todayItems } = await sb.from("order_items").select("quantity, unit_price, menu_item").in("order_id", ids);
         if (todayItems) {
           const iMap = new Map<string, { sold: number; revenue: number }>();
           for (const it of todayItems) {
-            const n = (it.menu_item as any)?.name || "Unknown";
+            const n = it.menu_item || "Unknown";
             const e = iMap.get(n) || { sold: 0, revenue: 0 };
             e.sold += it.quantity; e.revenue += it.quantity * Number(it.unit_price);
             iMap.set(n, e);
@@ -164,11 +164,11 @@ export default function ReportsPanel({ branchId }: { branchId?: string | null })
     const { data: weekOrders } = await wq;
     if (weekOrders && weekOrders.length > 0) {
       const ids = weekOrders.map((o: any) => o.id);
-      const { data: weekItems } = await sb.from("order_items").select("quantity, unit_price, menu_item:menu_items(name)").in("order_id", ids);
+      const { data: weekItems } = await sb.from("order_items").select("quantity, unit_price, menu_item").in("order_id", ids);
       if (weekItems) {
         const wiMap = new Map<string, { sold: number; revenue: number }>();
         for (const it of weekItems) {
-          const n = (it.menu_item as any)?.name || "Unknown";
+          const n = it.menu_item || "Unknown";
           const e = wiMap.get(n) || { sold: 0, revenue: 0 };
           e.sold += it.quantity; e.revenue += it.quantity * Number(it.unit_price);
           wiMap.set(n, e);
@@ -183,11 +183,11 @@ export default function ReportsPanel({ branchId }: { branchId?: string | null })
     const { data: allOrders } = await allQ;
     if (allOrders && allOrders.length > 0) {
       const allIds = allOrders.map((o: any) => o.id);
-      const { data: allItems } = await sb.from("order_items").select("quantity, unit_price, menu_item:menu_items(name)").in("order_id", allIds);
+      const { data: allItems } = await sb.from("order_items").select("quantity, unit_price, menu_item").in("order_id", allIds);
       if (allItems) {
         const aMap = new Map<string, { sold: number; revenue: number }>();
         for (const it of allItems) {
-          const n = (it.menu_item as any)?.name || "Unknown";
+          const n = it.menu_item || "Unknown";
           const e = aMap.get(n) || { sold: 0, revenue: 0 };
           e.sold += it.quantity; e.revenue += it.quantity * Number(it.unit_price);
           aMap.set(n, e);

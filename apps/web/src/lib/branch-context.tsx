@@ -16,7 +16,6 @@ import { getBranchLocation, DEFAULT_STORE_LOCATION } from "@/lib/store-config";
 export interface Branch {
   id: string;
   name: string;
-  slug: string;
   address: string | null;
   phone: string | null;
   email: string | null;
@@ -31,14 +30,12 @@ interface BranchContextType {
   branch: Branch | null;
   /** All active branches for the picker */
   allBranches: Branch[];
-  /** Current branch slug */
-  branchSlug: string;
   /** Current branch ID */
   branchId: string | null;
   /** Branch location for delivery/distance checks */
   branchLocation: BranchLocation;
   /** Change the active branch */
-  setBranchSlug: (slug: string) => void;
+  setBranchId: (id: string) => void;
   /** Loading state */
   loading: boolean;
   /** Error state */
@@ -59,7 +56,6 @@ function mapBranchRow(row: any): Branch {
   return {
     id: row.id,
     name: row.name,
-    slug: row.slug,
     address: row.address ?? null,
     phone: row.phone ?? null,
     email: row.email ?? null,
@@ -73,22 +69,22 @@ function mapBranchRow(row: any): Branch {
 export function BranchProvider({ children }: { children: ReactNode }) {
   const [allBranches, setAllBranches] = useState<Branch[]>([]);
   const [branch, setBranch] = useState<Branch | null>(null);
-  const [branchSlug, setBranchSlugState] = useState<string>("main");
+  const [branchId, setBranchIdState] = useState<string | null>(null);
   const [branchLocation, setBranchLocation] = useState<BranchLocation>(DEFAULT_STORE_LOCATION);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // On first mount, read branch slug from URL search params or localStorage
+  // On first mount, read branch ID from URL search params or localStorage
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const urlSlug = params.get("branch");
-    if (urlSlug) {
-      localStorage.setItem("sizzling_hub_branch", urlSlug);
-      setBranchSlugState(urlSlug);
+    const urlId = params.get("branch");
+    if (urlId) {
+      localStorage.setItem("sizzling_hub_branch_id", urlId);
+      setBranchIdState(urlId);
     } else {
-      const stored = localStorage.getItem("sizzling_hub_branch");
+      const stored = localStorage.getItem("sizzling_hub_branch_id");
       if (stored) {
-        setBranchSlugState(stored);
+        setBranchIdState(stored);
       }
     }
   }, []);
@@ -98,7 +94,7 @@ export function BranchProvider({ children }: { children: ReactNode }) {
       const sb = getSupabase();
       const { data } = await sb
         .from("branches")
-        .select("id, name, slug, address, phone, email, lat, lng, delivery_radius_km, is_active")
+        .select("id, name, address, phone, email, lat, lng, delivery_radius_km, is_active")
         .eq("is_active", true)
         .order("name");
 
@@ -113,45 +109,57 @@ export function BranchProvider({ children }: { children: ReactNode }) {
     return [];
   }, []);
 
-  // Resolve branch from slug
+  // Resolve branch from ID
   useEffect(() => {
     (async () => {
       setLoading(true);
       const branches = allBranches.length > 0 ? allBranches : await fetchBranches();
-      const found = branches.find((b) => b.slug === branchSlug) ?? branches.find((b) => b.slug === "main") ?? branches[0] ?? null;
+      let found: Branch | null = null;
+      if (branchId) {
+        found = branches.find((b) => b.id === branchId) ?? null;
+      }
+      // If no stored branch or not found, use first branch
+      if (!found) {
+        found = branches[0] ?? null;
+        if (found) {
+          setBranchIdState(found.id);
+          localStorage.setItem("sizzling_hub_branch_id", found.id);
+        }
+      }
       setBranch(found);
       if (found) {
-        const loc = await getBranchLocation(found.slug);
+        const loc = await getBranchLocation(found.id);
         setBranchLocation(loc);
       }
       setLoading(false);
     })();
-  }, [branchSlug, allBranches.length]);
+  }, [branchId, allBranches.length]);
 
-  const setBranchSlug = useCallback((slug: string) => {
-    localStorage.setItem("sizzling_hub_branch", slug);
-    setBranchSlugState(slug);
+  const handleSetBranchId = useCallback((id: string) => {
+    localStorage.setItem("sizzling_hub_branch_id", id);
+    setBranchIdState(id);
   }, []);
 
   const refreshBranches = useCallback(async () => {
     setLoading(true);
     const branches = await fetchBranches();
-    const found = branches.find((b) => b.slug === branchSlug) ?? branches.find((b) => b.slug === "main") ?? branches[0] ?? null;
+    const found = branchId ? branches.find((b) => b.id === branchId) ?? branches[0] ?? null : branches[0] ?? null;
+    if (found && found.id !== branchId) {
+      setBranchIdState(found.id);
+      localStorage.setItem("sizzling_hub_branch_id", found.id);
+    }
     setBranch(found);
     setLoading(false);
-  }, [branchSlug]);
-
-  const branchId = branch?.id ?? null;
+  }, [branchId]);
 
   return (
     <BranchContext.Provider
       value={{
         branch,
         allBranches,
-        branchSlug,
         branchId,
         branchLocation,
-        setBranchSlug,
+        setBranchId: handleSetBranchId,
         loading,
         error,
         refreshBranches,

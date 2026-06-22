@@ -7,7 +7,6 @@ import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
 import { useMenu } from "@/lib/menu-context";
 import { createClient } from "@/lib/supabase/client";
-import { logAudit } from "@/lib/audit-log";
 import AppHeader from "@/app/_components/AppHeader";
 import CartSidebar from "@/app/_components/CartSidebar";
 import ProfileModal from "@/app/_components/ProfileModal";
@@ -246,12 +245,7 @@ export default function OrdersPage() {
       return;
     }
 
-    const { data: items } = await sb.from("order_items").select("menu_item_id, quantity").eq("order_id", orderId);
-    if (items) {
-      for (const it of items) {
-        await sb.rpc("restore_stock", { p_menu_item_id: it.menu_item_id, p_quantity: it.quantity });
-      }
-    }
+    // Note: restore_stock skipped — order_items.menu_item is text, no FK to menu_items
     // If cancelling a paid online order, refund via PayMongo
     const { data: order } = await sb.from("orders").select("payment_status, payment_method").eq("id", orderId).maybeSingle();
     if (order?.payment_status === "paid" && order?.payment_method !== "cod") {
@@ -265,7 +259,6 @@ export default function OrdersPage() {
     }
 
     await sb.from("orders").update({ status: "cancelled" }).eq("id", orderId);
-    logAudit({ source: "customer", action: "cancel_order", entity_type: "order", entity_id: orderId });
     refreshMenu().catch(() => { /* best-effort */ });
     setCancelLoading(false);
     await fetchOrders();
@@ -296,7 +289,7 @@ export default function OrdersPage() {
     const orderIds = orderRows.map((o) => o.id);
     const { data: itemRows } = await sb
       .from("order_items")
-      .select("order_id, quantity, unit_price, menu_item:menu_items(name)")
+      .select("order_id, quantity, unit_price, menu_item")
       .in("order_id", orderIds);
 
     const itemsByOrder = new Map<string, OrderItem[]>();
@@ -304,7 +297,7 @@ export default function OrdersPage() {
       for (const row of itemRows) {
         const arr = itemsByOrder.get(row.order_id) || [];
         arr.push({
-          name: (row.menu_item as any)?.name || "Unknown",
+          name: row.menu_item || "Unknown",
           quantity: row.quantity,
           price: row.unit_price,
         });

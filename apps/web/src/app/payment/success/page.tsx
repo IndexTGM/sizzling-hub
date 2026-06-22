@@ -8,6 +8,7 @@ interface StoredPayment {
   orderType: string;
   address: Record<string, unknown> | null;
   paymentMethod: string;
+  branchId: string | null;
 }
 
 function readStoredPayment(): StoredPayment | null {
@@ -22,6 +23,7 @@ function readStoredPayment(): StoredPayment | null {
         orderType: data.orderType || "delivery",
         address: data.address || null,
         paymentMethod: data.paymentMethod || "gcash",
+        branchId: data.branchId || null,
       };
     }
   } catch { /* ignore */ }
@@ -65,6 +67,7 @@ export default function PaymentSuccessPage() {
                 address: stored?.address,
                 paymentMethod: stored?.paymentMethod,
                 paymentSourceId: stored?.sourceId,
+                branchId: stored?.branchId || null,
               }),
             });
             const orderData = await orderRes.json();

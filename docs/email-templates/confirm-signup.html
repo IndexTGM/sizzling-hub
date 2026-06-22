@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="x-apple-disable-message-reformatting" />
+  <title>Sizzling Hub — Confirm Email</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@500&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background-color: #fafafa;
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 40px 16px;
+    }
+
+    .wrapper { max-width: 520px; margin: 0 auto; }
+
+    .card {
+      background: #ffffff;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+      border: 1px solid #e5e7eb;
+    }
+
+    .header {
+      background: #dc2626;
+      padding: 20px 40px;
+      text-align: center;
+    }
+
+    .header .logo {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.8);
+    }
+
+    .header .logo span { color: #ffffff; }
+
+    .body { padding: 36px 40px 32px; }
+
+    .body h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #0a0a0a;
+      letter-spacing: -0.02em;
+      margin-bottom: 10px;
+    }
+
+    .body > p {
+      font-size: 15px;
+      color: #6b7280;
+      line-height: 1.65;
+      margin-bottom: 28px;
+    }
+
+    .confirm-box {
+      background: #fef2f2;
+      border: 2px solid #fecaca;
+      border-radius: 12px;
+      padding: 28px 22px;
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    .confirm-box p {
+      font-size: 13px;
+      color: #6b7280;
+      margin-bottom: 20px;
+    }
+
+    /* ── Table-based button (works in ALL email clients incl. Outlook) ── */
+    .btn-table {
+      margin: 0 auto;
+    }
+
+    .btn-table td {
+      background: #dc2626;
+      border-radius: 10px;
+      text-align: center;
+    }
+
+    .btn-table a {
+      display: block;
+      padding: 14px 36px;
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 16px;
+      font-weight: 600;
+      color: #ffffff !important;
+      text-decoration: none;
+      white-space: nowrap;
+      letter-spacing: 0.01em;
+      min-height: 48px;
+      line-height: 1.2;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .expiry {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 13px;
+      color: #f59e0b;
+      font-weight: 500;
+      margin-bottom: 28px;
+    }
+
+    .expiry svg {
+      width: 15px;
+      height: 15px;
+      stroke: #f59e0b;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      flex-shrink: 0;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid #f0f0f0;
+      margin-bottom: 24px;
+    }
+
+    .warning {
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 10px;
+      padding: 14px 16px;
+      font-size: 13px;
+      color: #92400e;
+      line-height: 1.55;
+    }
+
+    .warning strong { color: #78350f; }
+
+    .footer { padding: 20px 40px 28px; text-align: center; }
+
+    .footer p {
+      font-size: 12px;
+      color: #9ca3af;
+      line-height: 1.6;
+    }
+
+    .footer a {
+      color: #dc2626;
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    /* ── Mobile fixes ── */
+    @media only screen and (max-width: 480px) {
+      .body { padding: 28px 20px 24px; }
+      .body h1 { font-size: 20px; }
+      .header { padding: 18px 20px; }
+      .footer { padding: 16px 20px 24px; }
+      .btn-table a { padding: 14px 24px; font-size: 15px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="card">
+      <div class="header">
+        <div class="logo">Sizzling<span> Hub</span></div>
+      </div>
+      <div class="body">
+        <h1>Confirm your email address</h1>
+        <p>Thanks for signing up! Click the button below to confirm your email address and finish creating your account.</p>
+
+        <div class="confirm-box">
+          <p>This link will confirm your email and activate your account.</p>
+          <!-- TABLE-BASED BUTTON: reliable touch target on all email clients -->
+          <table class="btn-table" cellpadding="0" cellspacing="0" border="0" role="presentation">
+            <tr>
+              <td>
+                <a href="{{ .ConfirmationURL }}" target="_blank">Confirm email address</a>
+              </td>
+            </tr>
+          </table>
+        </div>
+
+        <div class="expiry">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          This link expires in <strong>10 minutes</strong> and can only be used once.
+        </div>
+
+        <hr class="divider" />
+
+        <div class="warning">
+          <strong>Didn't sign up?</strong> If you didn't create an account with Sizzling Hub, you can safely ignore this email. No account will be created.
+        </div>
+      </div>
+      <div class="footer">
+        <p>
+          This is an automated message from <a href="https://ben-tapsihan.online">Sizzling Hub</a>.<br/>
+        </p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

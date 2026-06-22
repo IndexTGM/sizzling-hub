@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useBranch } from "@/lib/branch-context";
 
 export default function BranchSwitcher() {
-  const { branch, allBranches, branchSlug, setBranchSlug, loading, refreshBranches } = useBranch();
+  const { branch, allBranches, branchId, setBranchId, loading, refreshBranches } = useBranch();
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -48,12 +48,12 @@ export default function BranchSwitcher() {
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Select Branch</p>
           </div>
           {allBranches.map((b) => {
-            const isActive = b.slug === branchSlug;
+            const isActive = b.id === branchId;
             return (
               <button
                 key={b.id}
                 onClick={() => {
-                  setBranchSlug(b.slug);
+                  setBranchId(b.id);
                   setOpen(false);
                 }}
                 className={`w-full text-left px-4 py-2.5 flex items-center gap-3 text-sm transition-colors ${

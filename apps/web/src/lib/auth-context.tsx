@@ -33,6 +33,7 @@ export interface User {
   email: string;
   role: string;
   phone?: string | null;
+  branch_id?: string | null;
 }
 
 interface AuthContextType {
@@ -67,7 +68,7 @@ function getSupabase() {
 function buildUser(
   id: string,
   sessionUser: { email?: string; user_metadata?: Record<string, unknown> },
-  profile?: { username?: string; first_name?: string; last_name?: string; role?: string; phone?: string | null } | null
+  profile?: { username?: string; first_name?: string; last_name?: string; role?: string; phone?: string | null; branch_id?: string | null } | null
 ): User {
   return {
     id,
@@ -87,6 +88,7 @@ function buildUser(
     email: sessionUser.email || "",
     role: (profile?.role as string) || "customer",
     phone: profile?.phone ?? (sessionUser.user_metadata?.phone as string) ?? null,
+    branch_id: profile?.branch_id ?? null,
   };
 }
 
@@ -106,7 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (session?.user) {
           const { data: profile } = await sb
             .from("profiles")
-            .select("username, first_name, last_name, role, phone")
+            .select("username, first_name, last_name, role, phone, branch_id")
             .eq("id", session.user.id)
             .maybeSingle();
           const u = buildUser(session.user.id, session.user, profile);
@@ -155,7 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data.session?.user) {
         const { data: fullProfile } = await sb
           .from("profiles")
-          .select("username, first_name, last_name, role, phone")
+          .select("username, first_name, last_name, role, phone, branch_id")
           .eq("id", data.session.user.id)
           .maybeSingle();
         const u = buildUser(data.session.user.id, data.session.user, fullProfile);
@@ -317,7 +319,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Re-fetch the full profile from DB to get the authoritative role
       const { data: freshProfile } = await sb
         .from("profiles")
-        .select("username, first_name, last_name, role, phone")
+        .select("username, first_name, last_name, role, phone, branch_id")
         .eq("id", session.user.id)
         .maybeSingle();
 
@@ -373,7 +375,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data?.session?.user) {
         const { data: profile } = await sb
           .from("profiles")
-          .select("username, first_name, last_name, role, phone")
+          .select("username, first_name, last_name, role, phone, branch_id")
           .eq("id", data.session.user.id)
           .maybeSingle();
         const u = buildUser(data.session.user.id, data.session.user, profile);

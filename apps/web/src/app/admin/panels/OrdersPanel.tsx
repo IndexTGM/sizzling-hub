@@ -2,14 +2,15 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { logAudit } from "@/lib/audit-log";
 import ConfirmModal from "@/app/_components/ConfirmModal";
 import { LoadingSkeleton, EmptyState } from "./shared";
 import type { OrderStatus, OrderType, AdminOrder } from "./shared";
 import { STATUS_OPTIONS, STATUS_BG, getNextStatuses, OT_ICON, OT_LABEL, PAYMENT_LABEL, PAYMENT_ICON, PAYMENT_STATUS_BG, SOURCE_OPTIONS, SOURCE_FILTER, SOURCE_BG, type OrderSource } from "./shared";
+import { useBranch } from "@/lib/branch-context";
 
 export default function OrdersPanel({ branchId }: { branchId?: string | null }) {
   const [orders, setOrders] = useState<AdminOrder[]>([]);
+  const { branch } = useBranch();
   const [loading, setLoading] = useState(true);
   const [sourceFilter, setSourceFilter] = useState<"all" | OrderSource>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | OrderStatus>("all");
@@ -24,7 +25,7 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
   const hasOrdersLoaded = React.useRef(false);
   const fetchOrders = useCallback(async () => {
     const sb = createClient();
-    let query = sb.from("orders").select("id, order_type, status, subtotal, delivery_fee, discount, total, notes, placed_at, completed_at, payment_method, payment_source_id, payment_status, senior_pwd_discount, customer:profiles(first_name, last_name, email, phone)");
+    let query = sb.from("orders").select("id, order_type, status, subtotal, delivery_fee, discount, total, notes, placed_at, completed_at, payment_method, payment_status, senior_pwd_discount, customer:profiles(first_name, last_name, email, phone)");
     if (branchId) query = query.eq("branch_id", branchId);
     const { data: rows, error } = await query.order("placed_at", { ascending: false });
     if (error || !rows) {
@@ -32,15 +33,15 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
       return;
     }
     const ids = rows.map((r: any) => r.id);
-    const { data: items } = await sb.from("order_items").select("order_id, quantity, unit_price, note, menu_item:menu_items(name)").in("order_id", ids);
+    const { data: items } = await sb.from("order_items").select("order_id, quantity, unit_price, note, menu_item").in("order_id", ids);
     const itemsByOrder = new Map<string, { name: string; quantity: number; price: number; note: string }[]>();
-    if (items) for (const it of items) { const arr = itemsByOrder.get(it.order_id) || []; arr.push({ name: (it.menu_item as any)?.name || "Unknown", quantity: it.quantity, price: it.unit_price, note: it.note ?? "" }); itemsByOrder.set(it.order_id, arr); }
+    if (items) for (const it of items) { const arr = itemsByOrder.get(it.order_id) || []; arr.push({ name: it.menu_item || "Unknown", quantity: it.quantity, price: it.unit_price, note: it.note ?? "" }); itemsByOrder.set(it.order_id, arr); }
     setOrders(rows.map((r: any) => {
       const cust = r.customer as any;
       const custName = cust?.first_name && cust?.last_name
         ? `${cust.first_name} ${cust.last_name}`
         : cust?.email || "N/A";
-      return { id: r.id, customerName: custName, customerEmail: cust?.email || "", customerPhone: cust?.phone || null, orderType: r.order_type as OrderType, status: r.status as OrderStatus, subtotal: r.subtotal, deliveryFee: r.delivery_fee, discount: r.discount, total: r.total, notes: r.notes, items: itemsByOrder.get(r.id) || [], placedAt: r.placed_at, completedAt: r.completed_at, paymentMethod: r.payment_method, paymentSourceId: r.payment_source_id, paymentStatus: r.payment_status, seniorPwdDiscount: r.senior_pwd_discount ?? false };
+      return { id: r.id, customerName: custName, customerEmail: cust?.email || "", customerPhone: cust?.phone || null, orderType: r.order_type as OrderType, status: r.status as OrderStatus, subtotal: r.subtotal, deliveryFee: r.delivery_fee, discount: r.discount, total: r.total, notes: r.notes, items: itemsByOrder.get(r.id) || [], placedAt: r.placed_at, completedAt: r.completed_at, paymentMethod: r.payment_method, paymentSourceId: null, paymentStatus: r.payment_status, seniorPwdDiscount: r.senior_pwd_discount ?? false };
     }));
     if (!hasOrdersLoaded.current) setLoading(false);
     hasOrdersLoaded.current = true;
@@ -54,10 +55,9 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
     const newStatus = currentStatus === "paid" ? "unpaid" : "paid";
     const sb = createClient();
     await sb.from("orders").update({ payment_status: newStatus }).eq("id", orderId);
-    logAudit({ action: "update_payment_status", entity_type: "order", entity_id: orderId, details: { from: currentStatus, to: newStatus } });
     await fetchOrders();
   }
-  async function handleDeleteOrder(orderId: string) { const sb = createClient(); await sb.from("orders").delete().eq("id", orderId); logAudit({ action: "delete_order", entity_type: "order", entity_id: orderId }); await fetchOrders(); setDeleteOrderId(null); }
+  async function handleDeleteOrder(orderId: string) { const sb = createClient(); await sb.from("order_items").delete().eq("order_id", orderId); await sb.from("orders").delete().eq("id", orderId); await fetchOrders(); setDeleteOrderId(null); }
   async function handleConfirmOutForDelivery() {
     if (!confirmOutForDelivery) return;
     const orderId = confirmOutForDelivery.orderId;
@@ -65,7 +65,6 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
     setSavingId(orderId);
     const sb = createClient();
     await sb.from("orders").update({ status: "out_for_delivery" }).eq("id", orderId);
-    logAudit({ action: "update_order_status", entity_type: "order", entity_id: orderId, details: { from: "prepared", to: "out_for_delivery" } });
     await fetchOrders();
     setSavingId(null);
   }
@@ -101,7 +100,6 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
     };
 
     await sb.from("orders").update(updates).eq("id", orderId);
-    logAudit({ action: "update_order_status", entity_type: "order", entity_id: orderId, details: { from: oldStatus, to: newStatus, seniorPwdDiscount, discount: discountAmount } });
     setSeniorPwdDiscount(false);
     await fetchOrders();
     setSavingId(null);
@@ -119,7 +117,6 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
       updates.payment_status = "paid";
     }
     await sb.from("orders").update(updates).eq("id", orderId);
-    logAudit({ action: "update_order_status", entity_type: "order", entity_id: orderId, details: { from: "out_for_delivery", to: "delivered" } });
     await fetchOrders();
     setSavingId(null);
   }
@@ -148,7 +145,6 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
     setSavingId(orderId); const sb = createClient();
     const updates: Record<string, unknown> = { status: newStatus }; if (newStatus === "delivered") {
       updates.completed_at = new Date().toISOString();
-      // When a COD order is marked as delivered, mark payment as paid
       if (oldOrder?.paymentMethod === "cod" && oldOrder?.paymentStatus !== "paid") {
         updates.payment_status = "paid";
       }
@@ -173,15 +169,6 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
       } catch { /* best-effort, don't block cancel */ }
     }
 
-    if (newStatus === "cancelled" && oldOrder && oldOrder.status !== "cancelled") {
-      const { data: items } = await sb.from("order_items").select("menu_item_id, quantity").eq("order_id", orderId);
-      if (items) {
-        for (const it of items) {
-          await sb.rpc("restore_stock", { p_menu_item_id: it.menu_item_id, p_quantity: it.quantity });
-        }
-      }
-    }
-    logAudit({ action: "update_order_status", entity_type: "order", entity_id: orderId, details: { from: oldOrder?.status, to: newStatus } });
     await fetchOrders(); setSavingId(null);
     if (oldOrder?.status === "pending" && newStatus !== "pending") setReceiptOrder(orders.find((o) => o.id === orderId) || null);
   }
@@ -266,7 +253,6 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
                             </button>
                           )}
                         </div>
-                        {o.paymentSourceId && <p className="text-xs text-gray-400 font-mono mt-0.5">Source: {o.paymentSourceId.slice(0, 12)}…</p>}
                       </div>
                     )}</div>
                     <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
@@ -296,46 +282,115 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
           })}
         </div>
       )}
-      {receiptOrder && (
-        <>
-          <div className="fixed inset-0 bg-black/30 z-50" onClick={() => setReceiptOrder(null)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-              <style jsx global>{`@media print { body * { visibility: hidden; } .receipt-popup, .receipt-popup * { visibility: visible; } .receipt-popup { position: absolute; left: 0; top: 0; width: auto; max-width: auto; padding: 2mm; margin: 0; box-sizing: border-box; overflow: hidden; max-height: none !important; font-family: monospace; font-size: 11px; line-height: 1.3; color: #000 !important; background: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } .receipt-popup * { color: #000 !important; background: transparent !important; border-color: #000 !important; } .no-print { display: none !important; } @page { margin: 0; size: auto auto; } html, body { margin: 0 !important; padding: 0 !important; } }`}</style>
-              <div className="receipt-popup p-5">
-<div className="text-center mb-4"><h2 className="text-xl font-black text-red-600">SIZZLING HUB</h2><p className="text-xs text-gray-400 font-mono mt-0.5">Order Receipt</p></div>
-                <div className="border-t border-b border-dashed border-gray-200 py-3 space-y-1.5">
-                  <div className="flex justify-between text-sm"><span className="text-gray-500 font-medium">Order #</span><span className="font-mono font-bold text-gray-900">{receiptOrder.id.slice(0, 8).toUpperCase()}</span></div>
-                  <div className="flex justify-between text-sm"><span className="text-gray-500 font-medium">Customer</span><span className="font-semibold text-gray-800">{receiptOrder.customerName}</span></div>
-                  <div className="flex justify-between text-sm"><span className="text-gray-500 font-medium">Type</span><span className="font-semibold text-gray-800">{OT_ICON[receiptOrder.orderType]} {OT_LABEL[receiptOrder.orderType]}</span></div>
-                  <div className="flex justify-between text-sm"><span className="text-gray-500 font-medium">Placed</span><span className="font-semibold text-gray-800">{fmt(receiptOrder.placedAt)}</span></div>
-                </div>
-                <div className="py-3 space-y-2"><p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Items</p>{receiptOrder.items.map((item, i) => (<div key={i} className="flex items-center justify-between text-sm"><div className="flex items-center gap-2"><span className="text-xs font-bold text-gray-300 w-7">x{item.quantity}</span><span className="font-semibold text-gray-700">{item.name}</span></div><span className="font-bold text-gray-600">₱{item.price * item.quantity}</span></div>))}</div>
-                <div className="border-t border-dashed border-gray-200 pt-3 space-y-1.5 text-sm">
-                  <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span className="font-semibold text-gray-700">₱{receiptOrder.subtotal}</span></div>
-                  {receiptOrder.deliveryFee > 0 && <div className="flex justify-between"><span className="text-gray-500">Delivery Fee</span><span className="font-semibold text-gray-700">₱{receiptOrder.deliveryFee}</span></div>}
-                  {receiptOrder.discount > 0 && <div className="flex justify-between text-emerald-600"><span>Discount</span><span className="font-semibold">-₱{receiptOrder.discount}</span></div>}
-                  <div className="flex justify-between border-t border-dashed border-gray-200 pt-2 mt-1"><span className="text-base font-extrabold text-gray-900">Total</span><span className="text-lg font-extrabold text-red-600">₱{receiptOrder.total}</span></div>
-                </div>
-                {receiptOrder.paymentMethod && (
-                  <div className="border-t border-dashed border-gray-200 pt-2 mt-2 space-y-1 text-sm">
-                    <div className="flex justify-between"><span className="text-gray-500">Payment</span><span className="font-semibold text-gray-700">{PAYMENT_ICON[receiptOrder.paymentMethod] || ""} {PAYMENT_LABEL[receiptOrder.paymentMethod] || receiptOrder.paymentMethod}</span></div>
-                    {receiptOrder.paymentStatus && (
-                      <div className="flex justify-between"><span className="text-gray-500">Status</span><span className={`font-semibold capitalize ${
-                        receiptOrder.paymentStatus === "paid" ? "text-emerald-600" :
-                        receiptOrder.paymentStatus === "failed" ? "text-red-600" :
-                        "text-amber-600"
-                      }`}>{receiptOrder.paymentStatus}</span></div>
-                    )}
+      {receiptOrder && (() => {
+        const now = new Date();
+        const dateStr = `${String(now.getDate()).padStart(2, "0")}/${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`;
+        const timeStr = `${now.getHours() % 12 || 12}:${String(now.getMinutes()).padStart(2, "0")} ${now.getHours() >= 12 ? "PM" : "AM"}`;
+        const branchName = branch?.name ?? "SIZZLING HUB";
+        const branchAddr = branch?.address ?? "";
+        const branchPhone = branch?.phone ?? "";
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const logoUrl = branchId && supabaseUrl ? `${supabaseUrl}/storage/v1/object/public/images/${branchId}/logo.png` : null;
+        return (
+          <>
+            <div className="fixed inset-0 bg-black/30 z-50 no-print" onClick={() => setReceiptOrder(null)} />
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 receipt-wrapper">
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-xl w-full max-w-sm max-h-[90vh] overflow-y-auto receipt-outer">
+                <style jsx global>{`@media print { @page { size: 80mm auto; margin: 0; } body { background: white; } body * { visibility: hidden; } .receipt-wrapper, .receipt-wrapper *, .receipt-outer, .receipt-outer *, .receipt-popup, .receipt-popup * { visibility: visible; } .receipt-wrapper { position: absolute !important; top: 0 !important; left: 0 !important; width: 100% !important; padding: 0 !important; display: block !important; } .receipt-wrapper .no-print { display: none !important; } .receipt-outer { position: static !important; width: 100% !important; max-width: none !important; border: none !important; border-radius: 0 !important; box-shadow: none !important; overflow: visible !important; max-height: none !important; background: transparent !important; padding: 0 !important; } .receipt-outer .no-print { display: none !important; } .receipt-popup { display: block; width: 280px; margin: 0 auto; padding: 0; box-sizing: border-box; overflow: hidden; font-family: monospace; font-size: 11px; line-height: 1.4; color: #000 !important; background: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } .receipt-popup * { color: #000 !important; background: transparent !important; border-color: #000 !important; } html, body { margin: 0 !important; padding: 0 !important; } }`}</style>
+                {/* 80mm Thermal Receipt */}
+                <div className="receipt-popup bg-white p-3 text-xs font-mono text-black w-[280px] mx-auto">
+                  {/* Header */}
+                  <div className="text-center mb-3 border-b border-dashed border-black pb-3">
+                    {logoUrl && <img src={logoUrl} alt="Logo" className="w-12 h-12 object-contain mx-auto mb-1" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />}
+                    <h1 className="font-bold text-base uppercase">{branchName}</h1>
+                    {branchAddr && <p>{branchAddr}</p>}
+                    {branchPhone && <p>Tel: {branchPhone}</p>}
+                    <p className="mt-1 font-bold">ORDER RECEIPT</p>
                   </div>
-                )}
-                <div className="text-center mt-4 pt-3 border-t border-dashed border-gray-200"><p className="text-xs text-gray-400">Thank you!</p></div>
-                <div className="flex gap-2 mt-4 no-print"><button onClick={() => window.print()} className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700">🖨 Print Receipt</button><button onClick={() => setReceiptOrder(null)} className="px-4 py-2.5 rounded-xl bg-gray-100 text-gray-600 text-sm font-medium hover:bg-gray-200">Close</button></div>
+                  {/* Transaction Info */}
+                  <div className="mb-3 border-b border-dashed border-black pb-3 text-left">
+                    <div className="flex justify-between">
+                      <span>Date: {dateStr}</span>
+                      <span>Time: {timeStr}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Order: #{receiptOrder.id.slice(0, 8).toUpperCase()}</span>
+                      <span>{OT_LABEL[receiptOrder.orderType]}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Customer:</span>
+                      <span>{receiptOrder.customerName}</span>
+                    </div>
+                  </div>
+                  {/* Items Table */}
+                  <div className="mb-3 border-b border-dashed border-black pb-3">
+                    <div className="flex justify-between font-bold border-b border-black pb-1 mb-1">
+                      <span className="w-1/2">Item</span>
+                      <span className="w-1/4 text-center">Qty</span>
+                      <span className="w-1/4 text-right">Price</span>
+                    </div>
+                    {receiptOrder.items.map((item, i) => (
+                      <div key={i} className="flex justify-between py-0.5">
+                        <span className="w-1/2 truncate">{item.name}</span>
+                        <span className="w-1/4 text-center">{item.quantity}</span>
+                        <span className="w-1/4 text-right">₱{(item.price * item.quantity).toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Totals */}
+                  <div className="mb-3 text-right border-b border-dashed border-black pb-3">
+                    <div className="flex justify-between py-0.5">
+                      <span>Subtotal:</span>
+                      <span>₱{receiptOrder.subtotal.toFixed(2)}</span>
+                    </div>
+                    {receiptOrder.deliveryFee > 0 && (
+                      <div className="flex justify-between py-0.5">
+                        <span>Delivery Fee:</span>
+                        <span>₱{receiptOrder.deliveryFee.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {receiptOrder.discount > 0 && (
+                      <div className="flex justify-between py-0.5">
+                        <span>Discount:</span>
+                        <span>-₱{receiptOrder.discount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between py-0.5 font-bold text-sm mt-1 border-t border-black pt-1">
+                      <span>TOTAL:</span>
+                      <span>₱{receiptOrder.total.toFixed(2)}</span>
+                    </div>
+                  </div>
+                  {/* Payment Details */}
+                  {receiptOrder.paymentMethod && (
+                    <div className="mb-3 border-b border-dashed border-black pb-3">
+                      <div className="flex justify-between py-0.5">
+                        <span>Payment:</span>
+                        <span>{PAYMENT_LABEL[receiptOrder.paymentMethod] || receiptOrder.paymentMethod}</span>
+                      </div>
+                      {receiptOrder.paymentStatus && (
+                        <div className="flex justify-between py-0.5">
+                          <span>Status:</span>
+                          <span className="capitalize">{receiptOrder.paymentStatus}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {/* Footer */}
+                  <div className="text-center text-[10px] border-t border-black pt-3">
+                    <p>THANK YOU!</p>
+                    <p className="mt-1 font-bold">*** COPY ***</p>
+                  </div>
+                </div>
+                {/* Print Button */}
+                <div className="flex gap-2 p-4 no-print">
+                  <button onClick={() => window.print()} className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700">🖨 Print Receipt</button>
+                  <button onClick={() => setReceiptOrder(null)} className="px-4 py-2.5 rounded-xl bg-gray-100 text-gray-600 text-sm font-medium hover:bg-gray-200">Close</button>
+                </div>
               </div>
             </div>
-          </div>
-        </>
-      )}
+          </>
+        );
+      })()}
       <ConfirmModal
         open={deleteOrderId !== null}
         title="Delete Order"

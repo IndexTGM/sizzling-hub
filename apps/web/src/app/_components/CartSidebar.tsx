@@ -40,7 +40,7 @@ export default function CartSidebar({
   onImgError: (name: string) => void;
 }) {
   const { user } = useAuth();
-  const { branchLocation } = useBranch();
+  const { branchLocation, branchId } = useBranch();
   const { cart, itemCount, total, updateQty, removeFromCart, placeOrder } = useCart();
   const { showToast } = useToast();
   const [placing, setPlacing] = useState(false);
@@ -216,7 +216,7 @@ export default function CartSidebar({
               <div key={`${item.id}-${note}`} className="p-3 rounded-xl bg-[#f9fafb] animate-fade-in space-y-2">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-lg bg-[#f3f4f6] overflow-hidden flex-shrink-0">
-                    {imgErrors.has(item.imageName) ? <PlaceholderImage name={item.name} /> : <StorageImage imageBaseName={item.imageName} alt={item.name} className="w-full h-full object-cover" onError={() => onImgError(item.imageName)} />}
+                    {imgErrors.has(item.imageName) ? <PlaceholderImage name={item.name} /> : <StorageImage imageBaseName={item.imageName} alt={item.name} className="w-full h-full object-cover" branchId={branchId} onError={() => onImgError(item.imageName)} />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-sm text-[#0a0a0a] truncate">{item.name}</p>

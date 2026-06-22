@@ -6,6 +6,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useRef,
   type ReactNode,
 } from "react";
 import { usePathname } from "next/navigation";
@@ -22,7 +23,7 @@ interface CartContextType {
   itemCount: number;
   total: number;
   loading: boolean;
-  addToCart: (item: MenuItem, note?: string) => void;
+  addToCart: (item: MenuItem, note?: string, qty?: number) => void;
   updateQty: (id: string, note: string, delta: number) => void;
   updateNote: (id: string, oldNote: string, newNote: string) => void;
   removeFromCart: (id: string, note: string) => void;
@@ -51,6 +52,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Keep branchId in a ref so syncItem always reads current value
+  const branchIdRef = useRef(branchId);
+  branchIdRef.current = branchId;
+
   useEffect(() => {
     if (!user) { setCart([]); setLoading(false); return; }
     (async () => {
@@ -67,7 +72,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         if (rows) {
           const menuIds = [...new Set(rows.map((r: any) => r.menu_item_id))];
           const [ { data: menuRows }, { data: junctionRows } ] = await Promise.all([
-            sb.from("menu_items").select("id, name, price, image_url, stock, rating").in("id", menuIds),
+            sb.from("menu_items").select("id, name, price, stock").in("id", menuIds),
             sb.from("menu_item_categories").select("menu_item_id, category_id, categories!inner(name)").in("menu_item_id", menuIds),
           ]);
 
@@ -90,19 +95,30 @@ export function CartProvider({ children }: { children: ReactNode }) {
             for (const mr of menuRows) {
               menuMap.set(mr.id, {
                 id: mr.id, name: mr.name, price: mr.price,
-                imageName: mr.image_url || "", stock: mr.stock ?? 0, rating: mr.rating ?? 0,
+                imageName: mr.name, stock: mr.stock ?? 0,
                 categories: junctionMap.get(mr.id) || ["Uncategorized"],
               });
             }
           }
 
-          const items: CartItem[] = [];
+          // Deduplicate: merge rows with same menu_item_id + note
+          const deduped = new Map<string, { menuItem: MenuItem; quantity: number; note: string }>();
           for (const row of rows) {
             const menuItem = menuMap.get(row.menu_item_id);
-            if (menuItem) {
-              items.push({ ...menuItem, quantity: row.quantity, note: row.note ?? "" });
+            if (!menuItem) continue;
+            const key = `${row.menu_item_id}||${row.note ?? ""}`;
+            const existing = deduped.get(key);
+            if (existing) {
+              existing.quantity += row.quantity;
+            } else {
+              deduped.set(key, { menuItem, quantity: row.quantity, note: row.note ?? "" });
             }
           }
+          const items: CartItem[] = Array.from(deduped.values()).map((v) => ({
+            ...v.menuItem,
+            quantity: v.quantity,
+            note: v.note,
+          }));
           setCart(items);
         }
       } catch { /* ignore */ } finally { setLoading(false); }
@@ -126,35 +142,70 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, [branchId]);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
 
+  // Lock ref to serialize concurrent syncItem calls for the same key
+  const syncLocks = useRef<Map<string, Promise<void>>>(new Map());
+
   async function syncItem(menuItemId: string, quantity: number, note: string) {
     try {
       const sb = getSupabase();
       const { data: { session } } = await sb.auth.getSession();
       if (!session?.user) return;
-      if (quantity > 0) {
-        await sb.from("cart_items").upsert(
-          { customer_id: session.user.id, menu_item_id: menuItemId, quantity, note },
-          { onConflict: "customer_id, menu_item_id, note" }
-        );
-      } else {
-        await sb.from("cart_items").delete()
-          .eq("customer_id", session.user.id)
-          .eq("menu_item_id", menuItemId)
-          .eq("note", note);
+
+      const lockKey = `${session.user.id}||${menuItemId}||${note}`;
+
+      // Wait for any previous operation on this key to complete
+      const prev = syncLocks.current.get(lockKey);
+      let resolve: () => void;
+      const next = new Promise<void>((r) => { resolve = r; });
+      syncLocks.current.set(lockKey, next);
+
+      try {
+        if (prev) await prev;
+
+        if (quantity > 0) {
+          const { data: existing } = await sb.from("cart_items")
+            .select("id, quantity")
+            .eq("customer_id", session.user.id)
+            .eq("menu_item_id", menuItemId)
+            .eq("note", note)
+            .maybeSingle();
+          if (existing) {
+            await sb.from("cart_items").update({ quantity, branch_id: branchIdRef.current }).eq("id", existing.id);
+          } else {
+            await sb.from("cart_items").insert({
+              customer_id: session.user.id,
+              menu_item_id: menuItemId,
+              quantity,
+              note,
+              branch_id: branchIdRef.current || null,
+            });
+          }
+        } else {
+          await sb.from("cart_items").delete()
+            .eq("customer_id", session.user.id)
+            .eq("menu_item_id", menuItemId)
+            .eq("note", note);
+        }
+      } finally {
+        resolve!();
+        // Clean up resolved promises to prevent memory leak
+        if (syncLocks.current.get(lockKey) === next) {
+          syncLocks.current.delete(lockKey);
+        }
       }
     } catch { /* ignore */ }
   }
 
-  const addToCart = useCallback((item: MenuItem, note: string = "") => {
+  const addToCart = useCallback((item: MenuItem, note: string = "", qty: number = 1) => {
     setCart((prev) => {
       const key = cartKey(item.id, note);
       const existing = prev.find((c) => cartKey(c.id, c.note ?? "") === key);
-      const newQty = existing ? existing.quantity + 1 : 1;
+      const newQty = existing ? existing.quantity + qty : qty;
       syncItem(item.id, newQty, note);
       if (existing) {
         return prev.map((c) => cartKey(c.id, c.note ?? "") === key ? { ...c, quantity: newQty } : c);
       }
-      return [...prev, { ...item, quantity: 1, note }];
+      return [...prev, { ...item, quantity: qty, note }];
     });
   }, []);
 
@@ -245,8 +296,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
       const orderNotes = addressStr ? `Address: ${addressStr}` : null;
 
       const paymentFields = payment
-        ? { payment_method: payment.method, payment_source_id: payment.sourceId, payment_status: "unpaid" }
-        : { payment_method: "cod", payment_source_id: null, payment_status: "unpaid" };
+        ? { payment_method: payment.method, payment_status: "unpaid" }
+        : { payment_method: "cod", payment_status: "unpaid" };
 
       const { data: order, error: orderErr } = await sb.from("orders").insert({
         customer_id: session.user.id, order_type: orderType, status: "pending",
@@ -259,8 +310,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
       if (orderErr || !order) return { success: false, error: orderErr?.message || "Failed to create order." };
 
       const orderItems = cart.map((item) => ({
-        order_id: order.id, menu_item_id: item.id,
-        quantity: item.quantity, unit_price: item.price,
+        order_id: order.id,
+        menu_item: item.name,
+        quantity: item.quantity,
+        unit_price: item.price,
         subtotal: item.price * item.quantity,
         note: item.note ?? "",
       }));

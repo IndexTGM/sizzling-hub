@@ -7,7 +7,6 @@ export interface MenuItem {
   price: number;
   imageName: string;
   description?: string;
-  rating?: number;
   stock?: number;
 }
 
@@ -128,7 +127,8 @@ export function getImagePath(
  */
 export function getImageCandidates(
   baseName: string,
-  transform?: ImageTransformOptions
+  transform?: ImageTransformOptions,
+  branchId?: string | null
 ): string[] {
   const clean = baseName.replace(/\.(jpg|jpeg|png|webp|gif)$/i, "");
 
@@ -141,12 +141,21 @@ export function getImageCandidates(
 
   const sb = createClient();
   const params = buildTransformParams(transform ?? DEFAULT_TRANSFORM);
-  return IMAGE_EXTENSIONS.map((ext) => {
-    const url = sb.storage
-      .from("images")
-      .getPublicUrl(`${clean}${ext}`).data.publicUrl;
-    return params ? `${url}?${params}` : url;
-  });
+
+  // Build candidate paths: branch-specific first, then global
+  const prefixes = branchId ? [branchId, "global"] : ["global"];
+
+  const urls: string[] = [];
+  for (const prefix of prefixes) {
+    const candidates = IMAGE_EXTENSIONS.map((ext) => {
+      const url = sb.storage
+        .from("images")
+        .getPublicUrl(`${prefix}/${clean}${ext}`).data.publicUrl;
+      return params ? `${url}?${params}` : url;
+    });
+    urls.push(...candidates);
+  }
+  return urls;
 }
 
 let imageCacheVersion = 0;
