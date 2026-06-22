@@ -27,7 +27,7 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
   const handlePrint = useReactToPrint({
     contentRef: receiptRef,
     pageStyle: `
-      @page { size: 80mm 210mm; margin: 0; }
+      @page { size: 65mm 200mm; margin: 0; }
       @media print { html, body { margin: 0 !important; padding: 0 !important; } }
     `,
     onAfterPrint: () => setReceiptOrder(null),
