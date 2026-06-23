@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
+import { useBranch } from "@/lib/branch-context";
 import { useCart } from "@/lib/cart-context";
 import { createClient } from "@/lib/supabase/client";
 import AppHeader from "@/app/_components/AppHeader";
@@ -11,6 +12,7 @@ import CartSidebar from "@/app/_components/CartSidebar";
 import ProfileModal from "@/app/_components/ProfileModal";
 import Footer from "@/app/_components/Footer";
 import StorageImage from "@/app/_components/StorageImage";
+import ChatPanel from "@/app/_components/ChatPanel";
 
 const PRIMARY = "#dc2626";
 
@@ -39,6 +41,7 @@ interface Order {
   paymentMethod: string | null;
   paymentStatus: string | null;
   branchId: string | null;
+  branchName: string | null;
 }
 
 const PAYMENT_ICON_MAP: Record<string, string> = { gcash: "📱 GCash", cod: "💵 Cash on Delivery" };
@@ -93,20 +96,25 @@ function formatDateTime(iso: string): string {
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const { branch } = useBranch();
   const { cart } = useCart();
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const receiptRef = useRef<HTMLDivElement>(null);
   const [cartOpen, setCartOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [imgErrors] = useState<Set<string>>(new Set());
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
+  const [chatOrderId, setChatOrderId] = useState<string | null>(null);
+  const [gcashQrOpen, setGcashQrOpen] = useState(false);
+  const [fullscreenQr, setFullscreenQr] = useState(false);
   const hasLoadedRef = useRef(false);
 
   const fetchOrder = useCallback(async (silent = false) => {
     if (!id || !user) { setLoading(false); return; }
     if (!hasLoadedRef.current) setLoading(true);
     const sb = createClient();
-    const { data: row } = await sb.from("orders").select("id, order_type, status, subtotal, delivery_fee, discount, total, notes, placed_at, completed_at, payment_method, payment_status, branch_id").eq("id", id).eq("customer_id", user.id).maybeSingle();
+    const { data: row } = await sb.from("orders").select("id, order_type, status, subtotal, delivery_fee, discount, total, notes, placed_at, completed_at, payment_method, payment_status, branch_id, branches(name)").eq("id", id).eq("customer_id", user.id).maybeSingle();
     if (!row) { setOrder(null); setLoading(false); return; }
     const { data: items } = await sb.from("order_items").select("quantity, unit_price, menu_item, note").eq("order_id", id);
     setOrder({
@@ -117,6 +125,7 @@ export default function OrderDetailPage() {
       placedAt: row.placed_at, completedAt: row.completed_at,
       paymentMethod: row.payment_method, paymentStatus: row.payment_status,
       branchId: row.branch_id ?? null,
+      branchName: (row.branches as any)?.name || null,
     });
     setLoading(false);
     hasLoadedRef.current = true;
@@ -132,6 +141,7 @@ export default function OrderDetailPage() {
   const isFinal = order?.status === "delivered" || order?.status === "cancelled";
   const isProcessing = order && !isFinal;
   const isPickup = order?.orderType === "pickup";
+  const isOnline = order?.orderType === "delivery" || order?.orderType === "pickup";
   const steps = isPickup ? PICKUP_STEPS : DELIVERY_STEPS;
   const stepIdx = order ? getStepIndex(order.status, order.orderType) : -1;
 
@@ -170,15 +180,15 @@ export default function OrderDetailPage() {
                 <div className="h-2 receipt-red-bar" style={{ backgroundColor: PRIMARY }} />
                 <div className="p-5">
                   <div className="text-center mb-4">
-                    {order.branchId && (
-                      <StorageImage
-                        imageBaseName="logo"
+                    {order.branchId && supabaseUrl && (
+                      <img
+                        src={`${supabaseUrl}/storage/v1/object/public/images/${order.branchId}/logo.png`}
                         alt="Branch Logo"
                         className="w-16 h-16 mx-auto object-contain mb-2 rounded"
-                        branchId={order.branchId}
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                       />
                     )}
-                    <h2 className="text-xl font-black" style={{ color: PRIMARY }}>SIZZLING HUB</h2>
+                    <h2 className="text-xl font-black" style={{ color: PRIMARY }}>{order.branchName || "SIZZLING HUB"}</h2>
                     <p className="text-xs text-[#9ca3af] font-mono mt-0.5">Order Receipt</p>
                   </div>
                   <div className="border-t border-b border-dashed border-[#e5e7eb] py-3 space-y-1.5">
@@ -272,6 +282,30 @@ export default function OrderDetailPage() {
                 </div>
               )}
 
+              {/* GCash QR button for unpaid GCash orders */}
+              {order && order.paymentMethod === "gcash" && order.paymentStatus !== "paid" && !isCancelled && (
+                <div className="no-print">
+                  <button
+                    onClick={() => setGcashQrOpen(true)}
+                    className="w-full py-3 rounded-xl bg-blue-50 text-blue-600 text-sm font-bold hover:bg-blue-100 transition-colors flex items-center justify-center gap-2 mb-3"
+                  >
+                    <span>📱</span> View GCash QR Code
+                  </button>
+                </div>
+              )}
+
+              {/* Chat button for online orders */}
+              {order && isOnline && (
+                <div className="no-print">
+                  <button
+                    onClick={() => setChatOrderId(order.id)}
+                    className="w-full py-3 rounded-xl bg-blue-50 text-blue-600 text-sm font-bold hover:bg-blue-100 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <span>💬</span> Chat with {order.branchName || "Branch"}
+                  </button>
+                </div>
+              )}
+
               {/* Cancelled message */}
               {isCancelled && (
                 <div className="bg-white rounded-2xl p-5 border border-[#fee2e2] text-center no-print">
@@ -283,6 +317,77 @@ export default function OrderDetailPage() {
           )}
         </div>
       </div>
+
+      {/* GCash QR Modal */}
+      {gcashQrOpen && (
+        <>
+          <div className="fixed inset-0 bg-black/30 z-[75]" onClick={() => setGcashQrOpen(false)} />
+          <div className="fixed inset-0 z-[75] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl border border-[#e5e7eb] shadow-xl w-full max-w-sm animate-fade-in-scale">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[#f3f4f6]">
+                <h3 className="font-black text-base text-[#0a0a0a]">GCash Payment</h3>
+                <button onClick={() => setGcashQrOpen(false)} className="p-1.5 rounded-lg hover:bg-[#f3f4f6] transition-colors">
+                  <svg className="w-5 h-5" fill="none" stroke="#6b7280" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div className="px-5 py-5 space-y-5">
+                <div className="text-center space-y-2">
+                  <p className="text-2xl font-black" style={{ color: "#dc2626" }}>₱{order?.total}</p>
+                  <p className="text-xs text-gray-500">Scan the QR code below with your GCash app to pay.</p>
+                </div>
+                <div
+                  className="flex items-center justify-center p-4 bg-[#f9fafb] rounded-xl border border-[#e5e7eb] cursor-pointer hover:shadow-md transition-shadow"
+                  onClick={() => setFullscreenQr(true)}
+                  title="Click to enlarge QR code"
+                >
+                  <StorageImage imageBaseName="gcash_qr" alt="GCash QR Code" className="w-48 h-48 object-contain" branchId="global" />
+                </div>
+                <div className="bg-blue-50 rounded-xl p-3 border border-blue-100">
+                  <p className="text-xs text-blue-700 font-semibold mb-1">📋 How to pay:</p>
+                  <ol className="text-xs text-blue-600 space-y-1 list-decimal list-inside">
+                    <li>Open your GCash app</li>
+                    <li>Tap "Scan" and scan the QR code</li>
+                    <li>Enter the amount: <strong>₱{order?.total}</strong></li>
+                    <li>Complete the payment and <strong>send the proof in the chat</strong></li>
+                  </ol>
+                </div>
+                <button onClick={() => setGcashQrOpen(false)} className="w-full py-2.5 rounded-xl bg-gray-100 text-gray-600 text-sm font-semibold hover:bg-gray-200 transition-colors">
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Fullscreen QR Image Viewer */}
+      {!!fullscreenQr && (
+        <div className="fixed inset-0 bg-black/80 z-[85] flex items-center justify-center p-4 cursor-pointer" onClick={() => setFullscreenQr(false)}>
+          <button onClick={(e) => { e.stopPropagation(); setFullscreenQr(false); }} className="absolute top-4 right-4 p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-2xl transition-colors">✕</button>
+          <StorageImage imageBaseName="gcash_qr" alt="GCash QR Code" className="max-w-[90vw] max-h-[90vh] w-auto h-auto object-contain rounded-xl shadow-2xl" branchId="global" />
+        </div>
+      )}
+
+      {/* Chat Modal */}
+      {chatOrderId && (
+        <>
+          <div className="fixed inset-0 bg-black/30 z-[70]" onClick={() => setChatOrderId(null)} />
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl border border-[#e5e7eb] shadow-xl w-full max-w-md h-[80vh] flex flex-col animate-fade-in-scale">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[#f3f4f6]">
+                <div>
+                  <h3 className="font-black text-base text-[#0a0a0a]">💬 Order Chat</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">Order #{chatOrderId.slice(0, 8).toUpperCase()}</p>
+                </div>
+                <button onClick={() => setChatOrderId(null)} className="p-1.5 rounded-lg hover:bg-[#f3f4f6] transition-colors">
+                  <svg className="w-5 h-5" fill="none" stroke="#6b7280" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <ChatPanel orderId={chatOrderId} className="flex-1 min-h-0" branchName={branch?.name ?? undefined} />
+            </div>
+          </div>
+        </>
+      )}
 
       <div className="no-print"><Footer /></div>
       <div className="no-print">

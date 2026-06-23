@@ -23,10 +23,6 @@ const BANNER_COLORS = [
 ];
 
 /* ───────────────────────────────────────────────
-   Banner Data
-   ─────────────────────────────────────────────── */
-
-/* ───────────────────────────────────────────────
    Banner Carousel
    ─────────────────────────────────────────────── */
 function BannerCarousel({
@@ -46,6 +42,7 @@ function BannerCarousel({
   }, []);
 
   useEffect(() => {
+    if (banners.length < 2) return;
     autoRef.current = setInterval(() => {
       setActive((prev) => {
         const next = (prev + 1) % banners.length;
@@ -55,7 +52,7 @@ function BannerCarousel({
         });
         return next;
       });
-    }, 4000);
+    }, 5000);
     return () => {
       if (autoRef.current) clearInterval(autoRef.current);
     };
@@ -77,49 +74,84 @@ function BannerCarousel({
       >
         {banners.map((b, i) => {
           const accentColor = BANNER_COLORS[i % BANNER_COLORS.length];
+          const isActive = i === active;
           return (
           <div
             key={b.id}
             className="w-full flex-shrink-0 snap-center"
             style={{ scrollSnapAlign: "center" }}
           >
-            <div className="px-4">
+            <div className="px-4 py-2">
               <div
-                className="relative flex flex-col sm:flex-row items-center rounded-2xl p-6 sm:p-8 gap-5 sm:gap-6 shadow-md border border-white/50 overflow-hidden"
+                className={`relative flex flex-col sm:flex-row items-center rounded-3xl p-7 sm:p-10 gap-6 sm:gap-8 shadow-2xl border border-white/20 transition-all duration-500 ${
+                  isActive ? "scale-[1.01] sm:scale-100" : "scale-95 opacity-80 sm:opacity-100 sm:scale-100"
+                }`}
                 style={{
                   backgroundColor: accentColor,
-                  backgroundImage: `linear-gradient(135deg, ${accentColor} 0%, ${accentColor}dd 100%)`,
+                  backgroundImage: `
+                    linear-gradient(145deg, ${accentColor} 0%, ${accentColor}cc 40%, ${accentColor}88 100%),
+                    radial-gradient(ellipse at 85% 15%, rgba(255,255,255,0.3) 0%, transparent 50%),
+                    radial-gradient(ellipse at 15% 85%, rgba(0,0,0,0.15) 0%, transparent 40%)
+                  `,
+                  boxShadow: isActive
+                    ? `0 20px 60px -10px ${accentColor}66, 0 8px 20px -5px ${accentColor}44`
+                    : "0 8px 30px -5px rgba(0,0,0,0.15)",
                 }}
               >
-                <div className="absolute inset-0 opacity-10 pointer-events-none"
+                {/* Decorative patterns */}
+                <div
+                  className="absolute inset-0 opacity-[0.06] pointer-events-none rounded-3xl overflow-hidden"
                   style={{
-                    backgroundImage: "radial-gradient(circle at 20% 80%, #ffffff40 1px, transparent 1px)",
-                    backgroundSize: "24px 24px",
+                    backgroundImage: `
+                      radial-gradient(circle at 20% 30%, #ffffff 1.5px, transparent 1.5px),
+                      radial-gradient(circle at 60% 70%, #ffffff 1px, transparent 1px),
+                      radial-gradient(circle at 80% 15%, #ffffff 1.5px, transparent 1.5px)
+                    `,
+                    backgroundSize: "32px 32px, 24px 24px, 40px 40px",
+                    backgroundPosition: "0 0, 12px 12px, 8px 8px",
                   }}
                 />
-                <div className="flex-1 space-y-3 text-center sm:text-left relative z-10">
-                  <h3 className="text-2xl sm:text-4xl font-black text-white tracking-tight leading-tight drop-shadow-sm">
+                {/* Floating sparkles */}
+                <div className="absolute inset-0 opacity-30 pointer-events-none">
+                  <div className="absolute top-[15%] left-[8%] w-2 h-2 rounded-full bg-white animate-pulse" style={{ animationDuration: "2.5s" }} />
+                  <div className="absolute top-[25%] right-[12%] w-1.5 h-1.5 rounded-full bg-white animate-pulse" style={{ animationDuration: "3s", animationDelay: "0.5s" }} />
+                  <div className="absolute bottom-[20%] left-[20%] w-1 h-1 rounded-full bg-white animate-pulse" style={{ animationDuration: "2s", animationDelay: "1s" }} />
+                </div>
+
+                {/* Text Content */}
+                <div className="flex-1 space-y-4 text-center sm:text-left relative z-10">
+                  <span className="inline-block px-3 py-1 rounded-full bg-white/15 backdrop-blur-sm text-white/90 text-[10px] font-extrabold tracking-[0.2em] uppercase border border-white/20">
+                    SPECIAL OFFER
+                  </span>
+                  <h3 className="text-3xl sm:text-5xl font-black text-white tracking-tight leading-[1.1] drop-shadow-[0_2px_8px_rgba(0,0,0,0.3)]">
                     {b.title}
                   </h3>
-                  <p className="text-sm sm:text-base text-white/80 font-medium max-w-md leading-relaxed">
+                  <p className="text-sm sm:text-lg text-white/85 font-medium max-w-md leading-relaxed drop-shadow-sm">
                     {b.subtitle}
                   </p>
                   <button
                     onClick={onOrderNow}
-                    className="px-6 py-3 rounded-xl bg-white text-sm font-bold transition-all duration-200 hover:scale-105 active:scale-95 shadow-lg"
+                    className="group relative px-8 py-3.5 rounded-2xl bg-white text-sm font-extrabold transition-all duration-300 hover:scale-105 active:scale-95 shadow-xl hover:shadow-2xl overflow-hidden"
                     style={{ color: accentColor }}
                   >
-                    Order Now →
+                    <span className="relative z-10">Order Now</span>
+                    <span className="absolute inset-0 rounded-2xl bg-black/5 scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left" />
+                    <svg className="inline-block w-4 h-4 ml-1 relative z-10 group-hover:translate-x-1 transition-transform duration-200" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
                   </button>
                 </div>
+
+                {/* Image */}
                 <div className="relative z-10">
-                  <div className="absolute inset-0 rounded-2xl bg-white/20 blur-md" />
-                  <StorageImage
-                    imageBaseName={b.image}
-                    alt={b.title}
-                    className="relative w-28 h-28 sm:w-40 sm:h-40 object-cover rounded-2xl shadow-lg ring-2 ring-white/30"
-                    priority={i === 0}
-                  />
+                  <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/20 to-white/0 blur-2xl scale-125" />
+                  <div className="relative w-36 h-36 sm:w-48 sm:h-48 rounded-2xl overflow-hidden shadow-2xl ring-4 ring-white/20 hover:ring-white/40 transition-all duration-300 hover:scale-105 hover:rotate-1">
+                    <StorageImage
+                      imageBaseName={b.image}
+                      alt={b.title}
+                      className="w-full h-full object-cover"
+                      priority={i === 0}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/15 to-transparent pointer-events-none" />
+                  </div>
                 </div>
               </div>
             </div>
@@ -129,18 +161,28 @@ function BannerCarousel({
       </div>
 
       {/* Dots */}
-      <div className="flex justify-center gap-2 mt-4">
+      <div className="flex justify-center gap-2.5 mt-5">
         {banners.map((_, i) => {
           const dotColor = BANNER_COLORS[i % BANNER_COLORS.length];
+          const isActive = i === active;
           return (
           <button
             key={i}
             onClick={() => goTo(i)}
-            className="rounded-full transition-all duration-300"
+            className="rounded-full transition-all duration-400 hover:scale-110"
             style={
-              i === active
-                ? { width: 32, height: 10, backgroundColor: dotColor }
-                : { width: 10, height: 10, backgroundColor: "#d1d5db" }
+              isActive
+                ? {
+                    width: 40,
+                    height: 12,
+                    backgroundColor: dotColor,
+                    boxShadow: `0 0 14px ${dotColor}80, 0 2px 6px ${dotColor}44`,
+                  }
+                : {
+                    width: 12,
+                    height: 12,
+                    backgroundColor: "rgba(209, 213, 219, 0.6)",
+                  }
             }
           />
         );

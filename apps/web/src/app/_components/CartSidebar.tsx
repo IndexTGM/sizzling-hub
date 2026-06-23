@@ -12,7 +12,7 @@ import StorageImage from "./StorageImage";
 import AddressModal from "./AddressModal";
 
 type OrderMethod = "delivery" | "pickup";
-type PaymentMethod = "gcash" | null;
+type PaymentMethod = "gcash" | "cod";
 
 interface SavedAddress {
   id: string;
@@ -24,8 +24,9 @@ interface SavedAddress {
   is_default: boolean;
 }
 
-const PAYMENT_OPTIONS: { value: NonNullable<PaymentMethod>; label: string; icon: string }[] = [
+const PAYMENT_OPTIONS: { value: PaymentMethod; label: string; icon: string }[] = [
   { value: "gcash", label: "GCash", icon: "📱" },
+  { value: "cod", label: "Cash on Delivery", icon: "💵" },
 ];
 
 export default function CartSidebar({
@@ -46,12 +47,22 @@ export default function CartSidebar({
   const [placing, setPlacing] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [orderMethod, setOrderMethod] = useState<OrderMethod>("delivery");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(null);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cod");
   const [addressModalOpen, setAddressModalOpen] = useState(false);
   const [defaultAddress, setDefaultAddress] = useState<SavedAddress | null>(null);
   const [addressLoading, setAddressLoading] = useState(false);
   const [addressDistance, setAddressDistance] = useState<number | null>(null);
   const [withinRange, setWithinRange] = useState(true);
+  const [gcashQrOpen, setGcashQrOpen] = useState(false);
+  const [gcashQrPlacing, setGcashQrPlacing] = useState(false);
+  const [fullscreenQr, setFullscreenQr] = useState(false);
+
+  // When switching to pickup, auto-switch to gcash if cod was selected
+  useEffect(() => {
+    if (orderMethod === "pickup" && paymentMethod === "cod") {
+      setPaymentMethod("gcash");
+    }
+  }, [orderMethod]);
 
   // Fetch default address when delivery is selected
   useEffect(() => {
@@ -106,6 +117,10 @@ export default function CartSidebar({
     return timeInMinutes >= 11 * 60 && timeInMinutes < 23 * 60; // 11:00 AM to 11:00 PM
   })();
 
+  const isOnline = orderMethod === "delivery" || orderMethod === "pickup";
+  const deliveryFee = isOnline ? 30 : 0;
+  const displayTotal = total + deliveryFee;
+
   const isAdmin = user?.role === "admin" || user?.role === "dev";
   const blockedByHours = !isWithinOpeningHours && !isAdmin;
   const showHoursWarning = !isWithinOpeningHours;
@@ -115,66 +130,29 @@ export default function CartSidebar({
     if (!user) return;
     setConfirmOpen(false);
 
-    // If a payment method is selected, create PayMongo source and redirect
-    if (paymentMethod) {
-      setPlacing(true);
-      try {
-        const origin = window.location.origin;
-        const res = await fetch("/api/paymongo/create-source", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            amount: total,
-            type: paymentMethod,
-            successUrl: `${origin}/payment/success`,
-            failedUrl: `${origin}/payment/failed`,
-            billing: user
-              ? { name: `${user.first_name} ${user.last_name}`, email: user.email || "", phone: user?.phone || "" }
-              : undefined,
-          }),
-        });
-
-        const data = await res.json();
-        if (!res.ok) {
-          showToast(data.error || "Failed to initiate payment.", "error");
-          setPlacing(false);
-          return;
-        }
-
-        // Don't create the order yet — store cart + payment info in sessionStorage.
-        // The success page will create the order only after payment is confirmed.
-        const addrWithCoords = defaultAddress
-          ? { ...defaultAddress, addressLat: (defaultAddress as any).lat, addressLng: (defaultAddress as any).lng }
-          : null;
-
-        sessionStorage.setItem(
-          "paymongo_payment",
-          JSON.stringify({
-            sourceId: data.sourceId,
-            orderType: orderMethod,
-            address: addrWithCoords,
-            paymentMethod,
-          }),
-        );
-
-        onClose();
-        // Redirect to GCash checkout
-        window.location.href = data.checkoutUrl;
-      } catch (err: any) {
-        showToast(err?.message || "Payment failed.", "error");
-        setPlacing(false);
-      }
+    // If GCash, show QR code modal first
+    if (paymentMethod === "gcash") {
+      setGcashQrOpen(true);
       return;
     }
 
-    // No payment method — COD / pay later
+    // COD — place order directly
+    await doPlaceOrder();
+  }
+
+  async function doPlaceOrder() {
+    if (!user) return;
     setPlacing(true);
+    setGcashQrPlacing(true);
+
     const addrWithCoords = defaultAddress
       ? { ...defaultAddress, addressLat: (defaultAddress as any).lat, addressLng: (defaultAddress as any).lng }
       : null;
-    const result = await placeOrder(orderMethod, addrWithCoords, null);
+    const result = await placeOrder(orderMethod, addrWithCoords, paymentMethod === "gcash" ? { method: "gcash", sourceId: "" } : null);
     setPlacing(false);
+    setGcashQrPlacing(false);
     if (result.success) {
+      setGcashQrOpen(false);
       showToast("Order placed successfully! We're preparing your food now. 🍳", "success");
       onClose();
     } else {
@@ -301,11 +279,11 @@ export default function CartSidebar({
             <div className="space-y-2">
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Payment Method</p>
               <div className="grid grid-cols-2 gap-2">
-                {PAYMENT_OPTIONS.map((opt) => (
+                {PAYMENT_OPTIONS.filter((opt) => !(opt.value === "cod" && orderMethod === "pickup")).map((opt) => (
                   <button
                     key={opt.value}
-                    onClick={() => setPaymentMethod(paymentMethod === opt.value ? null : opt.value)}
-                    className={`py-2 px-1 rounded-lg text-xs font-semibold border transition-all duration-200 ${
+                    onClick={() => setPaymentMethod(opt.value)}
+                    className={`py-2.5 px-1 rounded-lg text-xs font-semibold border transition-all duration-200 ${
                       paymentMethod === opt.value
                         ? "border-[#dc2626] bg-red-50 text-red-600"
                         : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
@@ -316,22 +294,16 @@ export default function CartSidebar({
                   </button>
                 ))}
               </div>
-              {paymentMethod && (
+              {paymentMethod === "gcash" && (
                 <p className="text-xs text-gray-400">
-                  You'll be redirected to {PAYMENT_OPTIONS.find((o) => o.value === paymentMethod)?.label} to complete payment.
+                  You'll be shown a GCash QR code to scan and pay.
                 </p>
               )}
-              {/* COD — available for both delivery and pickup */}
-              <button
-                onClick={() => setPaymentMethod(null)}
-                className={`w-full py-2 rounded-lg text-xs font-semibold border transition-all duration-200 ${
-                  paymentMethod === null
-                    ? "border-[#dc2626] bg-red-50 text-red-600"
-                    : "border-gray-200 bg-white text-gray-400 hover:border-gray-300"
-                }`}
-              >
-                💵 Cash on Delivery
-              </button>
+              {orderMethod === "pickup" && (
+                <p className="text-xs text-gray-400">
+                  Cash on Delivery is not available for pickup orders.
+                </p>
+              )}
             </div>
 
             {/* Phone Number Warning — non-admins must add phone before ordering */}
@@ -347,9 +319,34 @@ export default function CartSidebar({
               </div>
             )}
 
+            {deliveryFee > 0 && (
+              <>
+                <div className="flex items-center justify-between text-xs text-gray-500">
+                  <span>Subtotal</span>
+                  <span>₱{total}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs text-gray-500">
+                  <span>Delivery Fee</span>
+                  <span>₱{deliveryFee}</span>
+                </div>
+                {(orderMethod === "delivery" || paymentMethod === "gcash") && (() => {
+                  const meetMin = total >= 100;
+                  const exceedMax = paymentMethod === "cod" && total > 900;
+                  const ok = meetMin && !exceedMax;
+                  return (
+                    <div className={`text-xs font-bold text-right ${ok ? "text-emerald-500" : "text-red-500"}`}>
+                      {!meetMin && <span>Min ₱100 not met </span>}
+                      {exceedMax && <span>Max ₱900 exceeded </span>}
+                      {ok && <span>Min ₱100 met{paymentMethod === "cod" ? " · Max ₱900 met" : ""}</span>}
+                      <span className="font-mono">(₱{total})</span>
+                    </div>
+                  );
+                })()}
+              </>
+            )}
             <div className="flex items-center justify-between">
               <span className="text-sm text-[#6b7280] font-medium">Total</span>
-              <span className="text-xl font-black" style={{ color: "#dc2626" }}>₱{total}</span>
+              <span className="text-xl font-black" style={{ color: "#dc2626" }}>₱{displayTotal}</span>
             </div>
             <button
               disabled={cart.length === 0 || placing || needsAddress || outOfRange || blockedByHours || needsPhone}
@@ -357,11 +354,19 @@ export default function CartSidebar({
               style={{ backgroundColor: "#dc2626" }}
               onClick={() => setConfirmOpen(true)}
             >
-              {placing ? "Placing Order…" : paymentMethod ? `Pay with ${PAYMENT_OPTIONS.find((o) => o.value === paymentMethod)?.label}` : "Place Order"}
+              {placing ? "Placing Order…" : paymentMethod === "gcash" ? "Pay with GCash" : "Place Order"}
             </button>
           </div>
         </div>
       </div>
+
+      {/* Fullscreen QR Image Viewer */}
+      {!!fullscreenQr && (
+        <div className="fixed inset-0 bg-black/80 z-[80] flex items-center justify-center p-4 cursor-pointer" onClick={() => setFullscreenQr(false)}>
+          <button onClick={(e) => { e.stopPropagation(); setFullscreenQr(false); }} className="absolute top-4 right-4 p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-2xl transition-colors">✕</button>
+          <StorageImage imageBaseName="gcash_qr" alt="GCash QR Code" className="max-w-[90vw] max-h-[90vh] w-auto h-auto object-contain rounded-xl shadow-2xl" branchId="global" />
+        </div>
+      )}
 
       {open && <div className="fixed inset-0 bg-black/20 z-30" onClick={onClose} />}
 
@@ -381,11 +386,9 @@ export default function CartSidebar({
                 <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold ${orderMethod === "delivery" ? "bg-orange-50 text-orange-600" : "bg-emerald-50 text-emerald-600"}`}>
                   {orderMethod === "delivery" ? "🛵 Delivery" : "🛍️ Pickup"}
                 </span>
-                {paymentMethod && (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-50 text-blue-600">
-                    {PAYMENT_OPTIONS.find((o) => o.value === paymentMethod)?.icon} {PAYMENT_OPTIONS.find((o) => o.value === paymentMethod)?.label}
-                  </span>
-                )}
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-50 text-blue-600">
+                  {PAYMENT_OPTIONS.find((o) => o.value === paymentMethod)?.icon} {PAYMENT_OPTIONS.find((o) => o.value === paymentMethod)?.label}
+                </span>
               </div>
               {orderMethod === "delivery" && defaultAddress && (
                 <div className="px-5 pt-2">
@@ -399,11 +402,11 @@ export default function CartSidebar({
                   </div>
                 </div>
               )}
-              {paymentMethod && (
+              {paymentMethod === "gcash" && (
                 <div className="px-5 pt-2">
                   <div className="p-3 rounded-xl bg-blue-50 border border-blue-200">
                     <p className="text-xs text-blue-600 font-medium">
-                      You'll be redirected to {PAYMENT_OPTIONS.find((o) => o.value === paymentMethod)?.label} to pay ₱{total}.
+                      After confirming, you'll be shown a GCash QR code to scan and pay ₱{displayTotal}.
                     </p>
                   </div>
                 </div>
@@ -422,15 +425,79 @@ export default function CartSidebar({
                   </div>
                 ))}
               </div>
+              {deliveryFee > 0 && (
+                <div className="px-5 pt-2 space-y-1 text-xs text-gray-500">
+                  <div className="flex items-center justify-between"><span>Subtotal</span><span>₱{total}</span></div>
+                  <div className="flex items-center justify-between"><span>Delivery Fee</span><span>₱{deliveryFee}</span></div>
+                </div>
+              )}
               <div className="border-t border-[#f3f4f6] px-5 py-4">
                 <div className="flex items-center justify-between">
                   <span className="text-base font-extrabold text-[#0a0a0a]">Total</span>
-                  <span className="text-xl font-black" style={{ color: "#dc2626" }}>₱{total}</span>
+                  <span className="text-xl font-black" style={{ color: "#dc2626" }}>₱{displayTotal}</span>
                 </div>
               </div>
               <div className="border-t border-[#f3f4f6] px-5 py-4 flex gap-3">
                 <button onClick={() => setConfirmOpen(false)} className="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-600 text-sm font-bold hover:bg-gray-200 transition-colors">Cancel</button>
-                <button onClick={handleConfirmOrder} className="flex-1 py-2.5 rounded-xl text-white text-sm font-bold hover:opacity-90 transition-all duration-200" style={{ backgroundColor: "#dc2626" }}>Place Order</button>
+                <button onClick={handleConfirmOrder} className="flex-1 py-2.5 rounded-xl text-white text-sm font-bold hover:opacity-90 transition-all duration-200" style={{ backgroundColor: "#dc2626" }}>{paymentMethod === "gcash" ? "Continue to GCash" : "Place Order"}</button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ─── GCash QR Code Modal ─── */}
+      {gcashQrOpen && (
+        <>
+          <div className="fixed inset-0 bg-black/30 z-[70]" onClick={() => setGcashQrOpen(false)} />
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl border border-[#e5e7eb] shadow-xl w-full max-w-sm animate-fade-in-scale">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[#f3f4f6]">
+                <h3 className="font-black text-base text-[#0a0a0a]">GCash Payment</h3>
+                <button onClick={() => setGcashQrOpen(false)} className="p-1.5 rounded-lg hover:bg-[#f3f4f6] transition-colors">
+                  <svg className="w-5 h-5" fill="none" stroke="#6b7280" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div className="px-5 py-5 space-y-5">
+                <div className="text-center space-y-2">
+                  <p className="text-2xl font-black" style={{ color: "#dc2626" }}>₱{displayTotal}</p>
+                  <p className="text-xs text-gray-500">Scan the QR code below with your GCash app to pay.</p>
+                </div>
+                <div
+                  className="flex items-center justify-center p-4 bg-[#f9fafb] rounded-xl border border-[#e5e7eb] cursor-pointer hover:shadow-md transition-shadow"
+                  onClick={() => setFullscreenQr(true)}
+                  title="Click to enlarge QR code"
+                >
+                  <StorageImage
+                    imageBaseName="gcash_qr"
+                    alt="GCash QR Code"
+                    className="w-48 h-48 object-contain"
+                    branchId="global"
+                  />
+                </div>
+                <div className="bg-blue-50 rounded-xl p-3 border border-blue-100">
+                  <p className="text-xs text-blue-700 font-semibold mb-1">📋 How to pay:</p>
+                  <ol className="text-xs text-blue-600 space-y-1 list-decimal list-inside">
+                    <li>Open your GCash app</li>
+                    <li>Tap "Scan" and scan the QR code</li>
+                    <li>Enter the amount: <strong>₱{displayTotal}</strong></li>
+                    <li>Complete the payment and <strong>send the proof in the chat</strong></li>
+                  </ol>
+                </div>
+                <button
+                  onClick={doPlaceOrder}
+                  disabled={gcashQrPlacing}
+                  className="w-full py-3 rounded-xl font-bold text-white text-sm tracking-wide transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed hover:scale-[1.02] active:scale-100"
+                  style={{ backgroundColor: "#dc2626" }}
+                >
+                  {gcashQrPlacing ? "Placing Order…" : "Place Order"}
+                </button>
+                <button
+                  onClick={() => setGcashQrOpen(false)}
+                  className="w-full py-2.5 rounded-xl bg-gray-100 text-gray-600 text-sm font-semibold hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
               </div>
             </div>
           </div>

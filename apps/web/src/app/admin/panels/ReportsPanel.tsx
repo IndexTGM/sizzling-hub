@@ -351,105 +351,104 @@ export default function ReportsPanel({ branchId }: { branchId?: string | null })
   const fetchAll = useCallback(async () => {
     const sb = createClient();
 
-    // ── Overview: 30 days ──
+    // ── Overview: 30 days (from receipts) ──
     const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    let ovQuery = sb.from("orders").select("id, total, placed_at")
-      .in("status", ["delivered", "out_for_delivery"])
-      .gte("placed_at", thirtyDaysAgo.toISOString());
+    let ovQuery = sb.from("receipts").select("id, total, completed_at")
+      .gte("completed_at", thirtyDaysAgo.toISOString());
     if (branchId) ovQuery = ovQuery.eq("branch_id", branchId);
-    const { data: overviewOrders } = await ovQuery.order("placed_at", { ascending: true });
-    if (overviewOrders) {
-      setTotalRevenue(overviewOrders.reduce((s: number, o: any) => s + Number(o.total), 0));
-      setTotalOrders(overviewOrders.length);
-      setAvgOrderValue(overviewOrders.length > 0 ? overviewOrders.reduce((s: number, o: any) => s + Number(o.total), 0) / overviewOrders.length : 0);
+    const { data: overviewReceipts } = await ovQuery.order("completed_at", { ascending: true });
+    if (overviewReceipts) {
+      setTotalRevenue(overviewReceipts.reduce((s: number, o: any) => s + Number(o.total), 0));
+      setTotalOrders(overviewReceipts.length);
+      setAvgOrderValue(overviewReceipts.length > 0 ? overviewReceipts.reduce((s: number, o: any) => s + Number(o.total), 0) / overviewReceipts.length : 0);
 
       const dayMap = new Map<string, number>();
-      for (const o of overviewOrders) {
-        const d = new Date(o.placed_at).toLocaleDateString("en-CA");
+      for (const o of overviewReceipts) {
+        const d = new Date(o.completed_at).toLocaleDateString("en-CA");
         dayMap.set(d, (dayMap.get(d) || 0) + Number(o.total));
       }
       setRevenueTrend(Array.from(dayMap.entries()).map(([date, revenue]) => ({ date, revenue })).sort((a, b) => a.date.localeCompare(b.date)));
     }
 
-    // ── Daily ──
+    // ── Daily (from receipts) ──
     const td = todayRange();
     const yd = yesterdayRange();
-    let tq = sb.from("orders").select("id, total, placed_at")
-      .in("status", ["delivered", "out_for_delivery"]).gte("placed_at", td.start).lte("placed_at", td.end);
-    let yq = sb.from("orders").select("total")
-      .in("status", ["delivered", "out_for_delivery"]).gte("placed_at", yd.start).lte("placed_at", yd.end);
+    let tq = sb.from("receipts").select("id, total, completed_at, items")
+      .gte("completed_at", td.start).lte("completed_at", td.end);
+    let yq = sb.from("receipts").select("total")
+      .gte("completed_at", yd.start).lte("completed_at", yd.end);
     if (branchId) { tq = tq.eq("branch_id", branchId); yq = yq.eq("branch_id", branchId); }
-    const { data: todayOrdersData } = await tq;
-    const { data: yesterdayOrdersData } = await yq;
+    const { data: todayReceipts } = await tq;
+    const { data: yesterdayReceipts } = await yq;
 
-    if (todayOrdersData) {
-      setTodayRevenue(todayOrdersData.reduce((s: number, o: any) => s + Number(o.total), 0));
+    if (todayReceipts) {
+      setTodayRevenue(todayReceipts.reduce((s: number, o: any) => s + Number(o.total), 0));
 
       const hMap = new Map<number, number>();
       for (let h = 0; h < 24; h++) hMap.set(h, 0);
-      for (const o of todayOrdersData) {
-        const h = new Date(o.placed_at).getHours();
+      for (const o of todayReceipts) {
+        const h = new Date(o.completed_at).getHours();
         hMap.set(h, (hMap.get(h) || 0) + Number(o.total));
       }
       setHourlyData(Array.from(hMap.entries()).map(([h, revenue]) => ({ hour: `${h.toString().padStart(2, "0")}:00`, revenue })));
 
-      if (todayOrdersData.length > 0) {
-        const ids = todayOrdersData.map((o: any) => o.id);
-        const { data: todayItems } = await sb.from("order_items").select("quantity, unit_price, menu_item").in("order_id", ids);
-        if (todayItems) {
-          const iMap = new Map<string, { sold: number; revenue: number }>();
-          for (const it of todayItems) {
-            const n = it.menu_item || "Unknown";
+      if (todayReceipts.length > 0) {
+        const iMap = new Map<string, { sold: number; revenue: number }>();
+        for (const r of todayReceipts) {
+          const items = (r.items || []) as { name: string; quantity: number; price: number }[];
+          for (const it of items) {
+            const n = it.name || "Unknown";
             const e = iMap.get(n) || { sold: 0, revenue: 0 };
-            e.sold += it.quantity; e.revenue += it.quantity * Number(it.unit_price);
+            e.sold += it.quantity;
+            e.revenue += it.quantity * (it.price || 0);
             iMap.set(n, e);
           }
-          setTodayTopItems(Array.from(iMap.entries()).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.revenue - a.revenue).slice(0, 5));
         }
+        setTodayTopItems(Array.from(iMap.entries()).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.revenue - a.revenue).slice(0, 5));
       } else setTodayTopItems([]);
     }
-    if (yesterdayOrdersData) setYesterdayRevenue(yesterdayOrdersData.reduce((s: number, o: any) => s + Number(o.total), 0));
+    if (yesterdayReceipts) setYesterdayRevenue(yesterdayReceipts.reduce((s: number, o: any) => s + Number(o.total), 0));
 
-    // ── Weekly top items ──
+    // ── Weekly top items (from receipts jsonb) ──
     const wk = weekRange();
-    let wq = sb.from("orders").select("id")
-      .in("status", ["delivered", "out_for_delivery"]).gte("placed_at", wk.start).lte("placed_at", wk.end);
+    let wq = sb.from("receipts").select("items")
+      .gte("completed_at", wk.start).lte("completed_at", wk.end);
     if (branchId) wq = wq.eq("branch_id", branchId);
-    const { data: weekOrders } = await wq;
-    if (weekOrders && weekOrders.length > 0) {
-      const ids = weekOrders.map((o: any) => o.id);
-      const { data: weekItems } = await sb.from("order_items").select("quantity, unit_price, menu_item").in("order_id", ids);
-      if (weekItems) {
-        const wiMap = new Map<string, { sold: number; revenue: number }>();
-        for (const it of weekItems) {
-          const n = it.menu_item || "Unknown";
+    const { data: weekReceipts } = await wq;
+    if (weekReceipts && weekReceipts.length > 0) {
+      const wiMap = new Map<string, { sold: number; revenue: number }>();
+      for (const r of weekReceipts) {
+        const items = (r.items || []) as { name: string; quantity: number; price: number }[];
+        for (const it of items) {
+          const n = it.name || "Unknown";
           const e = wiMap.get(n) || { sold: 0, revenue: 0 };
-          e.sold += it.quantity; e.revenue += it.quantity * Number(it.unit_price);
+          e.sold += it.quantity;
+          e.revenue += it.quantity * (it.price || 0);
           wiMap.set(n, e);
         }
-        setWeeklyTopItems(Array.from(wiMap.entries()).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.revenue - a.revenue).slice(0, 10));
       }
+      setWeeklyTopItems(Array.from(wiMap.entries()).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.revenue - a.revenue).slice(0, 10));
     } else setWeeklyTopItems([]);
 
-    // ── Top Sellers (all time) ──
-    let allQ = sb.from("orders").select("id").in("status", ["delivered", "out_for_delivery"]);
+    // ── Top Sellers (all time from receipts jsonb) ──
+    let allQ = sb.from("receipts").select("items");
     if (branchId) allQ = allQ.eq("branch_id", branchId);
-    const { data: allOrders } = await allQ;
-    if (allOrders && allOrders.length > 0) {
-      const allIds = allOrders.map((o: any) => o.id);
-      const { data: allItems } = await sb.from("order_items").select("quantity, unit_price, menu_item").in("order_id", allIds);
-      if (allItems) {
-        const aMap = new Map<string, { sold: number; revenue: number }>();
-        for (const it of allItems) {
-          const n = it.menu_item || "Unknown";
+    const { data: allReceipts } = await allQ;
+    if (allReceipts && allReceipts.length > 0) {
+      const aMap = new Map<string, { sold: number; revenue: number }>();
+      for (const r of allReceipts) {
+        const items = (r.items || []) as { name: string; quantity: number; price: number }[];
+        for (const it of items) {
+          const n = it.name || "Unknown";
           const e = aMap.get(n) || { sold: 0, revenue: 0 };
-          e.sold += it.quantity; e.revenue += it.quantity * Number(it.unit_price);
+          e.sold += it.quantity;
+          e.revenue += it.quantity * (it.price || 0);
           aMap.set(n, e);
         }
-        const sorted = Array.from(aMap.entries()).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.revenue - a.revenue);
-        setTopByRevenue(sorted.slice(0, 10));
-        setTopByQuantity([...sorted].sort((a, b) => b.sold - a.sold).slice(0, 10));
       }
+      const sorted = Array.from(aMap.entries()).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.revenue - a.revenue);
+      setTopByRevenue(sorted.slice(0, 10));
+      setTopByQuantity([...sorted].sort((a, b) => b.sold - a.sold).slice(0, 10));
     }
 
     // ── Expenses (30 days) ──

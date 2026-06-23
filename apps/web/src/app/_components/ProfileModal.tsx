@@ -5,6 +5,11 @@ import { useAuth } from "@/lib/auth-context";
 import { useBranch } from "@/lib/branch-context";
 import AddressModal from "./AddressModal";
 
+function isValidPHPhone(phone: string): boolean {
+  const raw = phone.trim().replace(/[\s\-\(\)]/g, "");
+  return /^(09\d{9}|\+639\d{9}|639\d{9})$/.test(raw);
+}
+
 export default function ProfileModal({
   open,
   onClose,
@@ -20,6 +25,7 @@ export default function ProfileModal({
   const [editPhone, setEditPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [phoneError, setPhoneError] = useState("");
   const [success, setSuccess] = useState("");
   const [addressModalOpen, setAddressModalOpen] = useState(false);
 
@@ -73,7 +79,15 @@ export default function ProfileModal({
             onSubmit={async (e) => {
               e.preventDefault();
               setError("");
+              setPhoneError("");
               setSuccess("");
+
+              // Validate PH phone number if provided
+              if (editPhone.trim() && !isValidPHPhone(editPhone)) {
+                setPhoneError("Please enter a valid PH mobile number (e.g. 09171234567 or +639171234567)");
+                return;
+              }
+
               setLoading(true);
               const err = await updateProfile(editUsername, editFirstName, editLastName, editPhone || undefined);
               setLoading(false);
@@ -117,10 +131,16 @@ export default function ProfileModal({
             <input
               type="tel"
               value={editPhone}
-              onChange={(e) => setEditPhone(e.target.value)}
-              placeholder="+639171234567"
-              className="w-full px-4 py-2.5 rounded-lg border border-[#e5e7eb] text-sm text-[#0a0a0a] placeholder-[#9ca3af] focus:outline-none focus:ring-2 focus:ring-[#dc2626]/30 focus:border-[#dc2626] transition-all duration-150"
+              onChange={(e) => { setEditPhone(e.target.value); setPhoneError(""); }}
+              placeholder="09171234567 or +639171234567"
+              className={`w-full px-4 py-2.5 rounded-lg border text-sm text-[#0a0a0a] placeholder-[#9ca3af] focus:outline-none focus:ring-2 transition-all duration-150 ${
+                phoneError ? "border-red-300 focus:ring-red-500/30 focus:border-red-400" : "border-[#e5e7eb] focus:ring-[#dc2626]/30 focus:border-[#dc2626]"
+              }`}
             />
+            {phoneError && <p className="text-xs text-red-500 font-medium">{phoneError}</p>}
+            {!phoneError && editPhone.trim() && isValidPHPhone(editPhone) && (
+              <p className="text-[10px] text-emerald-500 font-medium">✓ Valid PH number</p>
+            )}
 
             {error && <p className="text-xs text-[#dc2626] font-medium">{error}</p>}
             {success && <p className="text-xs text-[#16a34a] font-medium">{success}</p>}

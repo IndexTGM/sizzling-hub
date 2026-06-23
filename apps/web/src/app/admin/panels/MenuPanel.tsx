@@ -35,6 +35,9 @@ export default function MenuPanel({ branchId }: { branchId?: string | null }) {
 
   const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
 
+  // ── Drawer state ──
+  const drawerOpen = editing !== null || creating;
+
   const fetchItems = useCallback(async () => {
     const sb = createClient();
     let menuQ = sb.from("menu_items").select("id, name, price, stock, description, branch_id").order("name");
@@ -52,9 +55,9 @@ export default function MenuPanel({ branchId }: { branchId?: string | null }) {
   useEffect(() => { fetchItems(); }, [fetchItems]);
 
   function toggleCategory(catId: string) { setForm((prev) => ({ ...prev, categoryIds: prev.categoryIds.includes(catId) ? prev.categoryIds.filter((id) => id !== catId) : [...prev.categoryIds, catId] })); }
-  function startEdit(item: MenuItemRow) { setEditing(item); setCreating(false); setForm({ name: item.name, price: item.price, categoryIds: [...item.categoryIds], stock: item.stock, description: item.description || "" }); setError(""); }
-  function startCreate() { setCreating(true); setEditing(null); setForm({ name: "", price: 0, categoryIds: [], stock: 50, description: "" }); setError(""); }
-  function cancelEdit() { setEditing(null); setCreating(false); setForm({ name: "", price: 0, categoryIds: [], stock: 0, description: "" }); setError(""); }
+  function startEdit(item: MenuItemRow) { setEditing(item); setCreating(false); setForm({ name: item.name, price: item.price, categoryIds: [...item.categoryIds], stock: item.stock, description: item.description || "" }); setError(""); setCategoryDropdownOpen(false); }
+  function startCreate() { setCreating(true); setEditing(null); setForm({ name: "", price: 0, categoryIds: [], stock: 50, description: "" }); setError(""); setCategoryDropdownOpen(false); }
+  function closeDrawer() { setEditing(null); setCreating(false); setForm({ name: "", price: 0, categoryIds: [], stock: 0, description: "" }); setError(""); setCategoryDropdownOpen(false); }
 
   async function handleSave() {
     if (!form.name.trim()) { setError("Name is required."); return; }
@@ -72,7 +75,7 @@ export default function MenuPanel({ branchId }: { branchId?: string | null }) {
       itemId = newItem.id;
       if (form.categoryIds.length > 0) await sb.from("menu_item_categories").insert(form.categoryIds.map((cid) => ({ menu_item_id: itemId, category_id: cid })));
     }
-    setSaving(false); cancelEdit(); await fetchItems();
+    setSaving(false); closeDrawer(); await fetchItems();
   }
 
   async function handleDelete(id: string) {
@@ -89,58 +92,282 @@ export default function MenuPanel({ branchId }: { branchId?: string | null }) {
   async function handleDeleteCategory(catId: string, catName: string) { const sb = createClient(); await sb.from("menu_item_categories").delete().eq("category_id", catId); const { error: deleteErr } = await sb.from("categories").delete().eq("id", catId); if (deleteErr) { setError(`Cannot delete: ${deleteErr.message}`); await fetchItems(); setConfirmDelete(null); return; } await fetchItems(); setConfirmDelete(null); }
   async function handleAddCategory() { if (!newCatName.trim()) { setCatError("Category name is required."); return; } setCatError(""); const sb = createClient(); const { error: insertErr } = await sb.from("categories").insert({ name: newCatName.trim(), sort_order: categories.length + 1, ...(branchId ? { branch_id: branchId } : {}) }); if (insertErr) { setCatError(insertErr.message); return; } setNewCatName(""); setAddingCat(false); await fetchItems(); }
 
+  // Category counts for filter badges
+  const catCounts: Record<string, number> = {};
+  for (const c of categories) catCounts[c.name] = items.filter((i) => i.categoryNames.includes(c.name)).length;
+
   let filteredItems = catFilter === "all" ? items : items.filter((i) => i.categoryNames.includes(catFilter));
   if (search.trim()) { const q = search.toLowerCase(); filteredItems = filteredItems.filter((i) => i.name.toLowerCase().includes(q)); }
   if (loading) return <LoadingSkeleton />;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between"><p className="text-sm text-gray-400 mt-0.5">{items.length} items</p>{!editing && !creating && <button onClick={startCreate} className="px-4 py-2.5 rounded-lg bg-red-600 text-white text-sm font-bold transition-all duration-200 hover:bg-red-700 active:scale-95">+ Add Item</button>}</div>
-      {error && !editing && !creating && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{error}<button onClick={() => setError("")} className="ml-2 text-red-400 hover:text-red-600 font-bold">×</button></div>}
-      {(editing || creating) && (
-        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-          <h3 className="font-bold text-sm text-gray-900">{editing ? `Edit: ${editing.name}` : "New Menu Item"}</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Name" className="px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500/30 focus:border-red-300" />
-            <input type="number" value={form.price} onChange={(e) => setForm({ ...form, price: Number(e.target.value) })} placeholder="Price (₱)" className="px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500/30 focus:border-red-300" />
-            <input type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: Number(e.target.value) })} placeholder="Stock qty" className="px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500/30 focus:border-red-300" />
-            <div className="relative">
-              <button type="button" onClick={() => setCategoryDropdownOpen(!categoryDropdownOpen)} className="w-full px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-sm text-left focus:outline-none focus:ring-2 focus:ring-red-500/30 focus:border-red-300 flex items-center justify-between"><span className={form.categoryIds.length === 0 ? "text-gray-400" : "text-gray-800"}>{form.categoryIds.length === 0 ? "Select categories" : `${form.categoryIds.length} selected`}</span><svg className={`w-4 h-4 text-gray-400 transition-transform ${categoryDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg></button>
-              {categoryDropdownOpen && <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">{categories.length === 0 ? <div className="px-3 py-2 text-xs text-gray-400">No categories</div> : (() => { const activeBranchId = editing?.branchId ?? branchId; const filteredCats = activeBranchId ? categories.filter(c => !c.branchId || c.branchId === activeBranchId) : categories; return filteredCats.map((c) => (<label key={c.id} className={`flex items-center gap-2 px-3 py-2 cursor-pointer text-sm transition-colors ${form.categoryIds.includes(c.id) ? "bg-red-50 text-red-700" : "text-gray-700 hover:bg-gray-50"}`}><input type="checkbox" checked={form.categoryIds.includes(c.id)} onChange={() => toggleCategory(c.id)} className="w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500" />{c.name}</label>)); })()}</div>}
-            </div>
-          </div>
-          <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Description (optional)" className="w-full px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500/30 focus:border-red-300 resize-none" rows={2} />
-          {error && <p className="text-xs text-red-600">{error}</p>}
-          <div className="flex gap-2"><button onClick={handleSave} disabled={saving} className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-bold disabled:opacity-40 hover:bg-red-700 transition-colors">{saving ? "Saving…" : "Save"}</button><button onClick={cancelEdit} className="px-4 py-2 rounded-lg bg-gray-100 text-gray-600 text-sm font-medium hover:bg-gray-200 transition-colors">Cancel</button></div>
+    <div className="space-y-4">
+      {/* ── Top Bar ── */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <p className="text-sm text-gray-400"><span className="font-bold text-gray-600">{items.length}</span> items</p>
+          {!drawerOpen && (
+            <button onClick={startCreate} className="px-4 py-2 rounded-lg bg-red-600 text-white text-xs font-bold hover:bg-red-700 active:scale-95 transition-all">
+              + Add Item
+            </button>
+          )}
+        </div>
+        {/* Search */}
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search items…"
+          className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-xs text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-300 w-full sm:w-48"
+        />
+      </div>
+
+      {/* ── Global error banner ── */}
+      {error && !drawerOpen && (
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-xs text-red-700 flex items-center justify-between">
+          {error}
+          <button onClick={() => setError("")} className="ml-2 text-red-400 hover:text-red-600 font-bold">×</button>
         </div>
       )}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between flex-wrap gap-2"><div className="flex items-center gap-2"><span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Categories:</span><div className="flex gap-1 flex-wrap items-center"><button onClick={() => setCatFilter("all")} className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${catFilter === "all" ? "bg-red-600 text-white" : "bg-gray-100 text-gray-500 hover:text-gray-900 hover:bg-gray-200"}`}>All</button>{categories.map((c) => (<span key={c.id} className="inline-flex items-center gap-0.5"><button onClick={() => setCatFilter(c.name)} className={`px-3 py-1.5 rounded-l-lg text-xs font-semibold transition-colors ${catFilter === c.name ? "bg-red-600 text-white" : "bg-gray-100 text-gray-500 hover:text-gray-900 hover:bg-gray-200"}`}>{c.name}</button><button onClick={() => setConfirmDelete({ type: "category", id: c.id, catName: c.name })} className="px-1.5 py-1.5 rounded-r-lg text-xs font-bold transition-colors bg-gray-100 text-gray-300 hover:bg-red-50 hover:text-red-600">×</button></span>))}</div></div>{!addingCat && <button onClick={() => setAddingCat(true)} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors">+ Add Category</button>}</div>
-        <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search items…" className="px-3 py-1.5 rounded-lg bg-gray-100 border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500/30 focus:border-red-300 w-full sm:w-64" />
-      </div>
-      {addingCat && <div className="bg-white rounded-xl border border-gray-200 p-3 flex items-center gap-3"><input type="text" value={newCatName} onChange={(e) => { setNewCatName(e.target.value); setCatError(""); }} placeholder="Category name" autoFocus className="flex-1 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500/30" /><button onClick={handleAddCategory} className="px-4 py-2 rounded-lg bg-red-600 text-white text-xs font-bold">Save</button><button onClick={() => { setAddingCat(false); setNewCatName(""); }} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-600 text-xs font-medium">Cancel</button>{catError && <p className="text-xs text-red-600">{catError}</p>}</div>}
-      {filteredItems.length === 0 ? <EmptyState message="No menu items." /> : (
-        <>
-          <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50 text-left text-xs uppercase text-gray-400 tracking-wider"><tr><th className="px-4 py-3 font-semibold">Image</th><th className="px-4 py-3 font-semibold">Name</th><th className="px-4 py-3 font-semibold">Categories</th><th className="px-4 py-3 font-semibold">Price</th><th className="px-4 py-3 font-semibold">Stock</th><th className="px-4 py-3 font-semibold">Actions</th></tr></thead><tbody className="divide-y divide-gray-100">{filteredItems.map((item) => (<tr key={item.id} className="hover:bg-gray-50 transition-colors"><td className="px-4 py-3"><div className="w-10 h-10 rounded-lg bg-gray-100 overflow-hidden"><StorageImage imageBaseName={item.name} alt={item.name} className="w-full h-full object-cover" branchId={branchId} /></div></td><td className="px-4 py-3 font-semibold text-gray-800">{item.name}</td><td className="px-4 py-3 text-gray-500"><div className="flex flex-wrap gap-1">{item.categoryNames.map((cn) => (<span key={cn} className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">{cn}</span>))}</div></td><td className="px-4 py-3 font-bold text-red-600">₱{item.price}</td><td className="px-4 py-3"><span className={`inline-block px-2 py-0.5 rounded-full text-xs font-extrabold ${(item.stock ?? 0) <= 5 ? "bg-red-50 text-red-600" : (item.stock ?? 0) <= 20 ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600"}`}>{item.stock ?? 0}</span></td><td className="px-4 py-3"><div className="flex gap-2"><button onClick={() => startEdit(item)} className="px-3 py-1 rounded-md text-xs font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200">Edit</button><button onClick={() => setConfirmDelete({ type: "item", id: item.id, name: item.name })} className="px-3 py-1 rounded-md text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100">Delete</button></div></td></tr>))}</tbody></table></div>
+
+      {/* ── Category Filters ── */}
+      <div className="flex items-center flex-wrap gap-1.5">
+        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-1">Categories:</span>
+        <button onClick={() => setCatFilter("all")} className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${catFilter === "all" ? "bg-red-600 text-white shadow-sm" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}>
+          All ({items.length})
+        </button>
+        {categories.map((c) => (
+          <span key={c.id} className="inline-flex items-center">
+            <button onClick={() => setCatFilter(c.name)} className={`px-2.5 py-1 rounded-l-lg text-[11px] font-bold transition-colors ${catFilter === c.name ? "bg-red-600 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}>
+              {c.name} ({catCounts[c.name] || 0})
+            </button>
+            <button onClick={() => setConfirmDelete({ type: "category", id: c.id, catName: c.name })} className="px-1.5 py-1 rounded-r-lg text-[10px] font-bold bg-gray-100 text-gray-300 hover:bg-red-50 hover:text-red-600 transition-colors">×</button>
+          </span>
+        ))}
+        {!addingCat ? (
+          <button onClick={() => setAddingCat(true)} className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors">+ Add</button>
+        ) : (
+          <div className="flex items-center gap-1.5 bg-white rounded-lg border border-gray-200 px-2 py-1">
+            <input
+              type="text"
+              value={newCatName}
+              onChange={(e) => { setNewCatName(e.target.value); setCatError(""); }}
+              placeholder="Name"
+              autoFocus
+              className="w-24 px-2 py-1 rounded text-[11px] bg-gray-50 border border-gray-200 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-red-500/30"
+            />
+            <button onClick={handleAddCategory} className="px-2 py-1 rounded text-[10px] font-bold bg-red-600 text-white">Save</button>
+            <button onClick={() => { setAddingCat(false); setNewCatName(""); }} className="px-1.5 py-1 rounded text-[10px] font-medium text-gray-400 hover:text-gray-600">×</button>
+            {catError && <p className="text-[10px] text-red-600">{catError}</p>}
           </div>
-          <div className="md:hidden space-y-3">
+        )}
+      </div>
+
+      {/* ── Items List ── */}
+      {filteredItems.length === 0 ? (
+        <EmptyState message={search ? "No items match your search." : "No menu items."} />
+      ) : (
+        <>
+          {/* Desktop Table */}
+          <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-left text-[10px] uppercase text-gray-400 tracking-wider">
+                  <tr>
+                    <th className="px-4 py-2.5 font-semibold">Image</th>
+                    <th className="px-4 py-2.5 font-semibold">Name</th>
+                    <th className="px-4 py-2.5 font-semibold">Categories</th>
+                    <th className="px-4 py-2.5 font-semibold">Price</th>
+                    <th className="px-4 py-2.5 font-semibold">Stock</th>
+                    <th className="px-4 py-2.5 font-semibold w-[140px]">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filteredItems.map((item) => (
+                    <tr key={item.id} className={`hover:bg-gray-50 transition-colors ${editing?.id === item.id ? "bg-red-50/50 ring-1 ring-red-200" : ""}`}>
+                      <td className="px-4 py-2.5">
+                        <div className="w-10 h-10 rounded-lg bg-gray-100 overflow-hidden">
+                          <StorageImage imageBaseName={item.name} alt={item.name} className="w-full h-full object-cover" branchId={branchId} />
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 font-semibold text-gray-800 text-xs">{item.name}</td>
+                      <td className="px-4 py-2.5 text-gray-500">
+                        <div className="flex flex-wrap gap-1">
+                          {item.categoryNames.map((cn) => (
+                            <span key={cn} className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-600">{cn}</span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 font-bold text-red-600 text-xs">₱{item.price}</td>
+                      <td className="px-4 py-2.5">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-extrabold ${(item.stock ?? 0) <= 5 ? "bg-red-50 text-red-600" : (item.stock ?? 0) <= 20 ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600"}`}>
+                          {item.stock ?? 0}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex gap-1.5">
+                          <button onClick={() => startEdit(item)} className="px-2.5 py-1 rounded-md text-[10px] font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors">✏️ Edit</button>
+                          <button onClick={() => setConfirmDelete({ type: "item", id: item.id, name: item.name })} className="px-2.5 py-1 rounded-md text-[10px] font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors">🗑</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Mobile Cards */}
+          <div className="md:hidden space-y-2">
             {filteredItems.map((item) => (
-              <div key={item.id} className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+              <div key={item.id} className={`bg-white rounded-xl border border-gray-200 p-4 space-y-3 ${editing?.id === item.id ? "ring-2 ring-red-200" : ""}`}>
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-lg bg-gray-100 overflow-hidden flex-shrink-0">
                     <StorageImage imageBaseName={item.name} alt={item.name} className="w-full h-full object-cover" branchId={branchId} />
                   </div>
-                  <div className="flex-1 min-w-0"><p className="font-bold text-sm text-gray-900 truncate">{item.name}</p><div className="flex flex-wrap gap-1 mt-1">{item.categoryNames.map((cn) => (<span key={cn} className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">{cn}</span>))}</div></div>
+                  <div className="flex-1 min-w-0"><p className="font-bold text-sm text-gray-900 truncate">{item.name}</p><div className="flex flex-wrap gap-1 mt-1">{item.categoryNames.map((cn) => (<span key={cn} className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-600">{cn}</span>))}</div></div>
                 </div>
-                <div className="flex items-center justify-between"><span className="text-lg font-black text-red-600">₱{item.price}</span><span className={`inline-block px-2 py-0.5 rounded-full text-xs font-extrabold ${(item.stock ?? 0) <= 5 ? "bg-red-50 text-red-600" : (item.stock ?? 0) <= 20 ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600"}`}>{item.stock ?? 0} in stock</span></div>
+                <div className="flex items-center justify-between"><span className="text-lg font-black text-red-600">₱{item.price}</span><span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-extrabold ${(item.stock ?? 0) <= 5 ? "bg-red-50 text-red-600" : (item.stock ?? 0) <= 20 ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600"}`}>{item.stock ?? 0} in stock</span></div>
                 <div className="flex gap-2 pt-1 border-t border-gray-100"><button onClick={() => startEdit(item)} className="flex-1 py-2 rounded-lg text-xs font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200">✏️ Edit</button><button onClick={() => setConfirmDelete({ type: "item", id: item.id, name: item.name })} className="flex-1 py-2 rounded-lg text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100">🗑 Delete</button></div>
               </div>
             ))}
           </div>
         </>
       )}
-      <ConfirmModal open={confirmDelete !== null} title={confirmDelete?.type === "category" ? "Delete Category" : "Delete Item"} message={confirmDelete?.type === "category" ? `Delete "${confirmDelete?.catName}" and all items in it?` : `Delete "${confirmDelete?.name || ""}"?`} confirmLabel="Delete" confirmDanger onConfirm={() => { if (!confirmDelete) return; if (confirmDelete.type === "category") handleDeleteCategory(confirmDelete.id, confirmDelete.catName || ""); else handleDelete(confirmDelete.id); }} onCancel={() => setConfirmDelete(null)} />
+
+      {/* ── Slide-over Edit/Create Drawer ── */}
+      {drawerOpen && (
+        <>
+          {/* Backdrop */}
+          <div className="fixed inset-0 bg-black/20 z-40" onClick={closeDrawer} />
+          {/* Drawer */}
+          <div className="fixed inset-y-0 right-0 z-50 w-full max-w-lg bg-white shadow-2xl border-l border-gray-200 flex flex-col animate-slide-in-right">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h3 className="font-black text-sm text-gray-900">
+                {editing ? `✏️ Edit: ${editing.name}` : "📋 New Menu Item"}
+              </h3>
+              <button onClick={closeDrawer} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {/* Name */}
+              <div>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Name *</label>
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder="e.g. Sizzling Pork Sisig"
+                  className="w-full px-3 py-2.5 rounded-lg bg-gray-50 border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-300"
+                />
+              </div>
+
+              {/* Price + Stock row */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Price (₱) *</label>
+                  <input
+                    type="number"
+                    value={form.price}
+                    onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
+                    placeholder="0"
+                    min={0}
+                    className="w-full px-3 py-2.5 rounded-lg bg-gray-50 border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-300"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Stock Qty</label>
+                  <input
+                    type="number"
+                    value={form.stock}
+                    onChange={(e) => setForm({ ...form, stock: Number(e.target.value) })}
+                    placeholder="50"
+                    min={0}
+                    className="w-full px-3 py-2.5 rounded-lg bg-gray-50 border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-300"
+                  />
+                </div>
+              </div>
+
+              {/* Categories */}
+              <div>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Categories *</label>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setCategoryDropdownOpen(!categoryDropdownOpen)}
+                    className="w-full px-3 py-2.5 rounded-lg bg-gray-50 border border-gray-200 text-sm text-left focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-300 flex items-center justify-between"
+                  >
+                    <span className={form.categoryIds.length === 0 ? "text-gray-400" : "text-gray-800"}>
+                      {form.categoryIds.length === 0 ? "Select categories" : `${form.categoryIds.length} selected`}
+                    </span>
+                    <svg className={`w-4 h-4 text-gray-400 transition-transform ${categoryDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {categoryDropdownOpen && (
+                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                      {categories.length === 0 ? (
+                        <div className="px-3 py-2 text-xs text-gray-400">No categories yet</div>
+                      ) : (
+                        (() => {
+                          const activeBranchId = editing?.branchId ?? branchId;
+                          const filteredCats = activeBranchId ? categories.filter(c => !c.branchId || c.branchId === activeBranchId) : categories;
+                          return filteredCats.map((c) => (
+                            <label key={c.id} className={`flex items-center gap-2 px-3 py-2 cursor-pointer text-xs transition-colors ${form.categoryIds.includes(c.id) ? "bg-red-50 text-red-700" : "text-gray-700 hover:bg-gray-50"}`}>
+                              <input type="checkbox" checked={form.categoryIds.includes(c.id)} onChange={() => toggleCategory(c.id)} className="w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500" />
+                              {c.name}
+                            </label>
+                          ));
+                        })()
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Description</label>
+                <textarea
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  placeholder="Optional description…"
+                  className="w-full px-3 py-2.5 rounded-lg bg-gray-50 border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-300 resize-none"
+                  rows={3}
+                />
+              </div>
+
+              {error && <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-gray-100 px-5 py-4 flex gap-3">
+              <button onClick={closeDrawer} className="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-600 text-sm font-bold hover:bg-gray-200 transition-colors">
+                Cancel
+              </button>
+              <button onClick={handleSave} disabled={saving} className="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700 disabled:opacity-40 transition-colors">
+                {saving ? "Saving…" : editing ? "Save Changes" : "Create Item"}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      <ConfirmModal
+        open={confirmDelete !== null}
+        title={confirmDelete?.type === "category" ? "Delete Category" : "Delete Item"}
+        message={confirmDelete?.type === "category" ? `Delete "${confirmDelete?.catName}" and all items in it?` : `Delete "${confirmDelete?.name || ""}"?`}
+        confirmLabel="Delete"
+        confirmDanger
+        onConfirm={() => { if (!confirmDelete) return; if (confirmDelete.type === "category") handleDeleteCategory(confirmDelete.id, confirmDelete.catName || ""); else handleDelete(confirmDelete.id); }}
+        onCancel={() => setConfirmDelete(null)}
+      />
     </div>
   );
 }

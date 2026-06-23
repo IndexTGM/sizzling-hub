@@ -295,13 +295,57 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
       const orderNotes = addressStr ? `Address: ${addressStr}` : null;
 
+      const isOnline = orderType === "delivery" || orderType === "pickup";
+      const deliveryFee = isOnline ? 30 : 0;
+      const total = subtotal + deliveryFee;
+
+      // Validate minimum/maximum order amount for online orders
+      const minAmount = 100;
+      const isCod = !payment; // null payment = cash on delivery
+      if (isOnline && subtotal < minAmount) {
+        return {
+          success: false,
+          error: `Minimum order amount is ₱${minAmount}. Your subtotal is ₱${subtotal}.`,
+        };
+      }
+      if (isOnline && isCod && subtotal > 900) {
+        return {
+          success: false,
+          error: `Cash on Delivery orders are limited to ₱900 maximum. Your subtotal is ₱${subtotal}.`,
+        };
+      }
+
+      // Enforce max 3 online order chats: remove oldest if at limit
+      if (isOnline) {
+        const { data: existingOnline } = await sb
+          .from("orders")
+          .select("id")
+          .eq("customer_id", session.user.id)
+          .in("order_type", ["delivery", "pickup"])
+          .not("status", "eq", "cancelled")
+          .order("placed_at", { ascending: true });
+        if (existingOnline && existingOnline.length >= 3) {
+          const oldest = existingOnline[0];
+          // Delete chat images from storage
+          const { data: chatFiles } = await sb.storage
+            .from("images")
+            .list(`chat/${oldest.id}`, { limit: 500 });
+          if (chatFiles && chatFiles.length > 0) {
+            const paths = chatFiles.map((f) => `chat/${oldest.id}/${f.name}`);
+            await sb.storage.from("images").remove(paths);
+          }
+          // Delete order_messages for this order
+          await sb.from("order_messages").delete().eq("order_id", oldest.id);
+        }
+      }
+
       const paymentFields = payment
         ? { payment_method: payment.method, payment_status: "unpaid" }
         : { payment_method: "cod", payment_status: "unpaid" };
 
       const { data: order, error: orderErr } = await sb.from("orders").insert({
         customer_id: session.user.id, order_type: orderType, status: "pending",
-        subtotal, delivery_fee: 0, discount: 0, total: subtotal,
+        subtotal, delivery_fee: deliveryFee, discount: 0, total,
         notes: orderNotes,
         branch_id: branchId || null,
         ...paymentFields,
@@ -321,12 +365,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
       const { error: itemsErr } = await sb.from("order_items").insert(orderItems);
       if (itemsErr) return { success: false, error: itemsErr.message };
 
-      await sb.from("cart_items").delete().eq("customer_id", session.user.id);
-      setCart([]);
-
+      // Decrement stock (before clearing cart so cart is preserved if this fails)
       for (const item of cart) {
         await sb.rpc("decrement_stock", { p_menu_item_id: item.id, p_quantity: item.quantity });
       }
+
+      await sb.from("cart_items").delete().eq("customer_id", session.user.id);
+      setCart([]);
 
       // Silent refresh menu so stock counts update across all open views
       refreshMenu().catch(() => { /* best-effort, ignore failures */ });

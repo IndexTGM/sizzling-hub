@@ -67,27 +67,24 @@ function mapBranchRow(row: any): Branch {
 }
 
 export function BranchProvider({ children }: { children: ReactNode }) {
-  const [allBranches, setAllBranches] = useState<Branch[]>([]);
-  const [branch, setBranch] = useState<Branch | null>(null);
-  const [branchId, setBranchIdState] = useState<string | null>(null);
-  const [branchLocation, setBranchLocation] = useState<BranchLocation>(DEFAULT_STORE_LOCATION);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // On first mount, read branch ID from URL search params or localStorage
-  useEffect(() => {
+  // Initialize branchId synchronously from localStorage to avoid null→value flicker
+  const getInitialBranchId = (): string | null => {
+    if (typeof window === "undefined") return null;
     const params = new URLSearchParams(window.location.search);
     const urlId = params.get("branch");
     if (urlId) {
       localStorage.setItem("sizzling_hub_branch_id", urlId);
-      setBranchIdState(urlId);
-    } else {
-      const stored = localStorage.getItem("sizzling_hub_branch_id");
-      if (stored) {
-        setBranchIdState(stored);
-      }
+      return urlId;
     }
-  }, []);
+    return localStorage.getItem("sizzling_hub_branch_id");
+  };
+
+  const [allBranches, setAllBranches] = useState<Branch[]>([]);
+  const [branch, setBranch] = useState<Branch | null>(null);
+  const [branchId, setBranchIdState] = useState<string | null>(getInitialBranchId);
+  const [branchLocation, setBranchLocation] = useState<BranchLocation>(DEFAULT_STORE_LOCATION);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchBranches = useCallback(async () => {
     try {

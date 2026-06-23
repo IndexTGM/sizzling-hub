@@ -47,7 +47,7 @@ export interface AdminOrder {
   id: string; customerName: string; customerEmail: string; customerPhone: string | null; orderType: OrderType; status: OrderStatus;
   subtotal: number; deliveryFee: number; discount: number; total: number; notes: string | null;
   items: { name: string; quantity: number; price: number }[]; placedAt: string; completedAt: string | null;
-  paymentMethod: string | null; paymentSourceId: string | null; paymentStatus: string | null;
+  paymentMethod: string | null; paymentStatus: string | null;
   seniorPwdDiscount: boolean;
 }
 

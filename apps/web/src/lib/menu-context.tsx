@@ -85,7 +85,7 @@ async function fetchMenuData(branchId: string | null): Promise<{ menuItems: Menu
 }
 
 export function MenuProvider({ children }: { children: ReactNode }) {
-  const { branchId } = useBranch();
+  const { branchId, loading: branchLoading } = useBranch();
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,6 +103,9 @@ export function MenuProvider({ children }: { children: ReactNode }) {
   }, [branchId]);
 
   useEffect(() => {
+    // Wait for BranchProvider to resolve before fetching menu
+    // This avoids a double-fetch (null branchId → real branchId) on first load
+    if (branchLoading) return;
     (async () => {
       setLoading(true);
       const result = await fetchMenuData(branchId);
@@ -111,7 +114,7 @@ export function MenuProvider({ children }: { children: ReactNode }) {
       setCategories(result.categories);
       setLoading(false);
     })();
-  }, [branchId]);
+  }, [branchId, branchLoading]);
 
   return (
     <MenuContext.Provider value={{ menuItems, categories, loading, error, refreshMenu }}>

@@ -26,21 +26,21 @@ export default function DashboardPanel({ branchId }: { branchId?: string | null 
     const branchFilter = { column: "branch_id", value: branchId };
     const maybeEq = (q: any) => branchId ? q.eq("branch_id", branchId) : q;
 
-    const [{ count: orderCount }, { data: revenueRows }, { count: customerCount }, { count: menuCount }, { count: pendingCount }, { data: recent }] = await Promise.all([
-      maybeEq(sb.from("orders").select("*", { count: "exact", head: true })),
-      maybeEq(sb.from("orders").select("total").in("status", ["delivered", "out_for_delivery"])),
+    const [{ count: receiptCount }, { data: revenueRows }, { count: customerCount }, { count: menuCount }, { count: pendingCount }, { data: recent }] = await Promise.all([
+      maybeEq(sb.from("receipts").select("*", { count: "exact", head: true })),
+      maybeEq(sb.from("receipts").select("total")),
       sb.from("profiles").select("*", { count: "exact", head: true }).eq("role", "customer"),
       branchId ? sb.from("menu_items").select("*", { count: "exact", head: true }).eq("branch_id", branchId) : sb.from("menu_items").select("*", { count: "exact", head: true }),
       maybeEq(sb.from("orders").select("*", { count: "exact", head: true }).eq("status", "pending")),
-      maybeEq(sb.from("orders").select("id, total, status, placed_at, order_type, customer:profiles(first_name, last_name)").order("placed_at", { ascending: false }).limit(5)),
+      maybeEq(sb.from("receipts").select("id, order_id, total, order_type, source, completed_at, customer_name").order("completed_at", { ascending: false }).limit(5)),
     ]);
     setStats({
-      totalOrders: orderCount ?? 0,
+      totalOrders: receiptCount ?? 0,
       totalRevenue: revenueRows?.reduce((sum: number, r: any) => sum + Number(r.total), 0) ?? 0,
       totalCustomers: customerCount ?? 0,
       totalMenuItems: menuCount ?? 0,
       pendingOrders: pendingCount ?? 0,
-      recentOrders: (recent ?? []).map((r: any) => ({ id: r.id, orderType: r.order_type as OrderType, total: Number(r.total), status: r.status, placed_at: r.placed_at })),
+      recentOrders: (recent ?? []).map((r: any) => ({ id: r.order_id, orderType: r.order_type as OrderType, total: Number(r.total), status: r.source === "walk_in" ? "delivered" : "delivered", placed_at: r.completed_at })),
     });
     setLoading(false);
   }, [branchId]);

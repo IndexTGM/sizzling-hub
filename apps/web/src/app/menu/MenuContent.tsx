@@ -39,46 +39,102 @@ function BannerCarousel({ branchId }: { branchId: string | null }) {
   }, []);
 
   useEffect(() => {
-    if (banners.length === 0) return;
+    if (banners.length < 2) return;
     autoRef.current = setInterval(() => {
       setActive((prev) => {
         const next = (prev + 1) % banners.length;
         trackRef.current?.scrollTo({ left: next * (trackRef.current?.clientWidth ?? 0), behavior: "smooth" });
         return next;
       });
-    }, 4000);
+    }, 5000);
     return () => { if (autoRef.current) clearInterval(autoRef.current); };
   }, [banners.length]);
 
   if (banners.length === 0) return null;
 
   return (
-    <div className="w-full overflow-hidden mb-4">
+    <div className="w-full overflow-hidden mb-4 py-2">
       <div ref={trackRef} className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide" style={{ scrollSnapType: "x mandatory" }}>
         {banners.map((b, i) => {
           const accentColor = BANNER_COLORS[i % BANNER_COLORS.length];
+          const isActive = i === active;
           return (
           <div key={b.id} className="w-full flex-shrink-0 snap-center" style={{ scrollSnapAlign: "center" }}>
-            <div className="px-4">
-              <div className="relative flex items-center rounded-xl p-4 gap-4 shadow-sm border border-white/50 overflow-hidden" style={{ backgroundColor: accentColor, backgroundImage: `linear-gradient(135deg, ${accentColor} 0%, ${accentColor}dd 100%)`, height: 120 }}>
-                <div className="flex-1 space-y-1.5 relative z-10">
-                  <h3 className="text-lg font-black text-white tracking-tight leading-tight">{b.title}</h3>
-                  <p className="text-xs text-white/70 font-medium line-clamp-1">{b.subtitle}</p>
+            <div className="px-4 py-1">
+              <div
+                className="relative flex items-center rounded-2xl p-5 sm:p-6 gap-4 sm:gap-5 shadow-2xl border border-white/20 overflow-hidden transition-shadow duration-500"
+                style={{
+                  backgroundColor: accentColor,
+                  backgroundImage: `
+                    linear-gradient(145deg, ${accentColor} 0%, ${accentColor}cc 40%, ${accentColor}88 100%),
+                    radial-gradient(ellipse at 85% 15%, rgba(255,255,255,0.3) 0%, transparent 50%),
+                    radial-gradient(ellipse at 15% 85%, rgba(0,0,0,0.12) 0%, transparent 40%)
+                  `,
+                  minHeight: 140,
+                  boxShadow: isActive
+                    ? `0 20px 60px -10px ${accentColor}66, 0 8px 20px -5px ${accentColor}44`
+                    : "0 8px 30px -5px rgba(0,0,0,0.12)",
+                }}
+              >
+                {/* Decorative dots */}
+                <div
+                  className="absolute inset-0 opacity-[0.05] pointer-events-none rounded-2xl overflow-hidden"
+                  style={{
+                    backgroundImage: `
+                      radial-gradient(circle at 20% 30%, #ffffff 1.5px, transparent 1.5px),
+                      radial-gradient(circle at 60% 70%, #ffffff 1px, transparent 1px),
+                      radial-gradient(circle at 80% 15%, #ffffff 1.5px, transparent 1.5px)
+                    `,
+                    backgroundSize: "32px 32px, 24px 24px, 40px 40px",
+                    backgroundPosition: "0 0, 12px 12px, 8px 8px",
+                  }}
+                />
+                {/* Sparkle dots */}
+                <div className="absolute inset-0 opacity-20 pointer-events-none">
+                  <div className="absolute top-[12%] left-[6%] w-1.5 h-1.5 rounded-full bg-white animate-pulse" style={{ animationDuration: "2.5s" }} />
+                  <div className="absolute top-[65%] right-[15%] w-1 h-1 rounded-full bg-white animate-pulse" style={{ animationDuration: "3s", animationDelay: "0.7s" }} />
                 </div>
-                <div className="relative z-10 flex-shrink-0">
-                  <StorageImage imageBaseName={b.image} alt={b.title} className="w-20 h-20 object-cover rounded-xl shadow-md ring-1 ring-white/20" branchId={branchId} />
+
+                <div className="flex-1 space-y-1.5 relative z-10 min-w-0">
+                  <h3 className="text-lg sm:text-2xl font-black text-white tracking-tight leading-tight drop-shadow-sm line-clamp-1">{b.title}</h3>
+                  <p className="text-xs sm:text-sm text-white/80 font-medium line-clamp-2 leading-relaxed">{b.subtitle}</p>
                 </div>
+                <StorageImage
+                  imageBaseName={b.image}
+                  alt={b.title}
+                  className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl object-cover flex-shrink-0"
+                  branchId={branchId}
+                />
               </div>
             </div>
           </div>
         );
         })}
       </div>
-      <div className="flex justify-center gap-1.5 mt-3">
+      <div className="flex justify-center gap-2.5 mt-4">
         {banners.map((_, i) => {
           const dotColor = BANNER_COLORS[i % BANNER_COLORS.length];
+          const isActive = i === active;
           return (
-          <button key={i} onClick={() => goTo(i)} className="rounded-full transition-all duration-300" style={i === active ? { width: 24, height: 7, backgroundColor: dotColor } : { width: 7, height: 7, backgroundColor: "#d1d5db" }} />
+          <button
+            key={i}
+            onClick={() => goTo(i)}
+            className="rounded-full transition-all duration-400 hover:scale-110"
+            style={
+              isActive
+                ? {
+                    width: 32,
+                    height: 10,
+                    backgroundColor: dotColor,
+                    boxShadow: `0 0 12px ${dotColor}80, 0 2px 4px ${dotColor}44`,
+                  }
+                : {
+                    width: 10,
+                    height: 10,
+                    backgroundColor: "rgba(209, 213, 219, 0.6)",
+                  }
+            }
+          />
         );
         })}
       </div>

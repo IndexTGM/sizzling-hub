@@ -3,7 +3,10 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
+import { useBranch } from "@/lib/branch-context";
 import { useCart } from "@/lib/cart-context";
+import { createClient } from "@/lib/supabase/client";
+import ChatPanel from "./ChatPanel";
 import StorageImage from "./StorageImage";
 
 const P = "#dc2626";
@@ -18,10 +21,15 @@ export default function AppHeader({
   activePage?: "menu";
 }) {
   const { user, logout } = useAuth();
+  const { branch } = useBranch();
   const { itemCount } = useCart();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [chatsOpen, setChatsOpen] = useState(false);
+  const [activeChats, setActiveChats] = useState<{ id: string; orderType: string; status: string }[]>([]);
+  const [activeChatOrderId, setActiveChatOrderId] = useState<string | null>(null);
+  const [chatsLoading, setChatsLoading] = useState(false);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -35,7 +43,26 @@ export default function AppHeader({
     return () => document.removeEventListener("mousedown", handleClick);
   }, [dropdownOpen]);
 
-  const closeMobile = () => setMobileMenuOpen(false);
+    const closeMobile = () => setMobileMenuOpen(false);
+
+    async function handleOpenChats() {
+      if (!user) return;
+      setDropdownOpen(false);
+      setChatsOpen(true);
+      setChatsLoading(true);
+      const sb = createClient();
+      const { data: orders } = await sb
+        .from("orders")
+        .select("id, order_type, status")
+        .eq("customer_id", user.id)
+        .in("order_type", ["delivery", "pickup"])
+        .not("status", "in", '("cancelled")')
+        .order("placed_at", { ascending: false });
+      setActiveChats(orders?.map((o: any) => ({
+        id: o.id, orderType: o.order_type, status: o.status
+      })) || []);
+      setChatsLoading(false);
+    }
 
   const navLinkClass = (page: string) =>
     `px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
@@ -111,6 +138,10 @@ export default function AppHeader({
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
                   Orders
                 </Link>
+                <button onClick={handleOpenChats} className="w-full text-left px-4 py-2.5 text-sm font-medium text-[#374151] hover:bg-[#f9fafb] hover:text-[#dc2626] transition-colors flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                  Chats
+                </button>
                 {(user?.role === "admin" || user?.role === "dev") && (
                   <Link href="/admin" onClick={() => setDropdownOpen(false)} className="block px-4 py-2.5 text-sm font-medium text-[#374151] hover:bg-[#f9fafb] hover:text-[#dc2626] transition-colors flex items-center gap-2">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
@@ -172,6 +203,10 @@ export default function AppHeader({
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
                 Orders
               </Link>
+              <button onClick={() => { closeMobile(); handleOpenChats(); }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold text-[#374151] hover:bg-[#f9fafb] transition-colors">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                Chats
+              </button>
               {(user?.role === "admin" || user?.role === "dev") && (
                 <Link href="/admin" onClick={closeMobile} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold text-[#374151] hover:bg-[#f9fafb] transition-colors">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
@@ -189,6 +224,90 @@ export default function AppHeader({
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
                 Log out
               </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ─── Chats List Modal ─── */}
+      {chatsOpen && (
+        <>
+          <div className="fixed inset-0 bg-black/30 z-[60]" onClick={() => setChatsOpen(false)} />
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-xl border border-[#e5e7eb] w-full max-w-sm max-h-[80vh] overflow-y-auto animate-fade-in-scale">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[#f3f4f6] sticky top-0 bg-white rounded-t-2xl">
+                <h3 className="font-black text-base text-[#0a0a0a]">💬 My Chats</h3>
+                <button onClick={() => setChatsOpen(false)} className="p-1.5 rounded-lg hover:bg-[#f3f4f6] transition-colors">
+                  <svg className="w-5 h-5" fill="none" stroke="#6b7280" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div className="p-4 space-y-3">
+                {chatsLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="w-5 h-5 border-2 border-[#e5e7eb] rounded-full animate-spin" style={{ borderTopColor: "#dc2626" }} />
+                  </div>
+                ) : activeChats.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-4xl mb-2">💬</p>
+                    <p className="text-sm font-semibold text-gray-400">No active chats</p>
+                    <p className="text-xs text-gray-300 mt-1">Place an online order to start chatting with the branch.</p>
+                  </div>
+                ) : (
+                  activeChats.map((chat) => {
+                    const statusColors: Record<string, string> = {
+                      pending: "bg-amber-50 text-amber-600",
+                      confirmed: "bg-blue-50 text-blue-600",
+                      preparing: "bg-purple-50 text-purple-600",
+                      prepared: "bg-indigo-50 text-indigo-600",
+                      ready: "bg-emerald-50 text-emerald-600",
+                      out_for_delivery: "bg-orange-50 text-orange-600",
+                      delivered: "bg-cyan-50 text-cyan-600",
+                    };
+                    const typeIcons: Record<string, string> = {
+                      delivery: "🛵",
+                      pickup: "🛍️",
+                    };
+                    return (
+                      <button
+                        key={chat.id}
+                        onClick={() => { setActiveChatOrderId(chat.id); }}
+                        className="w-full p-4 rounded-xl bg-[#f9fafb] hover:bg-[#f3f4f6] border border-[#e5e7eb] transition-colors text-left"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-mono text-xs font-bold text-gray-400">#{chat.id.slice(0, 8).toUpperCase()}…</p>
+                            <p className="text-sm font-semibold text-gray-800 mt-0.5">{typeIcons[chat.orderType] || ""} {chat.orderType}</p>
+                          </div>
+                          <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-extrabold ${statusColors[chat.status] || "bg-gray-50 text-gray-500"}`}>
+                            {chat.status.replace(/_/g, " ")}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ─── Individual Chat Modal ─── */}
+      {activeChatOrderId && (
+        <>
+          <div className="fixed inset-0 bg-black/30 z-[70]" onClick={() => { setActiveChatOrderId(null); setChatsOpen(true); }} />
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl border border-[#e5e7eb] shadow-xl w-full max-w-md h-[80vh] flex flex-col animate-fade-in-scale">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[#f3f4f6]">
+                <div>
+                  <h3 className="font-black text-base text-[#0a0a0a]">💬 Order Chat</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">Order #{activeChatOrderId.slice(0, 8).toUpperCase()}</p>
+                </div>
+                <button onClick={() => setActiveChatOrderId(null)} className="p-1.5 rounded-lg hover:bg-[#f3f4f6] transition-colors">
+                  <svg className="w-5 h-5" fill="none" stroke="#6b7280" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <ChatPanel orderId={activeChatOrderId} className="flex-1 min-h-0" branchName={branch?.name ?? undefined} />
             </div>
           </div>
         </>

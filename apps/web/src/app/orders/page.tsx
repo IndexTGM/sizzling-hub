@@ -42,6 +42,7 @@ interface Order {
   completedAt?: string;
   paymentMethod: string | null;
   paymentStatus: string | null;
+  branchName: string | null;
 }
 
 const PAYMENT_ICON_MAP: Record<string, string> = {
@@ -137,6 +138,12 @@ function OrderCard({ order, onCancel, cancelLoading }: { order: Order; onCancel:
             <span className="text-xs font-semibold text-[#6b7280]">
               {ORDER_TYPE_LABEL[order.orderType]}
             </span>
+            {order.branchName && (
+              <>
+                <span className="text-[10px] text-gray-300">•</span>
+                <span className="text-[10px] font-semibold text-gray-400">🏢 {order.branchName}</span>
+              </>
+            )}
           </div>
         </div>
         <span
@@ -246,18 +253,6 @@ export default function OrdersPage() {
     }
 
     // Note: restore_stock skipped — order_items.menu_item is text, no FK to menu_items
-    // If cancelling a paid online order, refund via PayMongo
-    const { data: order } = await sb.from("orders").select("payment_status, payment_method").eq("id", orderId).maybeSingle();
-    if (order?.payment_status === "paid" && order?.payment_method !== "cod") {
-      try {
-        await fetch("/api/paymongo/refund", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ orderId }),
-        });
-      } catch { /* best-effort */ }
-    }
-
     await sb.from("orders").update({ status: "cancelled" }).eq("id", orderId);
     refreshMenu().catch(() => { /* best-effort */ });
     setCancelLoading(false);
@@ -275,7 +270,7 @@ export default function OrdersPage() {
     const { data: orderRows } = await sb
       .from("orders")
       .select(
-        "id, order_type, status, subtotal, delivery_fee, discount, total, placed_at, completed_at, payment_method, payment_status"
+        "id, order_type, status, subtotal, delivery_fee, discount, total, placed_at, completed_at, payment_method, payment_status, branch_id, branches!inner(name)"
       )
       .eq("customer_id", user.id)
       .order("placed_at", { ascending: false });
@@ -319,6 +314,7 @@ export default function OrdersPage() {
         completedAt: o.completed_at ?? undefined,
         paymentMethod: o.payment_method,
         paymentStatus: o.payment_status,
+        branchName: (o.branches as any)?.name || null,
       }))
     );
     setLoading(false);
