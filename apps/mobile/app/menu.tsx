@@ -133,9 +133,9 @@ const bannerStyles = StyleSheet.create({
 });
 
 /* ──────────────────────────── Storage Image ───────────────────── */
-function StorageImg({ imageBase, style, resizeMode }: { imageBase: string; style: any; resizeMode?: "cover" | "contain" }) {
+function StorageImg({ imageBase, style, resizeMode, branchId }: { imageBase: string; style: any; resizeMode?: "cover" | "contain"; branchId?: string | null }) {
   const [tryIdx, setTryIdx] = useState(0);
-  const candidates = useMemo(() => [...getImageCandidates(imageBase), PLACEHOLDER], [imageBase]);
+  const candidates = useMemo(() => [...getImageCandidates(imageBase, branchId), PLACEHOLDER], [imageBase, branchId]);
 
   return (
     <Image
@@ -165,7 +165,7 @@ function MenuCard({ item, cardW, gap, onPress }: { item: any; cardW: number; gap
   return (
     <TouchableOpacity style={[styles.card, { width: cardW, marginBottom: gap }]} activeOpacity={0.85} onPress={() => onPress(item)}>
       <View>
-        <StorageImg imageBase={item.imageName} style={[styles.cardImg, { width: cardW, height: imgH }]} />
+        <StorageImg imageBase={item.imageName} style={[styles.cardImg, { width: cardW, height: imgH }]} branchId={item.branchId} />
         {item.stock <= 5 && item.stock > 0 && (
           <View style={styles.stockBadge}><Text style={styles.stockBadgeText}>{item.stock} left</Text></View>
         )}
@@ -175,13 +175,7 @@ function MenuCard({ item, cardW, gap, onPress }: { item: any; cardW: number; gap
       </View>
       <View style={styles.cardBody}>
         <Text style={styles.cardName} numberOfLines={2}>{item.name}</Text>
-        <View style={styles.cardRow}>
-          <Text style={styles.cardPrice}>₱{item.price}</Text>
-          <View style={styles.ratingBadge}>
-            <Text style={styles.ratingStar}>★</Text>
-            <Text style={styles.ratingText}>{(item.rating ?? 0).toFixed(1)}</Text>
-          </View>
-        </View>
+        <Text style={styles.cardPrice}>₱{item.price}</Text>
         <TouchableOpacity
           style={[styles.addBtn, soldOut && styles.addBtnDisabled]}
           activeOpacity={0.7}
@@ -201,16 +195,16 @@ function MenuCard({ item, cardW, gap, onPress }: { item: any; cardW: number; gap
 /* ──────────────────────────── Main Screen ─────────────────────── */
 function BranchPicker({
   branches,
-  selectedSlug,
+  selectedId,
   onSelect,
 }: {
   branches: Branch[];
-  selectedSlug: string;
-  onSelect: (slug: string) => void;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   if (branches.length <= 1) return null;
-  const selected = branches.find((b) => b.slug === selectedSlug);
+  const selected = branches.find((b) => b.id === selectedId);
   return (
     <View style={{ marginBottom: 12 }}>
       <TouchableOpacity style={styles.branchBtn} activeOpacity={0.7} onPress={() => setExpanded(!expanded)}>
@@ -221,9 +215,9 @@ function BranchPicker({
       {expanded && (
         <View style={styles.branchList}>
           {branches.map((b) => {
-            const isActive = b.slug === selectedSlug;
+            const isActive = b.id === selectedId;
             return (
-              <TouchableOpacity key={b.id} style={[styles.branchItem, isActive && styles.branchItemActive]} activeOpacity={0.7} onPress={() => { onSelect(b.slug); setExpanded(false); }}>
+              <TouchableOpacity key={b.id} style={[styles.branchItem, isActive && styles.branchItemActive]} activeOpacity={0.7} onPress={() => { onSelect(b.id); setExpanded(false); }}>
                 <View style={[styles.branchDot, isActive && styles.branchDotActive]} />
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.branchItemText, isActive && styles.branchItemTextActive]}>{b.name}</Text>
@@ -244,7 +238,7 @@ function BranchPicker({
 
 export default function MenuScreen() {
   const router = useRouter();
-  const { branch, allBranches, branchSlug, setBranchSlug } = useBranch();
+  const { branchId, allBranches, setBranchId } = useBranch();
   const { menuItems, categories, loading } = useMenu();
   const { itemCount } = useCart();
   const [activeCat, setActiveCat] = useState("all");
@@ -299,7 +293,7 @@ export default function MenuScreen() {
           columnWrapperStyle={cols > 1 ? { gap } : undefined}
           ListHeaderComponent={() => (
             <View style={styles.listHeader}>
-              <BranchPicker branches={allBranches} selectedSlug={branchSlug} onSelect={setBranchSlug} />
+              <BranchPicker branches={allBranches} selectedId={branchId} onSelect={setBranchId} />
               <TextInput
                 style={styles.searchInput}
                 value={search}
@@ -352,12 +346,20 @@ export default function MenuScreen() {
           <Text style={styles.footerIcon}>📋</Text><Text style={styles.footerLabel}>Orders</Text>
         </TouchableOpacity>
 
-        {user?.role === "admin" && (
+        <TouchableOpacity style={styles.footerBtn} onPress={() => router.push("/chats")}>
+          <Text style={styles.footerIcon}>💬</Text>
+          <Text style={styles.footerLabel}>Chats</Text>
+        </TouchableOpacity>
+        {(user?.role === "admin" || user?.role === "dev") && (
           <TouchableOpacity style={styles.footerBtn} onPress={() => router.push("/drivers")}>
             <Text style={styles.footerIcon}>🛵</Text>
             <Text style={styles.footerLabel}>Drivers</Text>
           </TouchableOpacity>
         )}
+        <TouchableOpacity style={styles.footerBtn} onPress={() => router.push("/profile")}>
+          <Text style={styles.footerIcon}>👤</Text>
+          <Text style={styles.footerLabel}>Profile</Text>
+        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
@@ -403,9 +405,6 @@ const styles = StyleSheet.create({
   cardRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   cardName: { fontSize: 13, fontWeight: "700", color: "#1f2937", letterSpacing: -0.3 },
   cardPrice: { fontSize: 14, fontWeight: "800", color: PRIMARY },
-  ratingBadge: { flexDirection: "row", alignItems: "center", backgroundColor: "#fef3c7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, gap: 3 },
-  ratingStar: { fontSize: 10, color: AMBER },
-  ratingText: { fontSize: 11, fontWeight: "700", color: "#92400e" },
   stockBadge: { position: "absolute", top: 6, left: 6, backgroundColor: "#fef2f2", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   stockBadgeText: { fontSize: 10, fontWeight: "700", color: "#dc2626" },
   soldOutOverlay: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center" },

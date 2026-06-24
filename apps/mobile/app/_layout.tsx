@@ -66,7 +66,6 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="index" />
-          <Stack.Screen name="home" />
           <Stack.Screen name="profile" />
           <Stack.Screen name="menu" />
           <Stack.Screen name="menu-item" />

@@ -55,7 +55,7 @@ function buildMapHtml(
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap'}).addTo(map);
 
   var storeIcon=L.divIcon({html:'<div style="background:#fbbf24;width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div>',className:'',iconSize:[18,18],iconAnchor:[9,9]});
-  var storeMarker=L.marker([STORE_LAT,STORE_LNG],{icon:storeIcon}).addTo(map).bindPopup("Ben's Tapsihan (Store)");
+  var storeMarker=L.marker([STORE_LAT,STORE_LNG],{icon:storeIcon}).addTo(map).bindPopup("Sizzling Hub (Store)");
 
   var custIcon=L.divIcon({html:'<div style="background:#3b82f6;width:20px;height:20px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:bold">📍</div>',className:'',iconSize:[20,20],iconAnchor:[10,10]});
   var custMarker=L.marker([CUST_LAT,CUST_LNG],{icon:custIcon}).addTo(map).bindPopup('${csPopup}');

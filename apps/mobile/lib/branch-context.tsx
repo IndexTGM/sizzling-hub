@@ -5,7 +5,6 @@ import { supabase } from "@/lib/supabase";
 export interface Branch {
   id: string;
   name: string;
-  slug: string;
   address: string | null;
   phone: string | null;
   email: string | null;
@@ -27,15 +26,14 @@ export const DEFAULT_STORE_LOCATION: BranchLocation = {
   deliveryRadiusKm: 3,
 };
 
-const BRANCH_STORAGE_KEY = "sizzling_hub_branch";
+const BRANCH_STORAGE_KEY = "sizzling_hub_branch_id";
 
 interface BranchContextType {
   branch: Branch | null;
   allBranches: Branch[];
-  branchSlug: string;
   branchId: string | null;
   branchLocation: BranchLocation;
-  setBranchSlug: (slug: string) => void;
+  setBranchId: (id: string) => void;
   loading: boolean;
   error: string | null;
   refreshBranches: () => Promise<void>;
@@ -47,7 +45,6 @@ function mapBranchRow(row: any): Branch {
   return {
     id: row.id,
     name: row.name,
-    slug: row.slug,
     address: row.address ?? null,
     phone: row.phone ?? null,
     email: row.email ?? null,
@@ -58,21 +55,20 @@ function mapBranchRow(row: any): Branch {
   };
 }
 
-async function getCachedBranchSlug(): Promise<string> {
+async function getCachedBranchId(): Promise<string | null> {
   try {
-    const stored = await AsyncStorage.getItem(BRANCH_STORAGE_KEY);
-    return stored || "main";
+    return await AsyncStorage.getItem(BRANCH_STORAGE_KEY);
   } catch {
-    return "main";
+    return null;
   }
 }
 
-async function fetchBranchLocation(slug: string): Promise<BranchLocation> {
+async function fetchBranchLocation(id: string): Promise<BranchLocation> {
   try {
     const { data } = await supabase
       .from("branches")
       .select("lat, lng, delivery_radius_km")
-      .eq("slug", slug)
+      .eq("id", id)
       .eq("is_active", true)
       .maybeSingle();
 
@@ -90,16 +86,16 @@ async function fetchBranchLocation(slug: string): Promise<BranchLocation> {
 export function BranchProvider({ children }: { children: ReactNode }) {
   const [allBranches, setAllBranches] = useState<Branch[]>([]);
   const [branch, setBranch] = useState<Branch | null>(null);
-  const [branchSlug, setBranchSlugState] = useState<string>("main");
+  const [branchId, setBranchIdState] = useState<string | null>(null);
   const [branchLocation, setBranchLocation] = useState<BranchLocation>(DEFAULT_STORE_LOCATION);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Load cached branch slug on mount
+  // Load cached branch id on mount
   useEffect(() => {
     (async () => {
-      const slug = await getCachedBranchSlug();
-      setBranchSlugState(slug);
+      const cached = await getCachedBranchId();
+      setBranchIdState(cached);
     })();
   }, []);
 
@@ -107,7 +103,7 @@ export function BranchProvider({ children }: { children: ReactNode }) {
     try {
       const { data } = await supabase
         .from("branches")
-        .select("id, name, slug, address, phone, email, lat, lng, delivery_radius_km, is_active")
+        .select("id, name, address, phone, email, lat, lng, delivery_radius_km, is_active")
         .eq("is_active", true)
         .order("name");
 
@@ -122,49 +118,59 @@ export function BranchProvider({ children }: { children: ReactNode }) {
     return [];
   }, []);
 
-  // Resolve branch from slug
+  // Resolve branch from ID
   useEffect(() => {
     (async () => {
       setLoading(true);
       const branches = allBranches.length > 0 ? allBranches : await fetchBranches();
-      const found = branches.find((b) => b.slug === branchSlug) ?? branches.find((b) => b.slug === "main") ?? branches[0] ?? null;
+      let found: Branch | null = null;
+      if (branchId) {
+        found = branches.find((b) => b.id === branchId) ?? null;
+      }
+      // If no stored branch or not found, use first branch
+      if (!found) {
+        found = branches[0] ?? null;
+        if (found) {
+          setBranchIdState(found.id);
+          AsyncStorage.setItem(BRANCH_STORAGE_KEY, found.id).catch(() => {});
+        }
+      }
       setBranch(found);
       if (found) {
-        const loc = await fetchBranchLocation(found.slug);
+        const loc = await fetchBranchLocation(found.id);
         setBranchLocation(loc);
       } else {
         setBranchLocation(DEFAULT_STORE_LOCATION);
       }
       setLoading(false);
     })();
-  }, [branchSlug, allBranches.length]);
+  }, [branchId, allBranches.length]);
 
-  const setBranchSlug = useCallback(async (slug: string) => {
-    try {
-      await AsyncStorage.setItem(BRANCH_STORAGE_KEY, slug);
-    } catch { /* ignore */ }
-    setBranchSlugState(slug);
+  const handleSetBranchId = useCallback((id: string) => {
+    AsyncStorage.setItem(BRANCH_STORAGE_KEY, id).catch(() => {});
+    setBranchIdState(id);
   }, []);
 
   const refreshBranches = useCallback(async () => {
     setLoading(true);
     const branches = await fetchBranches();
-    const found = branches.find((b) => b.slug === branchSlug) ?? branches.find((b) => b.slug === "main") ?? branches[0] ?? null;
+    const found = branchId ? branches.find((b) => b.id === branchId) ?? null : branches[0] ?? null;
+    if (found && found.id !== branchId) {
+      setBranchIdState(found.id);
+      AsyncStorage.setItem(BRANCH_STORAGE_KEY, found.id).catch(() => {});
+    }
     setBranch(found);
     setLoading(false);
-  }, [branchSlug]);
-
-  const branchId = branch?.id ?? null;
+  }, [branchId]);
 
   return (
     <BranchContext.Provider
       value={{
         branch,
         allBranches,
-        branchSlug,
         branchId,
         branchLocation,
-        setBranchSlug,
+        setBranchId: handleSetBranchId,
         loading,
         error,
         refreshBranches,

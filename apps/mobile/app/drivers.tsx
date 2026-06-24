@@ -17,6 +17,7 @@ import {
   startLocationTracking,
   stopLocationTracking,
 } from "@/lib/background-location-task";
+import { useBranch } from "@/lib/branch-context";
 import { useEffect, useState, useCallback } from "react";
 
 const PRIMARY = "#dc2626";
@@ -39,6 +40,7 @@ interface DriverOrder {
 export default function DriversPanel() {
   const router = useRouter();
   const { user } = useAuth();
+  const { branchId } = useBranch();
   const { itemCount } = useCart();
   const [orders, setOrders] = useState<DriverOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,14 +63,20 @@ export default function DriversPanel() {
   );
 
   const fetchOrders = useCallback(async () => {
-    const { data: rows } = await supabase
+    let query = supabase
       .from("orders")
       .select(
-        "id, status, total, notes, placed_at, payment_method, customer_id, customer:profiles(full_name, phone)"
+        "id, status, total, notes, placed_at, payment_method, customer_id, customer:profiles(first_name, last_name, phone)"
       )
       .eq("order_type", "delivery")
       .in("status", ["prepared", "out_for_delivery"])
       .order("placed_at", { ascending: true });
+
+    if (branchId) {
+      query = query.eq("branch_id", branchId);
+    }
+
+    const { data: rows } = await query;
 
     if (!rows) {
       setOrders([]);
@@ -83,7 +91,7 @@ export default function DriversPanel() {
 
     const { data: items } = await supabase
       .from("order_items")
-      .select("order_id, quantity, unit_price, menu_item:menu_items(name)")
+      .select("order_id, quantity, unit_price, menu_item")
       .in("order_id", ids);
 
     const addressMap = new Map<
@@ -115,7 +123,7 @@ export default function DriversPanel() {
       for (const it of items) {
         const arr = itemsByOrder.get(it.order_id) || [];
         arr.push({
-          name: (it.menu_item as any)?.name || "Unknown",
+          name: it.menu_item || "Unknown",
           quantity: it.quantity,
           price: it.unit_price,
         });
@@ -129,7 +137,7 @@ export default function DriversPanel() {
         return {
           id: r.id,
           status: r.status,
-          customerName: (r.customer as any)?.full_name || "N/A",
+          customerName: [((r.customer as any)?.first_name || ""), ((r.customer as any)?.last_name || "")].filter(Boolean).join(" ") || "N/A",
           customerPhone: (r.customer as any)?.phone ?? null,
           total: r.total,
           items: itemsByOrder.get(r.id) || [],
@@ -146,8 +154,8 @@ export default function DriversPanel() {
   }, []);
 
   useEffect(() => {
-    if (user && user.role !== "admin") {
-      router.replace("/home");
+    if (user && user.role !== "admin" && user.role !== "dev") {
+      router.replace("/menu");
       return;
     }
     fetchOrders();
@@ -197,7 +205,7 @@ export default function DriversPanel() {
     ]);
   };
 
-  if (!user || user.role !== "admin") return null;
+  if (!user || (user.role !== "admin" && user.role !== "dev")) return null;
 
   const formatDate = (iso: string) => {
     const d = new Date(iso);
@@ -418,13 +426,6 @@ export default function DriversPanel() {
       <View style={styles.footer}>
         <TouchableOpacity
           style={styles.footerBtn}
-          onPress={() => router.replace("/home")}
-        >
-          <Text style={styles.footerIcon}>🏠</Text>
-          <Text style={styles.footerLabel}>Home</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.footerBtn}
           onPress={() => router.replace("/menu")}
         >
           <Text style={styles.footerIcon}>🍽️</Text>
@@ -451,9 +452,20 @@ export default function DriversPanel() {
           <Text style={styles.footerIcon}>📋</Text>
           <Text style={styles.footerLabel}>Orders</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={styles.footerBtn} onPress={() => router.push("/chats")}>
+          <Text style={styles.footerIcon}>💬</Text>
+          <Text style={styles.footerLabel}>Chats</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={styles.footerBtn}>
           <Text style={styles.footerIconActive}>🛵</Text>
           <Text style={styles.footerLabelActive}>Drivers</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.footerBtn}
+          onPress={() => router.push("/profile")}
+        >
+          <Text style={styles.footerIcon}>👤</Text>
+          <Text style={styles.footerLabel}>Profile</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

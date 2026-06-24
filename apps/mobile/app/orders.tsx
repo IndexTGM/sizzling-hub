@@ -255,7 +255,7 @@ export default function OrdersScreen() {
       const orderIds = orderRows.map((o) => o.id);
       const { data: itemRows } = await supabase
         .from("order_items")
-        .select("order_id, quantity, unit_price, note, menu_item:menu_items(name)")
+        .select("order_id, quantity, unit_price, note, menu_item")
         .in("order_id", orderIds);
 
       const itemsByOrder = new Map<string, OrderItem[]>();
@@ -263,7 +263,7 @@ export default function OrdersScreen() {
         for (const row of itemRows) {
           const arr = itemsByOrder.get(row.order_id) || [];
           arr.push({
-            name: (row.menu_item as any)?.name || "Unknown",
+            name: row.menu_item || "Unknown",
             quantity: row.quantity,
             price: row.unit_price,
             note: row.note ?? "",
@@ -325,17 +325,24 @@ export default function OrdersScreen() {
               return;
             }
 
-            // Restore stock
+            // Restore stock — look up menu item id by name since order_items now stores text
             const { data: items } = await supabase
               .from("order_items")
-              .select("menu_item_id, quantity")
+              .select("menu_item, quantity")
               .eq("order_id", orderId);
             if (items) {
               for (const it of items) {
-                await supabase.rpc("restore_stock", {
-                  p_menu_item_id: it.menu_item_id,
-                  p_quantity: it.quantity,
-                });
+                const { data: menuItem } = await supabase
+                  .from("menu_items")
+                  .select("id")
+                  .eq("name", it.menu_item)
+                  .maybeSingle();
+                if (menuItem) {
+                  await supabase.rpc("restore_stock", {
+                    p_menu_item_id: menuItem.id,
+                    p_quantity: it.quantity,
+                  });
+                }
               }
             }
 
@@ -474,12 +481,20 @@ export default function OrdersScreen() {
           <Text style={styles.footerLabelActive}>Orders</Text>
         </TouchableOpacity>
 
-        {user?.role === "admin" && (
+        <TouchableOpacity style={styles.footerBtn} onPress={() => router.push("/chats")}>
+          <Text style={styles.footerIcon}>💬</Text>
+          <Text style={styles.footerLabel}>Chats</Text>
+        </TouchableOpacity>
+        {(user?.role === "admin" || user?.role === "dev") && (
           <TouchableOpacity style={styles.footerBtn} onPress={() => router.push("/drivers")}>
             <Text style={styles.footerIcon}>🛵</Text>
             <Text style={styles.footerLabel}>Drivers</Text>
           </TouchableOpacity>
         )}
+        <TouchableOpacity style={styles.footerBtn} onPress={() => router.push("/profile")}>
+          <Text style={styles.footerIcon}>👤</Text>
+          <Text style={styles.footerLabel}>Profile</Text>
+        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );

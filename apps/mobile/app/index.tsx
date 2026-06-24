@@ -20,6 +20,11 @@ const PRIMARY_LIGHT = "#fca5a5";
 
 type ViewName = "login" | "register" | "otp-signin" | "otp-verify";
 
+function isValidPHPhone(phone: string): boolean {
+  const raw = phone.trim().replace(/[\s\-\(\)]/g, "");
+  return /^(09\d{9}|\+639\d{9}|639\d{9})$/.test(raw);
+}
+
 export default function AuthScreen() {
   const router = useRouter();
   const { login, register, signInWithOtp, verifySignInOtp } = useAuth();
@@ -36,13 +41,15 @@ export default function AuthScreen() {
 
   // Register
   const [rusername, setRUsername] = useState("");
-  const [rname, setRName] = useState("");
+  const [rfirstName, setRFirstName] = useState("");
+  const [rlastName, setRLastName] = useState("");
   const [remail, setREmail] = useState("");
   const [rpass, setRPass] = useState("");
   const [showRPass, setShowRPass] = useState(false);
   const [rcpass, setRCPass] = useState("");
   const [showRCPass, setShowRCPass] = useState(false);
   const [rphone, setRPhone] = useState("");
+  const [phoneError, setPhoneError] = useState("");
   const [registerTosAgreed, setRegisterTosAgreed] = useState(false);
 
   // OTP
@@ -68,6 +75,16 @@ export default function AuthScreen() {
     if (err) setError(err);
   }
 
+  function handlePhoneChange(v: string) {
+    const cleaned = v.replace(/[^0-9+]/g, "");
+    setRPhone(cleaned);
+    if (cleaned.trim() && !isValidPHPhone(cleaned)) {
+      setPhoneError("Enter a valid PH mobile number (e.g. 09171234567 or +639171234567)");
+    } else {
+      setPhoneError("");
+    }
+  }
+
   async function handleRegister() {
     setError("");
     setSuccess("");
@@ -75,13 +92,20 @@ export default function AuthScreen() {
       setError("You must agree to the Terms of Service to create an account.");
       return;
     }
+    if (!rphone.trim()) {
+      setError("Phone number is required.");
+      return;
+    }
+    if (!isValidPHPhone(rphone)) {
+      setError("Please enter a valid PH mobile number (e.g. 09171234567 or +639171234567).");
+      return;
+    }
     setLoading(true);
-    const phoneValue = rphone.trim() ? `+63${rphone.trim()}` : undefined;
-    const result = await register(rusername, rname, remail, rpass, rcpass, phoneValue);
+    const result = await register(rusername, rfirstName, rlastName, remail, rpass, rcpass, rphone.trim());
     setLoading(false);
     if (result === "check-email") {
       setSuccess(
-        "Account created! Check your email for a confirmation link. (If email confirmation is disabled in Supabase, you can log in immediately.)"
+        "Account created! Check your email for a confirmation link."
       );
     } else if (result) {
       setError(result);
@@ -145,7 +169,7 @@ export default function AuthScreen() {
               style={styles.logo}
               resizeMode="contain"
             />
-            <Text style={styles.logoTitle}>BEN'S TAPSIHAN</Text>
+            <Text style={styles.logoTitle}>SIZZLING HUB</Text>
             <Text style={styles.logoSubtitle}>{subtitle}</Text>
           </View>
 
@@ -282,12 +306,20 @@ export default function AuthScreen() {
                   autoCapitalize="none"
                 />
 
-                <Text style={styles.label}>Full Name</Text>
+                <Text style={styles.label}>First Name</Text>
                 <TextInput
                   style={styles.input}
-                  value={rname}
-                  onChangeText={setRName}
-                  placeholder="Charles Marquez"
+                  value={rfirstName}
+                  onChangeText={setRFirstName}
+                  placeholder="Charles"
+                />
+
+                <Text style={styles.label}>Last Name</Text>
+                <TextInput
+                  style={styles.input}
+                  value={rlastName}
+                  onChangeText={setRLastName}
+                  placeholder="Marquez"
                 />
 
                 <Text style={styles.label}>Email</Text>
@@ -300,21 +332,21 @@ export default function AuthScreen() {
                   autoCapitalize="none"
                 />
 
-                {/* Phone Number — Philippines only (+63 prefix) */}
-                <Text style={styles.label}>Phone Number (optional)</Text>
-                <View style={styles.phoneRow}>
-                  <View style={styles.phonePrefix}>
-                    <Text style={styles.phonePrefixText}>+63</Text>
-                  </View>
-                  <TextInput
-                    style={[styles.input, styles.phoneInput]}
-                    value={rphone}
-                    onChangeText={(v) => setRPhone(v.replace(/[^0-9]/g, ""))}
-                    placeholder="912 345 6789"
-                    keyboardType="phone-pad"
-                    maxLength={10}
-                  />
-                </View>
+                {/* Phone Number — required, Philippines format */}
+                <Text style={styles.label}>Phone Number</Text>
+                <TextInput
+                  style={[styles.input, phoneError && rphone.trim() ? styles.inputError : null]}
+                  value={rphone}
+                  onChangeText={handlePhoneChange}
+                  placeholder="09171234567"
+                  keyboardType="phone-pad"
+                />
+                {phoneError && rphone.trim() ? (
+                  <Text style={styles.fieldError}>{phoneError}</Text>
+                ) : null}
+                {!phoneError && rphone.trim() && isValidPHPhone(rphone) ? (
+                  <Text style={styles.fieldValid}>✓ Valid PH number</Text>
+                ) : null}
 
                 <Text style={styles.label}>Password</Text>
                 <View style={styles.passRow}>
@@ -602,6 +634,21 @@ const styles = StyleSheet.create({
     color: "#0a0a0a",
     backgroundColor: "#f9fafb",
   },
+  inputError: {
+    borderColor: PRIMARY,
+  },
+  fieldError: {
+    fontSize: 11,
+    color: PRIMARY,
+    fontWeight: "500",
+    marginTop: -6,
+  },
+  fieldValid: {
+    fontSize: 10,
+    color: "#16a34a",
+    fontWeight: "500",
+    marginTop: -6,
+  },
   otpInput: {
     textAlign: "center",
     fontSize: 24,
@@ -692,33 +739,5 @@ const styles = StyleSheet.create({
   tosLink: {
     color: "#0a0a0a",
     fontWeight: "700",
-  },
-
-  // Phone Input (Philippines only)
-  phoneRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 0,
-  },
-  phonePrefix: {
-    borderWidth: 1,
-    borderRightWidth: 0,
-    borderColor: "#e5e7eb",
-    borderRadius: 10,
-    borderTopRightRadius: 0,
-    borderBottomRightRadius: 0,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    backgroundColor: "#f9fafb",
-  },
-  phonePrefixText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#0a0a0a",
-  },
-  phoneInput: {
-    flex: 1,
-    borderTopLeftRadius: 0,
-    borderBottomLeftRadius: 0,
   },
 });

@@ -20,6 +20,19 @@ export default function Footer() {
             <p className="text-sm text-[#9ca3af] leading-relaxed">
               Serving comfort, one sizzling plate at a time. Since 2003.
             </p>
+            {/* Mobile App QR */}
+            <div className="pt-2">
+              <p className="text-xs font-semibold text-white tracking-wide uppercase mb-2">
+                Download our App
+              </p>
+              <img
+                src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=https://expo.dev/accounts/notdevlime/projects/mobile/builds/d6285395-d337-4060-9a25-f48bf6163239"
+                alt="Scan to download the Sizzling Hub mobile app"
+                width={100}
+                height={100}
+                className="rounded-lg bg-white p-1"
+              />
+            </div>
           </div>
 
           {/* Quick Links */}

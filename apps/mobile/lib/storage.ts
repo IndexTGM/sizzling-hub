@@ -3,26 +3,39 @@ import { supabase } from "./supabase";
 const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"] as const;
 
 /**
- * Get a public URL from Supabase Storage for a base name.
- * Tries the baseName as-is first, then tries appending common extensions.
+ * Build candidate image URLs for a given base name.
+ * Tries branch-specific path first, then falls back to global — matching web behavior.
+ * Path structure: images/{branchId}/{baseName}.{ext} or images/global/{baseName}.{ext}
  */
-export function getImageUrl(baseName: string): string {
-  // If baseName already has a known extension, use it directly
-  if (/\.(jpg|jpeg|png|webp|gif)$/i.test(baseName)) {
-    return supabase.storage.from("images").getPublicUrl(baseName).data.publicUrl;
-  }
+export function getImageCandidates(baseName: string, branchId?: string | null): string[] {
+  const clean = baseName.replace(/\.(jpg|jpeg|png|webp|gif)$/i, "");
 
-  // Try .png as default (most common), with fallback URLs for others via <Image> onError
-  return supabase.storage.from("images").getPublicUrl(`${baseName}.png`).data.publicUrl;
+  // Branch-specific first, then global fallback
+  const prefixes = branchId ? [branchId, "global"] : ["global"];
+
+  const urls: string[] = [];
+  for (const prefix of prefixes) {
+    for (const ext of IMAGE_EXTENSIONS) {
+      const url = supabase.storage
+        .from("images")
+        .getPublicUrl(`${prefix}/${clean}${ext}`).data.publicUrl;
+      urls.push(url);
+    }
+  }
+  return urls;
 }
 
 /**
- * Build candidate URLs for all extensions for a given base name.
- * Use these to try loading until one succeeds.
+ * Get a single public URL from Supabase Storage for a base name.
+ * Tries branch-specific first, defaults to .png extension.
+ * @deprecated Prefer getImageCandidates which tries multiple extensions and falls back to global.
  */
-export function getImageCandidates(baseName: string): string[] {
+export function getImageUrl(baseName: string, branchId?: string | null): string {
   const clean = baseName.replace(/\.(jpg|jpeg|png|webp|gif)$/i, "");
-  return IMAGE_EXTENSIONS.map((ext) =>
-    supabase.storage.from("images").getPublicUrl(`${clean}${ext}`).data.publicUrl
-  );
+  const prefix = branchId ? `${branchId}` : "global";
+  if (/\.(jpg|jpeg|png|webp|gif)$/i.test(baseName)) {
+    const ext = baseName.split(".").pop();
+    return supabase.storage.from("images").getPublicUrl(`${prefix}/${clean}.${ext}`).data.publicUrl;
+  }
+  return supabase.storage.from("images").getPublicUrl(`${prefix}/${clean}.png`).data.publicUrl;
 }

@@ -61,7 +61,7 @@ export default function ForgotPasswordScreen() {
               style={styles.logo}
               resizeMode="contain"
             />
-            <Text style={styles.logoTitle}>BEN'S TAPSIHAN</Text>
+            <Text style={styles.logoTitle}>SIZZLING HUB</Text>
             <Text style={styles.logoSubtitle}>Reset your password</Text>
           </View>
 

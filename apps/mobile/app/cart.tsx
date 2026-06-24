@@ -10,7 +10,8 @@ import {
   useWindowDimensions,
   ActivityIndicator,
   Alert,
-  type ImageSourcePropType,
+  NativeSyntheticEvent,
+  ImageLoadEventData,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -28,12 +29,15 @@ import {
 import { getImageCandidates } from "@/lib/storage";
 
 const PLACEHOLDER = "placeholder.png";
+const MIN_AMOUNT = 100;
+const COD_MAX_AMOUNT = 900;
 
 type OrderMethod = "delivery" | "pickup";
-type PaymentMethod = "gcash" | null;
+type PaymentMethod = "gcash" | "cod";
 
-const PAYMENT_OPTIONS: { value: "gcash"; label: string; icon: string }[] = [
+const PAYMENT_OPTIONS: { value: PaymentMethod; label: string; icon: string }[] = [
   { value: "gcash", label: "GCash", icon: "📱" },
+  { value: "cod", label: "Cash on Delivery", icon: "💵" },
 ];
 
 interface SavedAddress {
@@ -68,7 +72,7 @@ function useGridLayout() {
   return { numColumns, cardWidth, gap };
 }
 
-// ─── Cart Item Card (grid style: wider, shorter) ─────────────────
+// ─── Cart Item Card ─────────────────────────────────────────────
 interface CartGridCardProps {
   item: CartItem;
   cardWidth: number;
@@ -178,6 +182,21 @@ const CartGridCard = memo(function CartGridCard({
   );
 });
 
+// ─── GCash QR Image Component ──────────────────────────────────
+function GcashQrImage({ style, onLoad }: { style: any; onLoad?: (e: NativeSyntheticEvent<ImageLoadEventData>) => void }) {
+  const [tryIdx, setTryIdx] = useState(0);
+  const candidates = useMemo(() => getImageCandidates("gcash_qr", "global"), []);
+  return (
+    <Image
+      source={{ uri: candidates[tryIdx] || PLACEHOLDER }}
+      style={style}
+      resizeMode="contain"
+      onError={() => { if (tryIdx < candidates.length - 1) setTryIdx(tryIdx + 1); }}
+      onLoad={onLoad}
+    />
+  );
+}
+
 // ─── Main Screen ────────────────────────────────────────────────
 export default function CartScreen() {
   const router = useRouter();
@@ -190,15 +209,23 @@ export default function CartScreen() {
   const [checkoutVisible, setCheckoutVisible] = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [orderMethod, setOrderMethod] = useState<OrderMethod>("delivery");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(null);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cod");
   const [placing, setPlacing] = useState(false);
+  const [gcashQrOpen, setGcashQrOpen] = useState(false);
+  const [gcashQrPlacing, setGcashQrPlacing] = useState(false);
+  const [fullscreenQr, setFullscreenQr] = useState(false);
 
   // Address state
-  const [defaultAddress, setDefaultAddress] = useState<SavedAddress | null>(
-    null
-  );
+  const [defaultAddress, setDefaultAddress] = useState<SavedAddress | null>(null);
   const [addressLoading, setAddressLoading] = useState(false);
   const [addressDistance, setAddressDistance] = useState<number | null>(null);
+
+  // When switching to pickup, auto-switch COD → GCash
+  useEffect(() => {
+    if (orderMethod === "pickup" && paymentMethod === "cod") {
+      setPaymentMethod("gcash");
+    }
+  }, [orderMethod]);
 
   // Fetch default address when checkout modal opens and method is delivery
   useEffect(() => {
@@ -246,6 +273,11 @@ export default function CartScreen() {
     orderMethod === "delivery" && !addressLoading && defaultAddress === null;
   const outOfRange = orderMethod === "delivery" && hasDeliveryAddress && !withinRange;
 
+  // ─── Min / Max Amount Validation ───
+  const meetMin = total >= MIN_AMOUNT;
+  const exceedCodMax = paymentMethod === "cod" && total > COD_MAX_AMOUNT;
+  const amountOk = meetMin && !exceedCodMax;
+
   // Opening hours check: Mon-Sat 11:00 AM - 11:00 PM
   const isWithinOpeningHours = (() => {
     const now = new Date();
@@ -256,10 +288,14 @@ export default function CartScreen() {
     const timeInMinutes = hour * 60 + minute;
     return timeInMinutes >= 11 * 60 && timeInMinutes < 23 * 60;
   })();
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role === "admin" || user?.role === "dev";
   const blockedByHours = !isWithinOpeningHours && !isAdmin;
   const showHoursWarning = !isWithinOpeningHours;
-  const needsPhone = user?.role !== "admin" && !user?.phone;
+  const needsPhone = user?.role !== "admin" && user?.role !== "dev" && !user?.phone;
+
+  const isOnline = orderMethod === "delivery" || orderMethod === "pickup";
+  const deliveryFee = orderMethod === "delivery" ? 30 : 0;
+  const displayTotal = total + deliveryFee;
 
   // Stable refs for callbacks
   const itemsRef = useRef(items);
@@ -304,6 +340,7 @@ export default function CartScreen() {
   const handleCheckout = useCallback(() => {
     setCheckoutVisible(true);
     setOrderMethod("delivery");
+    setPaymentMethod("cod");
   }, []);
 
   const handleCancelCheckout = useCallback(() => {
@@ -311,20 +348,30 @@ export default function CartScreen() {
   }, []);
 
   const handleConfirmOrder = useCallback(() => {
-    setConfirmVisible(true);
-  }, []);
+    setConfirmVisible(false);
+
+    // If GCash, show QR code modal first
+    if (paymentMethod === "gcash") {
+      setGcashQrOpen(true);
+      return;
+    }
+
+    // COD — place order directly
+    doPlaceOrder();
+  }, [paymentMethod, items, orderMethod, defaultAddress, branchLocation, branchId, clearCart, router]);
 
   const handleCancelConfirm = useCallback(() => {
     setConfirmVisible(false);
   }, []);
 
   // Place the actual order
-  const handlePlaceOrder = useCallback(async () => {
-    setConfirmVisible(false);
+  const doPlaceOrder = useCallback(async () => {
     setPlacing(true);
+    setGcashQrPlacing(true);
     try {
       if (items.length === 0) {
         setPlacing(false);
+        setGcashQrPlacing(false);
         return;
       }
 
@@ -337,6 +384,7 @@ export default function CartScreen() {
             [{ text: "OK" }]
           );
           setPlacing(false);
+          setGcashQrPlacing(false);
           return;
         }
         const dist = haversineDistance(
@@ -352,6 +400,7 @@ export default function CartScreen() {
             [{ text: "OK" }]
           );
           setPlacing(false);
+          setGcashQrPlacing(false);
           return;
         }
       }
@@ -362,10 +411,25 @@ export default function CartScreen() {
       if (!session?.user) {
         Alert.alert("Error", "You must be logged in to place an order.");
         setPlacing(false);
+        setGcashQrPlacing(false);
         return;
       }
 
       const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+
+      // Validate min/max amount
+      if (subtotal < MIN_AMOUNT) {
+        Alert.alert("Minimum Order", `The minimum order amount is ₱${MIN_AMOUNT}.`);
+        setPlacing(false);
+        setGcashQrPlacing(false);
+        return;
+      }
+      if (paymentMethod === "cod" && subtotal > COD_MAX_AMOUNT) {
+        Alert.alert("Maximum Order", `Cash on Delivery orders are limited to ₱${COD_MAX_AMOUNT}. Please use GCash for larger orders.`);
+        setPlacing(false);
+        setGcashQrPlacing(false);
+        return;
+      }
 
       // Validate stock
       for (const item of items) {
@@ -380,6 +444,7 @@ export default function CartScreen() {
             `"${item.name}" is no longer available.`
           );
           setPlacing(false);
+          setGcashQrPlacing(false);
           return;
         }
         if (current.stock < item.quantity) {
@@ -388,6 +453,7 @@ export default function CartScreen() {
             `Not enough stock for "${current.name}". Only ${current.stock} left, but you have ${item.quantity} in cart.`
           );
           setPlacing(false);
+          setGcashQrPlacing(false);
           return;
         }
       }
@@ -406,13 +472,13 @@ export default function CartScreen() {
         .insert({
           customer_id: session.user.id,
           order_type: orderMethod,
-          payment_method: paymentMethod || "cod",
+          payment_method: paymentMethod,
           branch_id: branchId,
           status: "pending",
           subtotal,
-          delivery_fee: 0,
+          delivery_fee: deliveryFee,
           discount: 0,
-          total: subtotal,
+          total: subtotal + deliveryFee,
           notes: orderNotes,
         })
         .select("id")
@@ -421,12 +487,13 @@ export default function CartScreen() {
       if (orderErr || !order) {
         Alert.alert("Error", orderErr?.message || "Failed to create order.");
         setPlacing(false);
+        setGcashQrPlacing(false);
         return;
       }
 
       const orderItems = items.map((item) => ({
         order_id: order.id,
-        menu_item_id: item.id,
+        menu_item: item.name,
         quantity: item.quantity,
         unit_price: item.price,
         subtotal: item.price * item.quantity,
@@ -439,6 +506,7 @@ export default function CartScreen() {
       if (itemsErr) {
         Alert.alert("Error", itemsErr.message);
         setPlacing(false);
+        setGcashQrPlacing(false);
         return;
       }
 
@@ -452,7 +520,9 @@ export default function CartScreen() {
 
       clearCart();
       setCheckoutVisible(false);
+      setGcashQrOpen(false);
       setPlacing(false);
+      setGcashQrPlacing(false);
       Alert.alert(
         "Order Placed!",
         "Your order has been submitted and is now pending. We're preparing your food! 🍳",
@@ -461,17 +531,19 @@ export default function CartScreen() {
     } catch (err: any) {
       Alert.alert("Error", err?.message || "Something went wrong.");
       setPlacing(false);
+      setGcashQrPlacing(false);
     }
-  }, [items, orderMethod, defaultAddress, clearCart, router]);
+  }, [items, orderMethod, paymentMethod, defaultAddress, branchLocation, branchId, deliveryFee, clearCart, router]);
 
-      const canPlaceOrder =
+  const canPlaceOrder =
     items.length > 0 &&
     !placing &&
     !needsAddress &&
     !outOfRange &&
     !addressLoading &&
     !blockedByHours &&
-    !needsPhone;
+    !needsPhone &&
+    amountOk;
 
   const key = useMemo(
     () => `cart-grid-${numColumns}-${cardWidth.toFixed(0)}`,
@@ -564,15 +636,23 @@ export default function CartScreen() {
           <Text style={styles.footerLabel}>Orders</Text>
         </TouchableOpacity>
 
-        {user?.role === "admin" && (
+        <TouchableOpacity style={styles.footerBtn} onPress={() => router.push("/chats")}>
+          <Text style={styles.footerIcon}>💬</Text>
+          <Text style={styles.footerLabel}>Chats</Text>
+        </TouchableOpacity>
+        {(user?.role === "admin" || user?.role === "dev") && (
           <TouchableOpacity style={styles.footerBtn} onPress={() => router.push("/drivers")}>
             <Text style={styles.footerIcon}>🛵</Text>
             <Text style={styles.footerLabel}>Drivers</Text>
           </TouchableOpacity>
         )}
+        <TouchableOpacity style={styles.footerBtn} onPress={() => router.push("/profile")}>
+          <Text style={styles.footerIcon}>👤</Text>
+          <Text style={styles.footerLabel}>Profile</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* ─── Checkout Modal (Order Method + Summary) ─── */}
+      {/* ─── Checkout Modal ─── */}
       <Modal
         visible={checkoutVisible}
         transparent
@@ -632,10 +712,10 @@ export default function CartScreen() {
             <View style={styles.paymentSection}>
               <Text style={styles.paymentLabel}>Payment Method</Text>
               <View style={styles.paymentRow}>
-                {PAYMENT_OPTIONS.map((opt) => (
+                {PAYMENT_OPTIONS.filter((opt) => !(opt.value === "cod" && orderMethod === "pickup")).map((opt) => (
                   <TouchableOpacity
                     key={opt.value}
-                    onPress={() => setPaymentMethod(paymentMethod === opt.value ? null : opt.value)}
+                    onPress={() => setPaymentMethod(opt.value)}
                     style={[
                       styles.paymentBtn,
                       paymentMethod === opt.value && styles.paymentBtnActive,
@@ -648,71 +728,68 @@ export default function CartScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
-              <TouchableOpacity
-                onPress={() => setPaymentMethod(null)}
-                style={[
-                  styles.paymentBtnFull,
-                  paymentMethod === null && styles.paymentBtnActive,
-                ]}
-              >
-                <Text style={styles.paymentBtnIcon}>💵</Text>
-                <Text style={[styles.paymentBtnText, paymentMethod === null && styles.paymentBtnTextActive]}>
-                  Cash on Delivery
+              {paymentMethod === "gcash" && (
+                <Text style={styles.paymentHint}>
+                  You'll be shown a GCash QR code to scan and pay.
                 </Text>
-              </TouchableOpacity>
+              )}
+              {orderMethod === "pickup" && (
+                <Text style={styles.paymentHint}>
+                  Cash on Delivery is not available for pickup orders.
+                </Text>
+              )}
             </View>
 
             <ScrollView
               style={styles.modalScroll}
               showsVerticalScrollIndicator={false}
             >
-              {/* Address Section for Delivery */}
-            {/* Phone Number Warning — non-admins must add phone */}
-            {needsPhone && (
-              <View style={styles.addressSection}>
-                <View style={[styles.addressWarning, { backgroundColor: "#fffbeb", borderColor: "#fde68a" }]}>
-                  <Text style={[styles.addressWarningTitle, { color: "#92400e" }]}>
-                    📞 Phone Number Required
-                  </Text>
-                  <Text style={[styles.addressWarningText, { color: "#92400e" }]}>
-                    Please add your phone number so the driver can contact you during delivery. Add it in your profile.
-                  </Text>
-                  <TouchableOpacity
-                    style={[styles.setAddressBtn, { backgroundColor: "#92400e" }]}
-                    onPress={() => {
-                      handleCancelCheckout();
-                      router.push("/profile");
-                    }}
-                  >
-                    <Text style={styles.setAddressBtnText}>
-                      Add Phone Number in Profile
+              {/* Phone Number Warning */}
+              {needsPhone && (
+                <View style={styles.addressSection}>
+                  <View style={[styles.addressWarning, { backgroundColor: "#fffbeb", borderColor: "#fde68a" }]}>
+                    <Text style={[styles.addressWarningTitle, { color: "#92400e" }]}>
+                      📞 Phone Number Required
                     </Text>
-                  </TouchableOpacity>
+                    <Text style={[styles.addressWarningText, { color: "#92400e" }]}>
+                      Please add your phone number so the driver can contact you during delivery. Add it in your profile.
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.setAddressBtn, { backgroundColor: "#92400e" }]}
+                      onPress={() => {
+                        handleCancelCheckout();
+                        router.push("/profile");
+                      }}
+                    >
+                      <Text style={styles.setAddressBtnText}>
+                        Add Phone Number in Profile
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-            )}
+              )}
 
-            {/* Opening Hours Warning */}
-            {showHoursWarning && (
-              <View style={[styles.addressSection, { marginBottom: 8 }]}>
-                <View style={[styles.addressWarning, isAdmin ? { backgroundColor: "#fffbeb", borderColor: "#fde68a" } : undefined]}>
-                  <Text style={[styles.addressWarningTitle, !isAdmin && { color: "#dc2626" }]}>
-                    {isAdmin ? "⚠️ Outside Operating Hours" : "⛔ Outside Operating Hours"}
-                  </Text>
-                  <Text style={styles.addressWarningText}>
-                    Operating hours are Monday – Saturday, 11:00 AM – 11:00 PM.
-                  </Text>
-                  <Text style={styles.addressWarningSubtext}>
-                    {isAdmin
-                      ? "You can still place this order as an admin."
-                      : "Orders can only be placed during operating hours."}
-                  </Text>
+              {/* Opening Hours Warning */}
+              {showHoursWarning && (
+                <View style={[styles.addressSection, { marginBottom: 8 }]}>
+                  <View style={[styles.addressWarning, isAdmin ? { backgroundColor: "#fffbeb", borderColor: "#fde68a" } : undefined]}>
+                    <Text style={[styles.addressWarningTitle, !isAdmin && { color: "#dc2626" }]}>
+                      {isAdmin ? "⚠️ Outside Operating Hours" : "⛔ Outside Operating Hours"}
+                    </Text>
+                    <Text style={styles.addressWarningText}>
+                      Operating hours are Monday – Saturday, 11:00 AM – 11:00 PM.
+                    </Text>
+                    <Text style={styles.addressWarningSubtext}>
+                      {isAdmin
+                        ? "You can still place this order as an admin."
+                        : "Orders can only be placed during operating hours."}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-            )}
+              )}
 
-            {/* Address Section for Delivery */}
-            {orderMethod === "delivery" && (
+              {/* Address Section for Delivery */}
+              {orderMethod === "delivery" && (
                 <View style={styles.addressSection}>
                   {addressLoading ? (
                     <View style={styles.addressLoadingWrap}>
@@ -727,8 +804,7 @@ export default function CartScreen() {
                         ⚠️ No default address set
                       </Text>
                       <Text style={styles.addressWarningText}>
-                        Please add your delivery address to place a delivery
-                        order.
+                        Please add your delivery address to place a delivery order.
                       </Text>
                       <TouchableOpacity
                         style={styles.setAddressBtn}
@@ -821,21 +897,42 @@ export default function CartScreen() {
               <View style={styles.modalDivider} />
 
               {/* Totals */}
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Subtotal</Text>
-                <Text style={styles.summaryValue}>₱{total}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>
-                  Items ({itemCount})
-                </Text>
-                <Text style={styles.summaryValueSmall}>
-                  {totalQty} total qty
-                </Text>
-              </View>
+              {deliveryFee > 0 && (
+                <>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Subtotal</Text>
+                    <Text style={styles.summaryValue}>₱{total}</Text>
+                  </View>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Delivery Fee</Text>
+                    <Text style={styles.summaryValue}>₱{deliveryFee}</Text>
+                  </View>
+                </>
+              )}
+              {deliveryFee > 0 && (
+                <View style={[styles.summaryRow]}>
+                  <Text style={styles.summaryLabel}>
+                    Items ({itemCount})
+                  </Text>
+                  <Text style={styles.summaryValueSmall}>
+                    {totalQty} total qty
+                  </Text>
+                </View>
+              )}
+              {/* Min / Max Display */}
+              {(orderMethod === "delivery" || orderMethod === "pickup") && (
+                <View style={{ alignItems: "flex-end", marginTop: 2, marginBottom: 4 }}>
+                  <Text style={[styles.minMaxText, amountOk ? styles.minMaxOk : styles.minMaxBad]}>
+                    {!meetMin && `Min ₱${MIN_AMOUNT} not met `}
+                    {exceedCodMax && `Max ₱${COD_MAX_AMOUNT} exceeded `}
+                    {amountOk && `Min ₱${MIN_AMOUNT} met${paymentMethod === "cod" ? ` · Max ₱${COD_MAX_AMOUNT} met` : ""}`}
+                    <Text style={{ fontFamily: "monospace" }}>(₱{total})</Text>
+                  </Text>
+                </View>
+              )}
               <View style={[styles.summaryRow, styles.summaryRowLast]}>
                 <Text style={styles.summaryLabelBold}>Grand Total</Text>
-                <Text style={styles.summaryGrandTotal}>₱{total}</Text>
+                <Text style={styles.summaryGrandTotal}>₱{displayTotal}</Text>
               </View>
             </ScrollView>
 
@@ -854,7 +951,7 @@ export default function CartScreen() {
                   !canPlaceOrder && styles.modalConfirmBtnDisabled,
                 ]}
                 activeOpacity={0.8}
-                onPress={handleConfirmOrder}
+                onPress={() => setConfirmVisible(true)}
                 disabled={!canPlaceOrder}
               >
                 <Text
@@ -863,7 +960,7 @@ export default function CartScreen() {
                     !canPlaceOrder && styles.modalConfirmTextDisabled,
                   ]}
                 >
-                  Place Order
+                  {paymentMethod === "gcash" ? "Pay with GCash" : "Place Order"}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -905,6 +1002,25 @@ export default function CartScreen() {
                 </Text>
               </View>
             </View>
+
+            {/* Payment badge */}
+            <View style={styles.confirmBadgeRow}>
+              <View style={[styles.confirmBadge, { backgroundColor: "#eff6ff" }]}>
+                <Text style={styles.confirmBadgeText}>
+                  {PAYMENT_OPTIONS.find((o) => o.value === paymentMethod)?.icon}{" "}
+                  {PAYMENT_OPTIONS.find((o) => o.value === paymentMethod)?.label}
+                </Text>
+              </View>
+            </View>
+
+            {/* GCash notice */}
+            {paymentMethod === "gcash" && (
+              <View style={styles.confirmGcashNotice}>
+                <Text style={styles.confirmGcashNoticeText}>
+                  After confirming, you'll be shown a GCash QR code to scan and pay ₱{displayTotal}.
+                </Text>
+              </View>
+            )}
 
             {/* Address if delivery */}
             {orderMethod === "delivery" && defaultAddress && (
@@ -957,9 +1073,21 @@ export default function CartScreen() {
             </ScrollView>
 
             {/* Total */}
+            {deliveryFee > 0 && (
+              <View style={styles.confirmFeeRow}>
+                <Text style={styles.confirmFeeLabel}>Subtotal</Text>
+                <Text style={styles.confirmFeeValue}>₱{total}</Text>
+              </View>
+            )}
+            {deliveryFee > 0 && (
+              <View style={styles.confirmFeeRow}>
+                <Text style={styles.confirmFeeLabel}>Delivery Fee</Text>
+                <Text style={styles.confirmFeeValue}>₱{deliveryFee}</Text>
+              </View>
+            )}
             <View style={styles.confirmTotalRow}>
               <Text style={styles.confirmTotalLabel}>Total</Text>
-              <Text style={styles.confirmTotalValue}>₱{total}</Text>
+              <Text style={styles.confirmTotalValue}>₱{displayTotal}</Text>
             </View>
 
             {/* Actions */}
@@ -972,14 +1100,120 @@ export default function CartScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.modalConfirmBtn}
-                onPress={handlePlaceOrder}
+                onPress={handleConfirmOrder}
                 disabled={placing}
               >
                 <Text style={styles.modalConfirmText}>
-                  {placing ? "Placing…" : "Place Order"}
+                  {placing ? "Placing…" : paymentMethod === "gcash" ? "Continue to GCash" : "Place Order"}
                 </Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── GCash QR Code Modal ─── */}
+      <Modal
+        visible={gcashQrOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setGcashQrOpen(false)}
+      >
+        <View style={styles.qrOverlay}>
+          <View style={styles.qrSheet}>
+            <View style={styles.confirmHeader}>
+              <Text style={styles.confirmTitle}>GCash Payment</Text>
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                onPress={() => setGcashQrOpen(false)}
+              >
+                <Text style={styles.modalCloseIcon}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.qrContent}>
+              <Text style={styles.qrAmount}>₱{displayTotal}</Text>
+              <Text style={styles.qrInstructions}>
+                Scan the QR code below with your GCash app to pay.
+              </Text>
+
+              <TouchableOpacity
+                style={styles.qrImageWrap}
+                onPress={() => setFullscreenQr(true)}
+                activeOpacity={0.8}
+              >
+                <GcashQrImage style={styles.qrImage} />
+              </TouchableOpacity>
+
+              <View style={styles.qrHelp}>
+                <Text style={styles.qrHelpTitle}>📋 How to pay:</Text>
+                <Text style={styles.qrHelpStep}>1. Open your GCash app</Text>
+                <Text style={styles.qrHelpStep}>2. Tap "Scan" and scan the QR code</Text>
+                <Text style={styles.qrHelpStep}>3. Enter the amount: ₱{displayTotal}</Text>
+                <Text style={styles.qrHelpStep}>4. Complete the payment and send the proof in the chat</Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.qrPlaceBtn}
+                activeOpacity={0.8}
+                onPress={doPlaceOrder}
+                disabled={gcashQrPlacing}
+              >
+                <Text style={styles.qrPlaceBtnText}>
+                  {gcashQrPlacing ? "Placing Order…" : "Place Order"}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.qrCancelBtn}
+                activeOpacity={0.7}
+                onPress={() => setGcashQrOpen(false)}
+              >
+                <Text style={styles.qrCancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── Fullscreen QR Viewer (with pinch-to-zoom) ─── */}
+      <Modal
+        visible={fullscreenQr}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFullscreenQr(false)}
+      >
+        <View style={styles.fullscreenQrOverlay}>
+          {/* Close button */}
+          <TouchableOpacity
+            style={styles.fullscreenQrCloseBtn}
+            onPress={() => setFullscreenQr(false)}
+          >
+            <Text style={styles.fullscreenQrCloseIcon}>✕</Text>
+          </TouchableOpacity>
+
+          {/* Zoomable scroll container */}
+          <ScrollView
+            style={styles.fullscreenQrScroll}
+            contentContainerStyle={styles.fullscreenQrScrollContent}
+            maximumZoomScale={5}
+            minimumZoomScale={1}
+            showsHorizontalScrollIndicator={false}
+            showsVerticalScrollIndicator={false}
+            bouncesZoom={false}
+            centerContent
+          >
+            <GcashQrImage style={styles.fullscreenQrImage} />
+          </ScrollView>
+
+          {/* Bottom actions */}
+          <View style={styles.fullscreenQrActions}>
+            <TouchableOpacity
+              style={styles.fullscreenQrActionBtn}
+              onPress={() => setFullscreenQr(false)}
+            >
+              <Text style={styles.fullscreenQrActionText}>Close</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -1500,6 +1734,16 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: PRIMARY,
   },
+  minMaxText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  minMaxOk: {
+    color: "#065f46",
+  },
+  minMaxBad: {
+    color: "#dc2626",
+  },
   modalActions: {
     flexDirection: "row",
     gap: 12,
@@ -1585,16 +1829,11 @@ const styles = StyleSheet.create({
   paymentBtnTextActive: {
     color: PRIMARY,
   },
-  paymentBtnFull: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: "#f3f4f6",
-    borderWidth: 2,
-    borderColor: "transparent",
+  paymentHint: {
+    fontSize: 11,
+    color: "#9ca3af",
+    textAlign: "center",
+    marginTop: 4,
   },
 
   // ─── Confirmation Prompt Modal ───
@@ -1634,7 +1873,7 @@ const styles = StyleSheet.create({
   },
   confirmBadgeRow: {
     paddingHorizontal: 20,
-    paddingTop: 12,
+    paddingTop: 8,
   },
   confirmBadge: {
     alignSelf: "flex-start",
@@ -1652,6 +1891,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     color: "#374151",
+  },
+  confirmGcashNotice: {
+    marginHorizontal: 20,
+    marginTop: 8,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: "#eff6ff",
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+  },
+  confirmGcashNoticeText: {
+    fontSize: 12,
+    color: "#1d4ed8",
+    fontWeight: "500",
   },
   confirmAddressWrap: {
     marginHorizontal: 20,
@@ -1721,6 +1974,20 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#374151",
   },
+  confirmFeeRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 2,
+  },
+  confirmFeeLabel: {
+    fontSize: 12,
+    color: "#9ca3af",
+  },
+  confirmFeeValue: {
+    fontSize: 12,
+    color: "#9ca3af",
+  },
   confirmTotalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -1748,5 +2015,160 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: "#f3f4f6",
+  },
+
+  // ─── GCash QR Modal ───
+  qrOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  qrSheet: {
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    width: "100%",
+    maxHeight: "90%",
+    paddingBottom: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  qrContent: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    alignItems: "center",
+    gap: 12,
+  },
+  qrAmount: {
+    fontSize: 28,
+    fontWeight: "900",
+    color: PRIMARY,
+  },
+  qrInstructions: {
+    fontSize: 13,
+    color: "#6b7280",
+    textAlign: "center",
+  },
+  qrImageWrap: {
+    padding: 16,
+    backgroundColor: "#f9fafb",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  qrImage: {
+    width: 200,
+    height: 200,
+  },
+  qrHelp: {
+    alignSelf: "stretch",
+    backgroundColor: "#eff6ff",
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+  },
+  qrHelpTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#1d4ed8",
+    marginBottom: 6,
+  },
+  qrHelpStep: {
+    fontSize: 12,
+    color: "#2563eb",
+    lineHeight: 20,
+  },
+  qrPlaceBtn: {
+    width: "100%",
+    backgroundColor: PRIMARY,
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: "center",
+    opacity: 1,
+  },
+  qrPlaceBtnText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  qrCancelBtn: {
+    width: "100%",
+    backgroundColor: "#f3f4f6",
+    paddingVertical: 12,
+    borderRadius: 14,
+    alignItems: "center",
+  },
+  qrCancelBtnText: {
+    color: "#6b7280",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+
+  // ─── Fullscreen QR ───
+  fullscreenQrOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.92)",
+  },
+  fullscreenQrCloseBtn: {
+    position: "absolute",
+    top: 50,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 10,
+  },
+  fullscreenQrCloseIcon: {
+    color: "#fff",
+    fontSize: 24,
+    fontWeight: "700",
+  },
+  fullscreenQrScroll: {
+    flex: 1,
+  },
+  fullscreenQrScrollContent: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 40,
+  },
+  fullscreenQrImage: {
+    width: 320,
+    height: 320,
+    borderRadius: 16,
+  },
+  fullscreenQrActions: {
+    position: "absolute",
+    bottom: 50,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    paddingHorizontal: 40,
+  },
+  fullscreenQrActionBtn: {
+    backgroundColor: "rgba(255,255,255,0.15)",
+    paddingHorizontal: 40,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+  },
+  fullscreenQrActionText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
   },
 });
