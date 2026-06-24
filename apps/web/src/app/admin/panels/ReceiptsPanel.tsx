@@ -64,7 +64,7 @@ export default function ReceiptsPanel({ branchId }: { branchId?: string | null }
   const [sourceFilter, setSourceFilter] = useState<"all" | "walk_in" | "online">("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [page, setPage] = useState(0);
+  const pageRef = useRef(0);
   const [hasMore, setHasMore] = useState(true);
   const [selected, setSelected] = useState<Receipt | null>(null);
   const [importing, setImporting] = useState(false);
@@ -72,9 +72,15 @@ export default function ReceiptsPanel({ branchId }: { branchId?: string | null }
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: "single" | "range"; receiptId?: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const fetchIdRef = useRef(0);
 
-  const fetchReceipts = useCallback(async (reset = false) => {
-    if (reset) { setLoading(true); setPage(0); }
+  const fetchReceipts = useCallback(async (reset = false, loadPage?: number) => {
+    const currentPage = reset ? 0 : (loadPage ?? pageRef.current);
+    if (reset) {
+      setLoading(true);
+      pageRef.current = 0;
+    }
+    const fid = ++fetchIdRef.current;
     const sb = createClient();
     let query = sb.from("receipts").select("*", { count: "exact" });
     if (branchId) query = query.eq("branch_id", branchId);
@@ -86,17 +92,21 @@ export default function ReceiptsPanel({ branchId }: { branchId?: string | null }
       query = query.lte("completed_at", endDate.toISOString());
     }
     query = query.order("completed_at", { ascending: false });
-    query = query.range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
+    query = query.range(currentPage * ITEMS_PER_PAGE, (currentPage + 1) * ITEMS_PER_PAGE - 1);
     const { data, count } = await query;
+    if (fid !== fetchIdRef.current) return; // stale — a newer fetch superseded this one
     if (reset) setReceipts((data || []) as Receipt[]);
     else setReceipts((prev) => [...prev, ...((data || []) as Receipt[])]);
-    setHasMore((count || 0) > (page + 1) * ITEMS_PER_PAGE);
+    setHasMore((count || 0) > (currentPage + 1) * ITEMS_PER_PAGE);
     setLoading(false);
-  }, [branchId, sourceFilter, dateFrom, dateTo, page]);
+  }, [branchId, sourceFilter, dateFrom, dateTo]);
 
-  useEffect(() => { fetchReceipts(true); }, [sourceFilter, dateFrom, dateTo, branchId]);
-  function handleLoadMore() { setPage((p) => p + 1); }
-  useEffect(() => { if (page > 0) fetchReceipts(false); }, [page]);
+  useEffect(() => { fetchReceipts(true); }, [fetchReceipts]);
+  function handleLoadMore() {
+    const nextPage = pageRef.current + 1;
+    pageRef.current = nextPage;
+    fetchReceipts(false, nextPage);
+  }
 
   async function handleDeleteReceipt(id: string) {
     setDeleting(true);

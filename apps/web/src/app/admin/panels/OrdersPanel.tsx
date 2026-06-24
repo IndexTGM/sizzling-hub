@@ -63,7 +63,10 @@ export default function OrdersPanel({ branchId }: { branchId?: string | null }) 
     contentRef: receiptRef,
     pageStyle: `
       @page { size: 65mm 200mm; margin: 0; }
-      @media print { html, body { margin: 0 !important; padding: 0 !important; } }
+      @media print {
+        html, body { margin: 0 !important; padding: 0 !important; }
+        .receipt-popup { margin-left: 0 !important; margin-right: auto !important; }
+      }
     `,
     onAfterPrint: () => setReceiptOrder(null),
   });
