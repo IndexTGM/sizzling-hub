@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import ConfirmModal from "@/app/_components/ConfirmModal";
 import { LoadingSkeleton, EmptyState, PAYMENT_LABEL, OT_ICON, OT_LABEL, STATUS_BG } from "./shared";
 import type { OrderType } from "./shared";
 
@@ -35,6 +36,28 @@ const sourceColors: Record<string, string> = {
   online: "bg-teal-50 text-teal-600",
 };
 
+/** Parses a single CSV line, handling quoted fields with commas inside */
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') { current += '"'; i++; }
+        else { inQuotes = false; }
+      } else { current += ch; }
+    } else {
+      if (ch === '"') { inQuotes = true; }
+      else if (ch === ",") { result.push(current); current = ""; }
+      else { current += ch; }
+    }
+  }
+  result.push(current);
+  return result;
+}
+
 export default function ReceiptsPanel({ branchId }: { branchId?: string | null }) {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,6 +67,11 @@ export default function ReceiptsPanel({ branchId }: { branchId?: string | null }
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [selected, setSelected] = useState<Receipt | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ ok: number; skipped: number; error?: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: "single" | "range"; receiptId?: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchReceipts = useCallback(async (reset = false) => {
     if (reset) { setLoading(true); setPage(0); }
@@ -70,10 +98,208 @@ export default function ReceiptsPanel({ branchId }: { branchId?: string | null }
   function handleLoadMore() { setPage((p) => p + 1); }
   useEffect(() => { if (page > 0) fetchReceipts(false); }, [page]);
 
+  async function handleDeleteReceipt(id: string) {
+    setDeleting(true);
+    const sb = createClient();
+    const { error } = await sb.from("receipts").delete().eq("id", id);
+    if (error) {
+      setImportResult({ ok: 0, skipped: 0, error: `Delete failed: ${error.message}` });
+    } else {
+      setSelected(null);
+      await fetchReceipts(true);
+    }
+    setDeleting(false);
+    setDeleteConfirm(null);
+  }
+
+  async function handleDeleteByDateRange() {
+    if (!dateFrom && !dateTo) {
+      setImportResult({ ok: 0, skipped: 0, error: "Please set a date range first." });
+      setDeleteConfirm(null);
+      return;
+    }
+    setDeleting(true);
+    const sb = createClient();
+    let query = sb.from("receipts").delete({ count: "exact" });
+    if (branchId) query = query.eq("branch_id", branchId);
+    if (dateFrom) query = query.gte("completed_at", new Date(dateFrom).toISOString());
+    if (dateTo) {
+      const endDate = new Date(dateTo);
+      endDate.setHours(23, 59, 59, 999);
+      query = query.lte("completed_at", endDate.toISOString());
+    }
+    const { count, error } = await query;
+    if (error) {
+      setImportResult({ ok: 0, skipped: 0, error: `Delete failed: ${error.message}` });
+    } else {
+      setImportResult({ ok: count || 0, skipped: 0 });
+      await fetchReceipts(true);
+    }
+    setDeleting(false);
+    setDeleteConfirm(null);
+  }
+
+  async function handleImportCSV(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setImportResult(null);
+
+    try {
+      const text = await file.text();
+      const lines = text.trim().split(/\r?\n/);
+      if (lines.length < 2) {
+        setImportResult({ ok: 0, skipped: 0, error: "CSV file is empty or has no data rows." });
+        setImporting(false);
+        return;
+      }
+
+      const header = parseCSVLine(lines[0]);
+      const colIndex: Record<string, number> = {};
+      header.forEach((h, i) => { colIndex[h.trim()] = i; });
+
+      let ok = 0;
+      let skipped = 0;
+      let dupes = 0;
+      const sb = createClient();
+      const seen = new Set<string>();
+
+      // Phase 1: Parse all CSV rows first
+      const parsedRows: any[] = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const rawLine = lines[i];
+        if (!rawLine || !rawLine.trim()) continue;
+        const cols = parseCSVLine(rawLine);
+
+        const get = (name: string): string => (colIndex[name] !== undefined ? (cols[colIndex[name]] ?? "") : "");
+
+        const orderIdShort = get("Order ID").trim();
+        const orderType = get("Order Type").trim();
+        const source = get("Source").trim();
+        const customerName = get("Customer Name").trim();
+        const customerEmail = get("Customer Email").trim() || null;
+        const customerPhone = get("Customer Phone").trim() || null;
+        const branchName = get("Branch").trim() || null;
+        const itemsStr = get("Items").trim();
+        const subtotal = parseFloat(get("Subtotal")) || 0;
+        const deliveryFee = parseFloat(get("Delivery Fee")) || 0;
+        const discount = parseFloat(get("Discount")) || 0;
+        const total = parseFloat(get("Total")) || 0;
+        const paymentMethod = get("Payment Method").trim() || null;
+        const paymentStatus = get("Payment Status").trim() || null;
+        const seniorPwdRaw = get("PWD/Senior Discount").trim();
+        const notes = get("Notes").trim() || null;
+        const placedAtRaw = get("Placed At").trim();
+        const completedAtRaw = get("Completed At").trim();
+
+        const items: { name: string; quantity: number; price: number; note: string }[] = [];
+        if (itemsStr) {
+          const itemParts = itemsStr.split(";");
+          for (const part of itemParts) {
+            const match = part.trim().match(/^(.+?)\s+x(\d+)\s+@₱([\d.]+)$/);
+            if (match) {
+              items.push({ name: match[1].trim(), quantity: parseInt(match[2]), price: parseFloat(match[3]), note: "" });
+            }
+          }
+        }
+
+        // All fields are optional — only skip if completely empty (no completed_at AND no total)
+        if (!completedAtRaw && !total && !customerName && !orderIdShort && !itemsStr) {
+          skipped++;
+          continue;
+        }
+
+        // Generate a placeholder order_id if none provided
+        const finalOrderId = orderIdShort || `imported-${Date.now()}-${i}`;
+
+        parsedRows.push({
+          order_id: finalOrderId,
+          order_type: orderType || "dine_in",
+          source: source || "walk_in",
+          customer_name: customerName,
+          customer_email: customerEmail,
+          customer_phone: customerPhone,
+          branch_name: branchName,
+          items,
+          subtotal,
+          delivery_fee: deliveryFee,
+          discount,
+          total,
+          payment_method: paymentMethod,
+          payment_status: paymentStatus,
+          senior_pwd_discount: seniorPwdRaw === "Yes" || seniorPwdRaw === "yes",
+          notes,
+          placed_at: placedAtRaw || null,
+          completed_at: completedAtRaw,
+        });
+      }
+
+      // Phase 2: Query existing receipts by order_id to build a set of seen IDs
+      const csvOrderIds = [...new Set(parsedRows.map((r) => r.order_id))];
+      if (csvOrderIds.length > 0) {
+        try {
+          // Query in batches of 100 to stay within Supabase IN clause limits
+          for (let k = 0; k < csvOrderIds.length; k += 100) {
+            const batchIds = csvOrderIds.slice(k, k + 100);
+            let dupQuery = sb.from("receipts").select("order_id").in("order_id", batchIds);
+            if (branchId) dupQuery = dupQuery.eq("branch_id", branchId);
+            const { data: existing } = await dupQuery;
+            if (existing) {
+              for (const r of existing) {
+                seen.add(r.order_id);
+              }
+            }
+          }
+        } catch { /* proceed without dedup if query fails */ }
+      }
+
+      // Phase 3: Filter out duplicates by order_id (prevents re-importing same receipt)
+      const toInsert: any[] = [];
+      for (const row of parsedRows) {
+        if (seen.has(row.order_id)) {
+          dupes++;
+          continue;
+        }
+        seen.add(row.order_id);
+        toInsert.push({
+          ...row,
+          branch_id: branchId || null,
+        });
+      }
+
+      if (toInsert.length === 0) {
+        setImportResult({ ok: 0, skipped, error: "No valid rows to import." });
+        setImporting(false);
+        return;
+      }
+
+      // Insert in batches of 50
+      for (let j = 0; j < toInsert.length; j += 50) {
+        const batch = toInsert.slice(j, j + 50);
+        const { error } = await sb.from("receipts").insert(batch);
+        if (error) {
+          setImportResult({ ok, skipped: skipped + (toInsert.length - j - batch.length), error: error.message });
+          setImporting(false);
+          if (fileInputRef.current) fileInputRef.current.value = "";
+          return;
+        }
+        ok += batch.length;
+      }
+
+      setImportResult({ ok, skipped: skipped + dupes });
+      await fetchReceipts(true);
+    } catch (err: any) {
+      setImportResult({ ok: 0, skipped: 0, error: err?.message || "Failed to parse CSV" });
+    }
+    setImporting(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
   function exportCSV() {
     const rows = receipts.map((r) => {
       const itemsStr = r.items.map((it) => `${it.name} x${it.quantity} @₱${it.price}`).join("; ");
-      return [r.order_id.slice(0, 8).toUpperCase(), r.order_type, r.source, r.customer_name, r.customer_email || "", r.customer_phone || "", r.branch_name || "", itemsStr, r.subtotal, r.delivery_fee, r.discount, r.total, r.payment_method || "", r.payment_status || "", r.senior_pwd_discount ? "Yes" : "No", r.notes || "", r.placed_at ? new Date(r.placed_at).toISOString() : "", new Date(r.completed_at).toISOString()];
+      return [r.order_id, r.order_type, r.source, r.customer_name, r.customer_email || "", r.customer_phone || "", r.branch_name || "", itemsStr, r.subtotal, r.delivery_fee, r.discount, r.total, r.payment_method || "", r.payment_status || "", r.senior_pwd_discount ? "Yes" : "No", r.notes || "", r.placed_at ? new Date(r.placed_at).toISOString() : "", new Date(r.completed_at).toISOString()];
     });
     const header = ["Order ID", "Order Type", "Source", "Customer Name", "Customer Email", "Customer Phone", "Branch", "Items", "Subtotal", "Delivery Fee", "Discount", "Total", "Payment Method", "Payment Status", "PWD/Senior Discount", "Notes", "Placed At", "Completed At"];
     const csv = [header, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
@@ -102,7 +328,34 @@ export default function ReceiptsPanel({ branchId }: { branchId?: string | null }
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
           Export CSV
         </button>
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={importing}
+          className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 text-xs font-bold hover:bg-blue-100 transition-colors flex items-center gap-1.5 disabled:opacity-40"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+          {importing ? "Importing…" : "Import CSV"}
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".csv"
+          onChange={handleImportCSV}
+          className="hidden"
+        />
       </div>
+
+      {/* Import result banner */}
+      {importResult && (
+        <div className={`rounded-lg px-4 py-2.5 text-xs font-medium flex items-center justify-between ${importResult.error ? "bg-red-50 text-red-700 border border-red-200" : "bg-emerald-50 text-emerald-700 border border-emerald-200"}`}>
+          <span>
+            {importResult.error
+              ? `Import error: ${importResult.error}`
+              : `Imported ${importResult.ok} receipt${importResult.ok !== 1 ? "s" : ""}${importResult.skipped > 0 ? ` (${importResult.skipped} skipped)` : ""}`}
+          </span>
+          <button onClick={() => setImportResult(null)} className="ml-2 font-bold hover:opacity-70">×</button>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex items-center gap-3 flex-wrap">
@@ -122,6 +375,15 @@ export default function ReceiptsPanel({ branchId }: { branchId?: string | null }
             <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-red-500 font-semibold hover:underline">Clear</button>
           )}
         </div>
+        {(dateFrom || dateTo) && (
+          <button
+            onClick={() => setDeleteConfirm({ type: "range" })}
+            disabled={deleting}
+            className="px-2.5 py-1.5 rounded-lg bg-red-50 text-red-600 text-[11px] font-bold hover:bg-red-100 transition-colors disabled:opacity-40"
+          >
+            {deleting ? "Deleting…" : "🗑 Delete Range"}
+          </button>
+        )}
       </div>
 
       {loading && receipts.length === 0 ? <LoadingSkeleton /> :
@@ -301,8 +563,15 @@ export default function ReceiptsPanel({ branchId }: { branchId?: string | null }
                 )}
               </div>
 
-              <div className="border-t border-[#f3f4f6] px-5 py-4">
-                <button onClick={() => setSelected(null)} className="w-full py-2.5 rounded-xl bg-gray-100 text-gray-600 text-sm font-bold hover:bg-gray-200 transition-colors">
+              <div className="border-t border-[#f3f4f6] px-5 py-4 flex gap-3">
+                <button
+                  onClick={() => setDeleteConfirm({ type: "single", receiptId: selected.id })}
+                  disabled={deleting}
+                  className="flex-1 py-2.5 rounded-xl bg-red-50 text-red-600 text-sm font-bold hover:bg-red-100 transition-colors disabled:opacity-40"
+                >
+                  {deleting ? "Deleting…" : "🗑 Delete Receipt"}
+                </button>
+                <button onClick={() => setSelected(null)} className="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-600 text-sm font-bold hover:bg-gray-200 transition-colors">
                   Close
                 </button>
               </div>
@@ -310,6 +579,21 @@ export default function ReceiptsPanel({ branchId }: { branchId?: string | null }
           </div>
         </>
       )}
+      <ConfirmModal
+        open={deleteConfirm !== null}
+        title={deleting ? "Deleting…" : deleteConfirm?.type === "single" ? "Delete Receipt" : "Delete by Date Range"}
+        message={deleteConfirm?.type === "single"
+          ? `Permanently delete this receipt? This action cannot be undone.`
+          : `Permanently delete ALL receipts${dateFrom ? ` from ${dateFrom}` : ""}${dateTo ? ` to ${dateTo}` : ""}? This action cannot be undone.`}
+        confirmLabel="Delete"
+        confirmDanger
+        onConfirm={() => {
+          if (!deleteConfirm) return;
+          if (deleteConfirm.type === "single" && deleteConfirm.receiptId) handleDeleteReceipt(deleteConfirm.receiptId);
+          else handleDeleteByDateRange();
+        }}
+        onCancel={() => setDeleteConfirm(null)}
+      />
     </div>
   );
 }

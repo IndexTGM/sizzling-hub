@@ -20,11 +20,6 @@ function todayRange(): { start: string; end: string } {
   const e = new Date(); e.setHours(23, 59, 59, 999);
   return { start: s.toISOString(), end: e.toISOString() };
 }
-function yesterdayRange(): { start: string; end: string } {
-  const s = new Date(); s.setDate(s.getDate() - 1); s.setHours(0, 0, 0, 0);
-  const e = new Date(); e.setDate(e.getDate() - 1); e.setHours(23, 59, 59, 999);
-  return { start: s.toISOString(), end: e.toISOString() };
-}
 function weekRange(): { start: string; end: string } {
   const now = new Date();
   const day = now.getDay();
@@ -314,27 +309,56 @@ function AllExpensesModal({
   );
 }
 
+/* ── Helpers: calls the get_sales_report RPC ── */
+interface SalesReportRow {
+  branch_id: string | null;
+  branch_name: string | null;
+  day: string;
+  order_count: number;
+  subtotal: number;
+  delivery_fee: number;
+  discount: number;
+  total_sales: number;
+  online_count: number;
+  walkin_count: number;
+  pwd_count: number;
+}
+
+async function getSalesReport(sb: ReturnType<typeof createClient>, fromDate: string, toDate: string, branchId?: string | null) {
+  const { data, error } = await sb.rpc("get_sales_report", {
+    p_start_date: fromDate,
+    p_end_date: toDate,
+    p_branch_id: branchId ?? null,
+  });
+  if (error) throw error;
+  return (data ?? []) as SalesReportRow[];
+}
+
 /* ──────────────────────────────────────────────────
    Reports Panel
    ────────────────────────────────────────────────── */
 export default function ReportsPanel({ branchId }: { branchId?: string | null }) {
   const [loading, setLoading] = useState(true);
-  // Overview
+  const [reportDateFrom, setReportDateFrom] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() - 30); return d.toLocaleDateString("en-CA");
+  });
+  const [reportDateTo, setReportDateTo] = useState(() => new Date().toLocaleDateString("en-CA"));
+
+  // Only totalRevenue responds to date range picker
   const [totalRevenue, setTotalRevenue] = useState(0);
-  const [totalOrders, setTotalOrders] = useState(0);
-  const [avgOrderValue, setAvgOrderValue] = useState(0);
+  // Default 30-day range values (NOT affected by date range picker)
+  const [defaultRevenue, setDefaultRevenue] = useState(0);
   const [revenueTrend, setRevenueTrend] = useState<{ date: string; revenue: number }[]>([]);
-  // Daily
+  // Daily (always today) — polls every second
   const [todayRevenue, setTodayRevenue] = useState(0);
-  const [yesterdayRevenue, setYesterdayRevenue] = useState(0);
   const [todayTopItems, setTodayTopItems] = useState<{ name: string; sold: number; revenue: number }[]>([]);
   const [hourlyData, setHourlyData] = useState<{ hour: string; revenue: number }[]>([]);
-  // Weekly top
+  // Weekly top (always this week)
   const [weeklyTopItems, setWeeklyTopItems] = useState<{ name: string; sold: number; revenue: number }[]>([]);
-  // Top Sellers (all time)
+  // Top Sellers (fixed 30-day range)
   const [topByRevenue, setTopByRevenue] = useState<{ name: string; sold: number; revenue: number }[]>([]);
   const [topByQuantity, setTopByQuantity] = useState<{ name: string; sold: number; revenue: number }[]>([]);
-  // Expenses
+  // Expenses (fixed 30-day range)
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [totalExpenses, setTotalExpenses] = useState(0);
   const [expenseModalOpen, setExpenseModalOpen] = useState(false);
@@ -348,38 +372,111 @@ export default function ReportsPanel({ branchId }: { branchId?: string | null })
   const [allExpenses, setAllExpenses] = useState<Expense[]>([]);
   const [allExpensesLoading, setAllExpensesLoading] = useState(false);
 
-  const fetchAll = useCallback(async () => {
+  /* ── Heavy queries (RPC + 30-day data): run on mount + Apply button ── */
+  const fetchHeavy = useCallback(async () => {
     const sb = createClient();
 
-    // ── Overview: 30 days (from receipts) ──
-    const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    let ovQuery = sb.from("receipts").select("id, total, completed_at")
-      .gte("completed_at", thirtyDaysAgo.toISOString());
-    if (branchId) ovQuery = ovQuery.eq("branch_id", branchId);
-    const { data: overviewReceipts } = await ovQuery.order("completed_at", { ascending: true });
-    if (overviewReceipts) {
-      setTotalRevenue(overviewReceipts.reduce((s: number, o: any) => s + Number(o.total), 0));
-      setTotalOrders(overviewReceipts.length);
-      setAvgOrderValue(overviewReceipts.length > 0 ? overviewReceipts.reduce((s: number, o: any) => s + Number(o.total), 0) / overviewReceipts.length : 0);
+    // Total revenue for selected range (RPC)
+    try {
+      const rangeRows = await getSalesReport(sb, reportDateFrom, reportDateTo, branchId);
+      setTotalRevenue(rangeRows.reduce((s, r) => s + Number(r.total_sales), 0));
+    } catch { /* RPC may fail — leave current value */ }
 
+    // Default 30-day revenue + trend + top sellers + expenses
+    const default30Start = new Date();
+    default30Start.setDate(default30Start.getDate() - 30);
+    default30Start.setHours(0, 0, 0, 0);
+    const default30End = new Date();
+    default30End.setHours(23, 59, 59, 999);
+
+    // 30-day revenue (RPC)
+    try {
+      const d30Rows = await getSalesReport(sb, default30Start.toLocaleDateString("en-CA"), default30End.toLocaleDateString("en-CA"), branchId);
+      setDefaultRevenue(d30Rows.reduce((s, r) => s + Number(r.total_sales), 0));
+    } catch { /* ignore */ }
+
+    // 30-day receipts for trend chart + top sellers
+    let d30Query = sb.from("receipts").select("total, completed_at, items")
+      .gte("completed_at", default30Start.toISOString())
+      .lte("completed_at", default30End.toISOString())
+      .limit(100000);
+    if (branchId) d30Query = d30Query.eq("branch_id", branchId);
+    const { data: default30Receipts } = await d30Query;
+    if (default30Receipts) {
+      // Revenue trend (day-by-day)
       const dayMap = new Map<string, number>();
-      for (const o of overviewReceipts) {
+      const aMap = new Map<string, { sold: number; revenue: number }>();
+      for (const o of default30Receipts) {
         const d = new Date(o.completed_at).toLocaleDateString("en-CA");
         dayMap.set(d, (dayMap.get(d) || 0) + Number(o.total));
+
+        const items = (o.items || []) as { name: string; quantity: number; price: number }[];
+        for (const it of items) {
+          const n = it.name || "Unknown";
+          const e = aMap.get(n) || { sold: 0, revenue: 0 };
+          e.sold += it.quantity;
+          e.revenue += it.quantity * (it.price || 0);
+          aMap.set(n, e);
+        }
       }
       setRevenueTrend(Array.from(dayMap.entries()).map(([date, revenue]) => ({ date, revenue })).sort((a, b) => a.date.localeCompare(b.date)));
+
+      const sorted = Array.from(aMap.entries()).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.revenue - a.revenue);
+      setTopByRevenue(sorted.slice(0, 10));
+      setTopByQuantity([...sorted].sort((a, b) => b.sold - a.sold).slice(0, 10));
     }
 
-    // ── Daily (from receipts) ──
+    // Weekly top (always this week)
+    const wk = weekRange();
+    let wq = sb.from("receipts").select("items")
+      .gte("completed_at", wk.start).lte("completed_at", wk.end)
+      .limit(100000);
+    if (branchId) wq = wq.eq("branch_id", branchId);
+    const { data: weekReceipts } = await wq;
+    if (weekReceipts && weekReceipts.length > 0) {
+      const wiMap = new Map<string, { sold: number; revenue: number }>();
+      for (const r of weekReceipts) {
+        const items = (r.items || []) as { name: string; quantity: number; price: number }[];
+        for (const it of items) {
+          const n = it.name || "Unknown";
+          const e = wiMap.get(n) || { sold: 0, revenue: 0 };
+          e.sold += it.quantity;
+          e.revenue += it.quantity * (it.price || 0);
+          wiMap.set(n, e);
+        }
+      }
+      setWeeklyTopItems(Array.from(wiMap.entries()).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.revenue - a.revenue).slice(0, 10));
+    } else setWeeklyTopItems([]);
+
+    // Expenses (30-day)
+    const ex30Start = new Date();
+    ex30Start.setDate(ex30Start.getDate() - 30);
+    ex30Start.setHours(0, 0, 0, 0);
+    const ex30End = new Date();
+    ex30End.setHours(23, 59, 59, 999);
+    let exQuery = sb.from("expenses").select("id, amount, description, category, created_at")
+      .gte("created_at", ex30Start.toISOString())
+      .lte("created_at", ex30End.toISOString())
+      .order("created_at", { ascending: false });
+    if (branchId) exQuery = exQuery.eq("branch_id", branchId);
+    const { data: expenseData } = await exQuery;
+    if (expenseData) {
+      setExpenses(expenseData as Expense[]);
+      setTotalExpenses(expenseData.reduce((s: number, e: any) => s + Number(e.amount), 0));
+    } else {
+      setExpenses([]);
+      setTotalExpenses(0);
+    }
+  }, [branchId, reportDateFrom, reportDateTo]);
+
+  /* ── Light queries: polls every 1s (today's live data only) ── */
+  const fetchLive = useCallback(async () => {
+    const sb = createClient();
     const td = todayRange();
-    const yd = yesterdayRange();
     let tq = sb.from("receipts").select("id, total, completed_at, items")
-      .gte("completed_at", td.start).lte("completed_at", td.end);
-    let yq = sb.from("receipts").select("total")
-      .gte("completed_at", yd.start).lte("completed_at", yd.end);
-    if (branchId) { tq = tq.eq("branch_id", branchId); yq = yq.eq("branch_id", branchId); }
+      .gte("completed_at", td.start).lte("completed_at", td.end).limit(100000);
+    if (branchId) tq = tq.eq("branch_id", branchId);
     const { data: todayReceipts } = await tq;
-    const { data: yesterdayReceipts } = await yq;
 
     if (todayReceipts) {
       setTodayRevenue(todayReceipts.reduce((s: number, o: any) => s + Number(o.total), 0));
@@ -407,72 +504,20 @@ export default function ReportsPanel({ branchId }: { branchId?: string | null })
         setTodayTopItems(Array.from(iMap.entries()).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.revenue - a.revenue).slice(0, 5));
       } else setTodayTopItems([]);
     }
-    if (yesterdayReceipts) setYesterdayRevenue(yesterdayReceipts.reduce((s: number, o: any) => s + Number(o.total), 0));
-
-    // ── Weekly top items (from receipts jsonb) ──
-    const wk = weekRange();
-    let wq = sb.from("receipts").select("items")
-      .gte("completed_at", wk.start).lte("completed_at", wk.end);
-    if (branchId) wq = wq.eq("branch_id", branchId);
-    const { data: weekReceipts } = await wq;
-    if (weekReceipts && weekReceipts.length > 0) {
-      const wiMap = new Map<string, { sold: number; revenue: number }>();
-      for (const r of weekReceipts) {
-        const items = (r.items || []) as { name: string; quantity: number; price: number }[];
-        for (const it of items) {
-          const n = it.name || "Unknown";
-          const e = wiMap.get(n) || { sold: 0, revenue: 0 };
-          e.sold += it.quantity;
-          e.revenue += it.quantity * (it.price || 0);
-          wiMap.set(n, e);
-        }
-      }
-      setWeeklyTopItems(Array.from(wiMap.entries()).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.revenue - a.revenue).slice(0, 10));
-    } else setWeeklyTopItems([]);
-
-    // ── Top Sellers (all time from receipts jsonb) ──
-    let allQ = sb.from("receipts").select("items");
-    if (branchId) allQ = allQ.eq("branch_id", branchId);
-    const { data: allReceipts } = await allQ;
-    if (allReceipts && allReceipts.length > 0) {
-      const aMap = new Map<string, { sold: number; revenue: number }>();
-      for (const r of allReceipts) {
-        const items = (r.items || []) as { name: string; quantity: number; price: number }[];
-        for (const it of items) {
-          const n = it.name || "Unknown";
-          const e = aMap.get(n) || { sold: 0, revenue: 0 };
-          e.sold += it.quantity;
-          e.revenue += it.quantity * (it.price || 0);
-          aMap.set(n, e);
-        }
-      }
-      const sorted = Array.from(aMap.entries()).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.revenue - a.revenue);
-      setTopByRevenue(sorted.slice(0, 10));
-      setTopByQuantity([...sorted].sort((a, b) => b.sold - a.sold).slice(0, 10));
-    }
-
-    // ── Expenses (30 days) ──
-    let exQuery = sb.from("expenses").select("id, amount, description, category, created_at")
-      .gte("created_at", thirtyDaysAgo.toISOString())
-      .order("created_at", { ascending: false });
-    if (branchId) exQuery = exQuery.eq("branch_id", branchId);
-    const { data: expenseData } = await exQuery;
-    if (expenseData) {
-      setExpenses(expenseData as Expense[]);
-      setTotalExpenses(expenseData.reduce((s: number, e: any) => s + Number(e.amount), 0));
-    } else {
-      setExpenses([]);
-      setTotalExpenses(0);
-    }
-
     setLoading(false);
   }, [branchId]);
 
+  // Run heavy queries once on mount and when date range changes (Apply)
   useEffect(() => {
-    fetchAll();
-    const interval = setInterval(fetchAll, 1000);
+    fetchHeavy();
+  }, [fetchHeavy]);
+
+  // Poll light queries every second
+  useEffect(() => {
+    fetchLive();
+    const interval = setInterval(fetchLive, 1000);
     return () => clearInterval(interval);
-  }, [fetchAll]);
+  }, [fetchLive]);
 
   const fetchAllExpenses = useCallback(async () => {
     setAllExpensesLoading(true);
@@ -499,38 +544,60 @@ export default function ReportsPanel({ branchId }: { branchId?: string | null })
     const sb = createClient();
     await sb.from("expenses").delete().eq("id", id);
     setDeletingExpenseId(null);
-    fetchAll();
+    fetchHeavy();
     if (allExpensesModalOpen) fetchAllExpenses();
   };
 
   if (loading) return <LoadingSkeleton />;
 
-  const pctChange = todayRevenue > 0 && yesterdayRevenue > 0
-    ? (((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100)
-    : null;
-
-  const profitLoss = totalRevenue - totalExpenses;
-  const margin = totalRevenue > 0 ? ((profitLoss / totalRevenue) * 100) : 0;
+  const profitLoss = defaultRevenue - totalExpenses;
+  const margin = defaultRevenue > 0 ? ((profitLoss / defaultRevenue) * 100) : 0;
 
   return (
     <div className="space-y-6 max-w-[1400px]">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* Header with Date Range */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <p className="text-xs text-gray-400 mt-0.5">Live · Updates every second</p>
+          <p className="text-xs text-gray-400">Live · Updates every second</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-semibold text-gray-400">Date Range:</span>
+          <input
+            type="date"
+            value={reportDateFrom}
+            onChange={(e) => setReportDateFrom(e.target.value)}
+            className="px-2 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+          />
+          <span className="text-xs text-gray-400">to</span>
+          <input
+            type="date"
+            value={reportDateTo}
+            onChange={(e) => setReportDateTo(e.target.value)}
+            className="px-2 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+          />
+          <button
+            onClick={fetchHeavy}
+            className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-bold hover:bg-red-700 transition-colors"
+          >
+            Apply
+          </button>
+          <button
+            onClick={() => {
+              const d = new Date(); d.setDate(d.getDate() - 30);
+              setReportDateFrom(d.toLocaleDateString("en-CA"));
+              setReportDateTo(new Date().toLocaleDateString("en-CA"));
+            }}
+            className="px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-500 text-xs font-semibold hover:bg-gray-200 transition-colors"
+          >
+            Last 30 Days
+          </button>
         </div>
       </div>
 
       {/* ── Row 1: Stat Cards ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Revenue (30d)" value={fmtPHP(totalRevenue)} />
-        <StatCard label="Orders (30d)" value={String(totalOrders)} sub={`Avg ${fmtPHP(avgOrderValue)} / order`} />
+      <div className="grid grid-cols-2 gap-4">
+        <StatCard label="Revenue (Range)" value={fmtPHP(totalRevenue)} />
         <StatCard label="Today" value={fmtPHP(todayRevenue)} />
-        <StatCard
-          label="vs Yesterday"
-          value={pctChange !== null ? `${pctChange >= 0 ? "+" : ""}${pctChange.toFixed(1)}%` : "—"}
-          sub={pctChange !== null ? fmtPHP(yesterdayRevenue) : undefined}
-        />
       </div>
 
       {/* ── Row 2: Profit & Loss ── */}
@@ -555,8 +622,8 @@ export default function ReportsPanel({ branchId }: { branchId?: string | null })
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
           <div className="bg-gray-50 rounded-lg p-4">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Revenue</p>
-            <p className="text-xl font-black text-gray-900 mt-1">{fmtPHP(totalRevenue)}</p>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Revenue (30D)</p>
+            <p className="text-xl font-black text-gray-900 mt-1">{fmtPHP(defaultRevenue)}</p>
           </div>
           <div className="bg-gray-50 rounded-lg p-4">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Expenses</p>
@@ -634,33 +701,7 @@ export default function ReportsPanel({ branchId }: { branchId?: string | null })
         )}
       </Card>
 
-      {/* ── Row 4: Hourly Revenue + Today Top 5 ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardTitle>Hourly Revenue · Today</CardTitle>
-          {hourlyData.every((d) => d.revenue === 0) ? <EmptyChart msg="No orders today yet." /> : (
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={hourlyData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                <XAxis dataKey="hour" tick={{ fontSize: 10, fill: "#9ca3af" }} interval={3} />
-                <YAxis tick={{ fontSize: 10, fill: "#9ca3af" }} tickFormatter={fmtShort} width={50} />
-                <Tooltip formatter={(v: any) => [fmtPHP(Number(v)), "Revenue"]} />
-                <Bar dataKey="revenue" fill={RED} radius={[4, 4, 0, 0]} maxBarSize={32} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </Card>
-        <Card>
-          <CardTitle>Top 5 Items · Today</CardTitle>
-          {todayTopItems.length === 0 ? <EmptyChart msg="No orders today yet." /> : (
-            <div className="divide-y divide-gray-100">
-              {todayTopItems.map((it, i) => <ItemRow key={it.name} rank={i + 1} name={it.name} sold={it.sold} revenue={it.revenue} />)}
-            </div>
-          )}
-        </Card>
-      </div>
-
-      {/* ── Row 5: Weekly Top + All-Time Top Sellers ── */}
+      {/* ── Row 5: Weekly Top + Top Sellers ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardTitle>Top 10 Items · This Week</CardTitle>
@@ -671,7 +712,7 @@ export default function ReportsPanel({ branchId }: { branchId?: string | null })
           )}
         </Card>
         <Card>
-          <CardTitle>Top by Revenue · All Time</CardTitle>
+        <CardTitle>Top by Revenue · Last 30 Days</CardTitle>
           {topByRevenue.length === 0 ? <EmptyChart msg="No data." /> : (
             <ResponsiveContainer width="100%" height={topByRevenue.length * 40 + 20} minHeight={200}>
               <BarChart data={topByRevenue} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
@@ -686,9 +727,9 @@ export default function ReportsPanel({ branchId }: { branchId?: string | null })
         </Card>
       </div>
 
-      {/* ── Row 6: Top by Quantity All Time ── */}
+      {/* ── Row 6: Top by Quantity ── */}
       <Card>
-        <CardTitle>Top by Quantity Sold · All Time</CardTitle>
+        <CardTitle>Top by Quantity Sold · Last 30 Days</CardTitle>
         {topByQuantity.length === 0 ? <EmptyChart msg="No data." /> : (
           <ResponsiveContainer width="100%" height={topByQuantity.length * 40 + 20} minHeight={200}>
             <BarChart data={topByQuantity} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
@@ -706,7 +747,7 @@ export default function ReportsPanel({ branchId }: { branchId?: string | null })
       <AddExpenseModal
         open={expenseModalOpen}
         onClose={() => setExpenseModalOpen(false)}
-        onSaved={fetchAll}
+        onSaved={fetchHeavy}
         branchId={branchId ?? null}
       />
 

@@ -23,20 +23,24 @@ export default function DashboardPanel({ branchId }: { branchId?: string | null 
   const fetchStats = useCallback(async () => {
     const sb = createClient();
 
-    const branchFilter = { column: "branch_id", value: branchId };
     const maybeEq = (q: any) => branchId ? q.eq("branch_id", branchId) : q;
 
-    const [{ count: receiptCount }, { data: revenueRows }, { count: customerCount }, { count: menuCount }, { count: pendingCount }, { data: recent }] = await Promise.all([
-      maybeEq(sb.from("receipts").select("*", { count: "exact", head: true })),
-      maybeEq(sb.from("receipts").select("total")),
+    const [{ count: customerCount }, { count: menuCount }, { count: pendingCount }, { data: recent }] = await Promise.all([
       sb.from("profiles").select("*", { count: "exact", head: true }).eq("role", "customer"),
       branchId ? sb.from("menu_items").select("*", { count: "exact", head: true }).eq("branch_id", branchId) : sb.from("menu_items").select("*", { count: "exact", head: true }),
       maybeEq(sb.from("orders").select("*", { count: "exact", head: true }).eq("status", "pending")),
       maybeEq(sb.from("receipts").select("id, order_id, total, order_type, source, completed_at, customer_name").order("completed_at", { ascending: false }).limit(5)),
     ]);
+
+    // Use get_sales_report RPC for accurate totals (from Jan 1 2024)
+    const today = new Date().toLocaleDateString("en-CA");
+    const { data: reportRows } = await sb.rpc("get_sales_report", { p_start_date: "2024-01-01", p_end_date: today, p_branch_id: branchId ?? null });
+    const allTimeRevenue = (reportRows ?? []).reduce((s: number, r: any) => s + Number(r.total_sales), 0);
+    const allTimeOrders = (reportRows ?? []).reduce((s: number, r: any) => s + Number(r.order_count), 0);
+
     setStats({
-      totalOrders: receiptCount ?? 0,
-      totalRevenue: revenueRows?.reduce((sum: number, r: any) => sum + Number(r.total), 0) ?? 0,
+      totalOrders: allTimeOrders,
+      totalRevenue: allTimeRevenue,
       totalCustomers: customerCount ?? 0,
       totalMenuItems: menuCount ?? 0,
       pendingOrders: pendingCount ?? 0,
@@ -45,22 +49,25 @@ export default function DashboardPanel({ branchId }: { branchId?: string | null 
     setLoading(false);
   }, [branchId]);
   useEffect(() => { fetchStats(); }, [fetchStats]);
-  if (loading) return <LoadingSkeleton />;
-  if (!stats) return <EmptyState message="No data available." />;
-  const rev = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 0 }).format(stats.totalRevenue);
+
+  const rev = stats ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 0 }).format(stats.totalRevenue) : null;
 
   return (
     <div className="space-y-8">
       <p className="text-sm text-gray-400 mt-0.5">Store overview</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <StatCard label="Total Revenue" value={rev} sub="" color="#10b981" />
-        <StatCard label="Orders" value={String(stats.totalOrders)} sub={`${stats.pendingOrders} pending`} color="#f59e0b" />
-        <StatCard label="Customers" value={String(stats.totalCustomers)} color="#3b82f6" />
-        <StatCard label="Menu Items" value={String(stats.totalMenuItems)} color="#ec4899" />
+        <StatCard label="Total Revenue" value={rev ?? "—"} sub="" color="#10b981" />
+        <StatCard label="Orders" value={stats ? String(stats.totalOrders) : "—"} sub={stats ? `${stats.pendingOrders} pending` : "—"} color="#f59e0b" />
+        <StatCard label="Customers" value={stats ? String(stats.totalCustomers) : "—"} color="#3b82f6" />
+        <StatCard label="Menu Items" value={stats ? String(stats.totalMenuItems) : "—"} color="#ec4899" />
       </div>
       <div><h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Recent Orders</h3>
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          {stats.recentOrders.length === 0 ? <div className="p-6 text-center"><p className="text-sm text-gray-400">No orders yet.</p></div> : (
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="w-8 h-8 border-4 border-gray-200 rounded-full animate-spin" style={{ borderTopColor: "#dc2626" }} />
+            </div>
+          ) : !stats || stats.recentOrders.length === 0 ? <div className="p-6 text-center"><p className="text-sm text-gray-400">No orders yet.</p></div> : (
             <>
               {/* Desktop table */}
               <div className="hidden sm:block">
